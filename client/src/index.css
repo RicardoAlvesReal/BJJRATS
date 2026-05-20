@@ -1,0 +1,385 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* BJJRats PWA — "Cage Fighter" Design System
+   Typography: Barlow Condensed 900 + Barlow 400
+   Colors: #0A0A0A (black) + #CC0000 (red) + #FFFFFF (white)
+   Style: Brutalismo Tático — sem cantos arredondados, bordas vermelhas cortantes */
+
+@theme inline {
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 2px;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0px;
+  --background: oklch(0.07 0 0);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.1 0 0);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.1 0 0);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.45 0.22 27);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.13 0 0);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.15 0 0);
+  --muted-foreground: oklch(0.55 0 0);
+  --accent: oklch(0.45 0.22 27);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.45 0.22 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.2 0 0);
+  --input: oklch(0.15 0 0);
+  --ring: oklch(0.45 0.22 27);
+  --chart-1: oklch(0.45 0.22 27);
+  --chart-2: oklch(0.55 0.18 27);
+  --chart-3: oklch(0.35 0.22 27);
+  --chart-4: oklch(0.65 0.15 27);
+  --chart-5: oklch(0.25 0.22 27);
+  --sidebar: oklch(0.08 0 0);
+  --sidebar-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.45 0.22 27);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.13 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(0.2 0 0);
+  --sidebar-ring: oklch(0.45 0.22 27);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Barlow', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-color: #0A0A0A;
+    color: #FFFFFF;
+    overflow-x: hidden;
+    /* Mobile: prevent horizontal scroll */
+    max-width: 100vw;
+  }
+  html {
+    overflow-x: hidden;
+    background-color: #0A0A0A;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+}
+
+@layer components {
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .flex {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+      max-width: 480px;
+    }
+  }
+
+  /* BJJRats Custom Components */
+  .bjj-card {
+    background: #111111;
+    border-left: 3px solid #CC0000;
+    padding: 1rem;
+    position: relative;
+  }
+
+  .bjj-btn-primary {
+    background: #CC0000;
+    color: #FFFFFF;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.875rem 2rem;
+    border: none;
+    width: 100%;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .bjj-btn-primary:hover {
+    background: #FF0000;
+  }
+  .bjj-btn-primary:active {
+    transform: scale(0.98);
+    background: #AA0000;
+  }
+
+  .bjj-btn-outline {
+    background: transparent;
+    color: #CC0000;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.875rem 2rem;
+    border: 2px solid #CC0000;
+    width: 100%;
+    transition: all 0.15s;
+  }
+  .bjj-btn-outline:hover {
+    background: #CC0000;
+    color: #FFFFFF;
+  }
+
+  .bjj-input {
+    background: #1A1A1A;
+    border: 1px solid #333333;
+    border-bottom: 2px solid #CC0000;
+    color: #FFFFFF;
+    font-family: 'Barlow', sans-serif;
+    font-size: 1rem;
+    padding: 0.875rem 1rem;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .bjj-input:focus {
+    border-color: #CC0000;
+    border-bottom-color: #FF0000;
+    background: #1F1F1F;
+  }
+  .bjj-input::placeholder {
+    color: #555555;
+  }
+
+  .bjj-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #888888;
+    margin-bottom: 0.25rem;
+    display: block;
+  }
+
+  .bjj-tab-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #0D0D0D;
+    border-top: 2px solid #CC0000;
+    display: flex;
+    z-index: 100;
+    /* Full width on all screens */
+    max-width: 100%;
+    margin: 0 auto;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  @media (min-width: 480px) {
+    .bjj-tab-bar {
+      max-width: 480px;
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
+    }
+  }
+
+  .bjj-tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.625rem 0.25rem;
+    color: #444444;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: color 0.15s;
+    gap: 0.25rem;
+    border: none;
+    background: transparent;
+  }
+  .bjj-tab-item.active {
+    color: #CC0000;
+  }
+  .bjj-tab-item.active svg {
+    filter: drop-shadow(0 0 4px #CC0000);
+  }
+
+  .bjj-section-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .bjj-section-title::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 1.5rem;
+    background: #CC0000;
+    flex-shrink: 0;
+  }
+
+  .bjj-stat-card {
+    background: #111111;
+    border: 1px solid #1E1E1E;
+    border-top: 2px solid #CC0000;
+    padding: 1rem;
+    text-align: center;
+  }
+  .bjj-stat-number {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 2.5rem;
+    color: #CC0000;
+    line-height: 1;
+  }
+  .bjj-stat-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #666666;
+    margin-top: 0.25rem;
+  }
+
+  .bjj-belt-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.25rem 0.625rem;
+    border: 1px solid currentColor;
+  }
+
+  .bjj-xp-bar {
+    height: 4px;
+    background: #1A1A1A;
+    position: relative;
+    overflow: hidden;
+  }
+  .bjj-xp-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #CC0000, #FF3333);
+    transition: width 0.5s ease;
+  }
+
+  /* Page transitions */
+  .page-enter {
+    animation: slideInRight 0.15s ease forwards;
+  }
+  @keyframes slideInRight {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #0A0A0A; }
+  ::-webkit-scrollbar-thumb { background: #CC0000; }
+
+  /* Mobile safe area */
+  .pb-safe {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0));
+  }
+  /* App wrapper — full width on mobile, centered on desktop */
+  .bjj-app-wrapper {
+    background: #0A0A0A;
+    min-height: 100vh;
+    width: 100%;
+    position: relative;
+  }
+  @media (min-width: 480px) {
+    .bjj-app-wrapper {
+      max-width: 480px;
+      margin: 0 auto;
+    }
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

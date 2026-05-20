@@ -1,0 +1,22 @@
+{
+  "name": "BJJRats App",
+  "short_name": "BJJRats",
+  "description": "Rastreie seus treinos de BJJ, evolua e domine o tatami.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0A0A",
+  "theme_color": "#CC0000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp",
+      "sizes": "192x192",
+      "type": "image/webp"
+    },
+    {
+      "src": "https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp",
+      "sizes": "512x512",
+      "type": "image/webp"
+    }
+  ]
+}

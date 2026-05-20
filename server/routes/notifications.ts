@@ -1,0 +1,40 @@
+import { Router } from 'express';
+import { eq, and, desc } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
+import { db } from '../db/index.js';
+import { notifications } from '../db/schema.js';
+import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+
+const router = Router();
+
+router.get('/', requireAuth, async (req: AuthRequest, res) => {
+  const rows = await db.select().from(notifications)
+    .where(eq(notifications.toUid, req.userId!))
+    .orderBy(desc(notifications.createdAt));
+  res.json(rows);
+});
+
+router.post('/', requireAuth, async (req: AuthRequest, res) => {
+  const id = nanoid();
+  const [row] = await db.insert(notifications).values({ id, fromUid: req.userId!, ...req.body }).returning();
+  res.status(201).json(row);
+});
+
+// PATCH /api/notifications/:id  — marca como lida
+router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
+  const [existing] = await db.select({ toUid: notifications.toUid }).from(notifications).where(eq(notifications.id, req.params.id)).limit(1);
+  if (!existing || existing.toUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  const { id: _id, ...data } = req.body;
+  const [row] = await db.update(notifications).set(data).where(eq(notifications.id, req.params.id)).returning();
+  res.json(row);
+});
+
+// PATCH /api/notifications/read-all  — marca todas como lidas
+router.patch('/read-all', requireAuth, async (req: AuthRequest, res) => {
+  await db.update(notifications).set({ read: true }).where(
+    and(eq(notifications.toUid, req.userId!), eq(notifications.read, false))
+  );
+  res.json({ success: true });
+});
+
+export default router;
