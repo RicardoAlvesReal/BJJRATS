@@ -3,8 +3,17 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change_me_in_production';
 
+// Hierarquia: superadmin > admin > professor > student
+export const ROLE_HIERARCHY: Record<string, number> = {
+  superadmin: 4,
+  admin:      3,
+  professor:  2,
+  student:    1,
+};
+
 export interface AuthRequest extends Request {
-  userId?: string;
+  userId?:   string;
+  userRole?: string;
 }
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
@@ -15,14 +24,26 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
   const token = header.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { uid: string };
-    req.userId = payload.uid;
+    const payload = jwt.verify(token, JWT_SECRET) as { uid: string; role?: string };
+    req.userId   = payload.uid;
+    req.userRole = payload.role ?? 'student';
     next();
   } catch {
     res.status(401).json({ error: 'Token inválido' });
   }
 }
 
-export function signToken(uid: string): string {
-  return jwt.sign({ uid }, JWT_SECRET, { expiresIn: '30d' });
+/** Middleware que exige um dos roles listados (use APÓS requireAuth) */
+export function requireRole(...roles: string[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.userRole || !roles.includes(req.userRole)) {
+      res.status(403).json({ error: 'Acesso negado' });
+      return;
+    }
+    next();
+  };
+}
+
+export function signToken(uid: string, role: string): string {
+  return jwt.sign({ uid, role }, JWT_SECRET, { expiresIn: '30d' });
 }

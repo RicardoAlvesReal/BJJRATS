@@ -25,7 +25,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // POST /api/trainings
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
-  const { uid, ...rest } = req.body;
+  const { uid, createdAt: _ca, updatedAt: _ua, ...rest } = req.body;
   const ownerUid = uid || req.userId!;
   const id = nanoid();
   const [row] = await db.insert(trainings).values({ id, uid: ownerUid, ...rest }).returning();
@@ -61,7 +61,7 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ uid: trainings.uid }).from(trainings).where(eq(trainings.id, req.params.id)).limit(1);
   if (!existing) { res.status(404).json({ error: 'Não encontrado' }); return; }
   if (existing.uid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
-  const { id: _id, uid: _uid, ...data } = req.body;
+  const { id: _id, uid: _uid, createdAt: _ca, updatedAt: _ua, ...data } = req.body;
   const [row] = await db.update(trainings).set(data).where(eq(trainings.id, req.params.id)).returning();
   res.json(row);
 });

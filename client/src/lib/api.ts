@@ -215,6 +215,30 @@ export const auth = {
     apiFetch<{ message: string }>('/api/auth/reset-password', { method: 'POST', body: JSON.stringify({ email }) }),
 };
 
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+export interface AdminUser extends UserProfile {
+  role: string;
+}
+
+export const admin = {
+  listUsers: () =>
+    apiFetch<{ users: AdminUser[] }>('/api/admin/users'),
+
+  createUser: (data: {
+    name: string; email: string; password: string;
+    role?: string; belt?: string; academyId?: string | null;
+    phone?: string;
+  }) =>
+    apiFetch<{ user: AdminUser }>('/api/admin/users', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateUser: (uid: string, data: Partial<AdminUser> & { password?: string }) =>
+    apiFetch<{ user: AdminUser }>(`/api/admin/users/${uid}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  deleteUser: (uid: string) =>
+    apiFetch<{ success: boolean }>(`/api/admin/users/${uid}`, { method: 'DELETE' }),
+};
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export const users = {
@@ -435,6 +459,7 @@ const api = {
   promotions,
   achievements,
   upload,
+  admin,
 };
 
 export default api;

@@ -65,19 +65,12 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
   // Carregar academias e professores salvos do perfil
   useEffect(() => {
-    if (!user) return;
-    getDoc(doc(db, 'users', user.uid)).then(snap => {
-      if (snap.exists()) {
-        const data = snap.data();
-        const acads: string[] = data.savedAcademies || [];
-        const profs: string[] = data.savedProfessors || [];
-        if (data.academy && !acads.includes(data.academy)) acads.unshift(data.academy);
-        if (data.professor && !profs.includes(data.professor)) profs.unshift(data.professor);
-        setSavedAcademies(acads);
-        setSavedProfessors(profs);
-      }
-    }).catch(() => {});
-  }, [user]);
+    if (!profile) return;
+    const acads = profile.academy ? [profile.academy] : [];
+    const profs = profile.professor ? [profile.professor] : [];
+    setSavedAcademies(acads);
+    setSavedProfessors(profs);
+  }, [profile]);
 
   const todayDate = new Date();
   const todayFormatted = `${String(todayDate.getDate()).padStart(2, '0')}/${String(todayDate.getMonth() + 1).padStart(2, '0')}/${todayDate.getFullYear()}`;
@@ -286,7 +279,6 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
           pace: extraData.distance > 0 ? calcPace() : null,
           extraXP: newExtraXP,
           notes: form.notes,
-          updatedAt: serverTimestamp(),
         };
         if (trainingPhotoUrl !== undefined) updates.trainingPhoto = trainingPhotoUrl;
 
@@ -313,7 +305,6 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
           academy: form.academy,
           professor: form.professor,
           xp: xpGained,
-          updatedAt: serverTimestamp(),
         };
         // Salvar dados de competição se tipo for competição
         if (form.sessionType === 'competicao') {
@@ -346,7 +337,6 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
             pace: extraData.distance > 0 ? calcPace() : null,
             extraXP,
             notes: form.notes,
-            createdAt: serverTimestamp(),
           };
           if (trainingPhotoUrl) extraDoc.trainingPhoto = trainingPhotoUrl;
 
@@ -390,7 +380,6 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
           academy: form.academy,
           professor: form.professor,
           xp: xpGained,
-          createdAt: serverTimestamp(),
         };
         // Salvar dados de competição se tipo for competição
         if (form.sessionType === 'competicao') {

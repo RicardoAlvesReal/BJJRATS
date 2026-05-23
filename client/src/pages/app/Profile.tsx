@@ -580,6 +580,11 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
       <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '2px solid #CC0000', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>MEU PERFIL</h1>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {(profile?.role === 'superadmin' || profile?.role === 'admin') && (
+            <a href="/admin" style={{ background: '#1A0000', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', textDecoration: 'none' }}>
+              ⚙️ ADMIN
+            </a>
+          )}
           {onOpenProfessorPanel && (
             <button onClick={onOpenProfessorPanel} style={{ background: '#001A33', border: '1px solid #1A6ECC', color: '#1A6ECC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
               🏫 PAINEL

@@ -50,44 +50,70 @@ export default function Login() {
   };
 
   return (
-    <div className="bjj-app-wrapper min-h-screen flex flex-col relative overflow-hidden">
-      {/* Hero Background */}
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url(${HERO_BG})`, opacity: 0.35 }}
-      />
-      {/* Gradient overlay */}
-      <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(10,10,10,0.3) 0%, rgba(10,10,10,0.7) 50%, rgba(10,10,10,0.98) 100%)' }} />
+    <div className="bjj-login-wrapper">
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col min-h-screen">
-        {/* Back to landing */}
-        <div style={{ padding: '1rem 1.5rem' }}>
-          <button
-            onClick={() => navigate('/')}
-            style={{ background: 'none', border: 'none', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = '#CC0000'}
-            onMouseLeave={e => e.currentTarget.style.color = '#888'}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-            VOLTAR AO SITE
-          </button>
-        </div>
-        {/* Logo section */}
-        <div className="flex flex-col items-center pt-8 pb-8 px-6">
-          <img src={LOGO} alt="BJJRats" className="w-24 h-24 object-contain mb-4" style={{ filter: 'drop-shadow(0 0 20px rgba(204,0,0,0.5))' }} />
-          <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '2.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#FFFFFF', lineHeight: 1 }}>
+      {/* ─── Painel hero (fundo no mobile / coluna esquerda no desktop) ─── */}
+      <div className="bjj-login-hero">
+        <img src={HERO_BG} alt="" className="bjj-login-hero-img" />
+        <div className="bjj-login-hero-overlay" />
+
+        {/* Conteúdo visível só no desktop */}
+        <div className="bjj-login-hero-content">
+          <img src={LOGO} alt="BJJRats" className="bjj-login-logo-desktop" />
+          <h1 className="bjj-login-brand-desktop">
             BJJ<span style={{ color: '#CC0000' }}>RATS</span>
           </h1>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#888888', marginTop: '0.25rem' }}>
+          <p className="bjj-login-tagline-desktop">TREINE. EVOLUA. DOMINE.</p>
+          <div className="bjj-login-hero-divider" />
+          <p className="bjj-login-hero-subtitle">
+            O app dos atletas que treinam de verdade.<br />
+            Registre treinos, evolua na faixa e conecte-se com a comunidade.
+          </p>
+        </div>
+      </div>
+
+      {/* ─── Painel de formulário (frente no mobile / coluna direita no desktop) ─── */}
+      <div className="bjj-login-panel">
+
+        {/* Botão voltar */}
+        <button className="bjj-login-back-btn" onClick={() => navigate('/')}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
+          VOLTAR AO SITE
+        </button>
+
+        {/* Logo — mobile only */}
+        <div className="bjj-login-mobile-logo">
+          <img
+            src={LOGO}
+            alt="BJJRats"
+            style={{ width: '5rem', height: '5rem', objectFit: 'contain', filter: 'drop-shadow(0 0 20px rgba(204,0,0,0.5))' }}
+          />
+          <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '2.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#FFF', lineHeight: 1, marginTop: '0.75rem' }}>
+            BJJ<span style={{ color: '#CC0000' }}>RATS</span>
+          </h1>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#888', marginTop: '0.25rem' }}>
             TREINE. EVOLUA. DOMINE.
           </p>
         </div>
 
-        {/* Form */}
-        <div className="flex-1 flex flex-col justify-end px-6 pb-12">
+        {/* Heading — desktop only */}
+        <div className="bjj-login-panel-heading">
+          <h2 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '2rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#FFF', lineHeight: 1, marginBottom: '0.375rem' }}>
+            {showReset ? 'RECUPERAR SENHA' : 'ENTRAR NA CONTA'}
+          </h2>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#666', marginBottom: '2rem' }}>
+            {showReset
+              ? 'Informe seu email para receber o link de recuperação.'
+              : 'Acesse sua conta para registrar treinos e acompanhar sua evolução.'}
+          </p>
+        </div>
+
+        {/* Formulário */}
+        <div className="bjj-login-form-wrap">
           {!showReset ? (
-            <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label className="bjj-label">Email</label>
                 <input
@@ -114,43 +140,37 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setShowReset(true)}
-                style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888888', background: 'none', border: 'none', textAlign: 'right', padding: '0' }}
+                style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', background: 'none', border: 'none', textAlign: 'right', padding: 0, cursor: 'pointer' }}
               >
                 Esqueci a senha
               </button>
 
-              <button
-                type="submit"
-                className="bjj-btn-primary"
-                disabled={loading}
-                style={{ marginTop: '0.5rem' }}
-              >
+              <button type="submit" className="bjj-btn-primary" disabled={loading} style={{ marginTop: '0.25rem' }}>
                 {loading ? 'ENTRANDO...' : 'ENTRAR NO TATAMI'}
               </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.5rem 0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.25rem 0' }}>
                 <div style={{ flex: 1, height: '1px', background: '#222' }} />
                 <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#444', textTransform: 'uppercase', letterSpacing: '0.1em' }}>ou</span>
                 <div style={{ flex: 1, height: '1px', background: '#222' }} />
               </div>
 
-              <button
-                type="button"
-                className="bjj-btn-outline"
-                onClick={() => navigate('/register')}
-              >
+              <button type="button" className="bjj-btn-outline" onClick={() => navigate('/register')}>
                 CRIAR CONTA
               </button>
             </form>
           ) : (
-            <form onSubmit={handleReset} className="flex flex-col gap-4">
-              <div>
-                <h2 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFFFFF', marginBottom: '0.5rem' }}>
+            <form onSubmit={handleReset} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Heading apenas no mobile (desktop usa bjj-login-panel-heading) */}
+              <div className="bjj-login-reset-heading-mobile">
+                <h2 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFF', marginBottom: '0.375rem' }}>
                   RECUPERAR SENHA
                 </h2>
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#888888', marginBottom: '1rem' }}>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#888', marginBottom: '0.5rem' }}>
                   Informe seu email para receber o link de recuperação.
                 </p>
+              </div>
+              <div>
                 <label className="bjj-label">Email</label>
                 <input
                   type="email"

@@ -22,6 +22,7 @@ import classesRouter       from "./routes/classes.js";
 import promotionsRouter    from "./routes/promotions.js";
 import achievementsRouter  from "./routes/achievements.js";
 import uploadRouter        from "./routes/upload.js";
+import adminRouter         from "./routes/admin.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,19 +55,16 @@ async function startServer() {
   app.use("/api/promotions",       promotionsRouter);
   app.use("/api/achievements",     achievementsRouter);
   app.use("/api/upload",           uploadRouter);
+  app.use("/api/admin",            adminRouter);
 
-  // SPA static files
-  const staticPath =
-    process.env.NODE_ENV === "production"
-      ? path.resolve(__dirname, "public")
-      : path.resolve(__dirname, "..", "dist", "public");
-
-  app.use(express.static(staticPath));
-
-  // Handle client-side routing - serve index.html for all routes
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(staticPath, "index.html"));
-  });
+  // SPA static files — only in production (dev uses Vite dev server)
+  if (process.env.NODE_ENV === "production") {
+    const staticPath = path.resolve(__dirname, "public");
+    app.use(express.static(staticPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(staticPath, "index.html"));
+    });
+  }
 
   const port = process.env.PORT || 3000;
 
@@ -76,3 +74,8 @@ async function startServer() {
 }
 
 startServer().catch(console.error);
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+// routes updated

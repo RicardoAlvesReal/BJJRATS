@@ -93,7 +93,12 @@ export default function AppLayout() {
   const [editExtraTraining, setEditExtraTraining] = useState<import('@/pages/app/NewTraining').ExtraTrainingData | null>(null);
   const [shareData, setShareData] = useState<ShareTrainingData | null>(null);
   const [showProfessorPanel, setShowProfessorPanel] = useState(false);
-  const { profile, user, updateProfileData } = useAuth();
+  const { profile, user, updateProfileData, logout } = useAuth();
+
+  const handleLogout = async () => {
+    if (!confirm('Deseja sair da sua conta?')) return;
+    await logout();
+  };
   const isProfessor = profile?.role === 'professor';
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -384,32 +389,97 @@ export default function AppLayout() {
         </div>
       )}
 
-      {/* Tab Content */}
-      <div className="pb-safe">
-        {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} />}
-        {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
-        {activeTab === 'academy' && <Academy />}
-        {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
-        {activeTab === 'goals' && <Goals />}
-        {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onEdit={(t) => setEditTraining(t)} />}
+      {/* Sidebar — apenas desktop */}
+      <aside className="bjj-sidebar">
+        {/* Logo */}
+        <div className="bjj-sidebar-logo">
+          <span style={{ fontSize: '1.5rem' }}>🥋</span>
+          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#FFF' }}>
+            BJJ<span style={{ color: '#CC0000' }}>RATS</span>
+          </span>
+        </div>
 
+        {/* Perfil resumido */}
+        {profile && (
+          <div className="bjj-sidebar-profile">
+            <div className="bjj-sidebar-avatar">
+              {profile.photo ? (
+                <img src={profile.photo} alt="" />
+              ) : (
+                <span>🥋</span>
+              )}
+            </div>
+            <div>
+              <p className="bjj-sidebar-name">{profile.name || 'Atleta'}</p>
+              <p className="bjj-sidebar-belt">{(profile as any).belt || 'Faixa Branca'}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Navegação */}
+        <nav className="bjj-sidebar-nav">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              className={`bjj-sidebar-item ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => { setActiveTab(tab.id); if (tab.id === 'community') setCommunityBadge(false); }}
+            >
+              {tab.icon(activeTab === tab.id)}
+              <span>{tab.label}</span>
+              {tab.id === 'community' && communityBadge && activeTab !== 'community' && (
+                <span className="bjj-sidebar-badge" />
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* Novo Treino + Sair */}
+        <div className="bjj-sidebar-footer">
+          <button className="bjj-sidebar-new-btn" onClick={() => setShowNewTraining(true)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            NOVO TREINO
+          </button>
+          <button className="bjj-sidebar-logout-btn" onClick={handleLogout}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            SAIR
+          </button>
+        </div>
+      </aside>
+
+      {/* Conteúdo principal */}
+      <div className="bjj-main-content">
+        {/* Tab Content */}
+        <div className="pb-safe">
+          {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} />}
+          {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
+          {activeTab === 'academy' && <Academy />}
+          {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
+          {activeTab === 'goals' && <Goals />}
+          {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onEdit={(t) => setEditTraining(t)} />}
+        </div>
+
+        {/* Modal de compartilhamento */}
+        {shareData && (
+          <TrainingShareModal
+            training={shareData}
+            user={shareUser}
+            onClose={() => setShareData(null)}
+            zIndex={9999}
+            currentUserUid={user?.uid}
+            currentUserAcademyId={profile?.academyId || undefined}
+            currentUserAcademyName={profile?.academy || profile?.academyName || undefined}
+            currentUserBelt={profile?.belt || undefined}
+          />
+        )}
       </div>
 
-      {/* Modal de compartilhamento — acima de tudo, incluindo o tab bar */}
-      {shareData && (
-        <TrainingShareModal
-          training={shareData}
-          user={shareUser}
-          onClose={() => setShareData(null)}
-          zIndex={9999}
-          currentUserUid={user?.uid}
-          currentUserAcademyId={profile?.academyId || undefined}
-          currentUserAcademyName={profile?.academy || profile?.academyName || undefined}
-          currentUserBelt={profile?.belt || undefined}
-        />
-      )}
-
-      {/* Tab Bar */}
+      {/* Tab Bar — apenas mobile */}
       <nav className="bjj-tab-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)' }}>
         {TABS.map(tab => (
           <button

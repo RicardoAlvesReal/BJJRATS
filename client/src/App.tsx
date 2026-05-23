@@ -10,6 +10,8 @@ import Support from "./pages/Support";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AppLayout from "./pages/AppLayout";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminLogin from "./pages/admin/AdminLogin";
 import PublicPost from "./pages/public/PublicPost";
 import PublicEvent from "./pages/public/PublicEvent";
 import PublicChallenge from './pages/public/PublicChallenge';
@@ -34,13 +36,22 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     );
   }
   if (!user) return <Redirect to="/login" />;
+  if (['superadmin', 'admin'].includes(user.role ?? '')) return <Redirect to="/admin" />;
+  return <Component />;
+}
+
+function AdminRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Redirect to="/admin/login" />;
+  if (!['superadmin', 'admin'].includes(user.role ?? '')) return <Redirect to="/app" />;
   return <Component />;
 }
 
 function PublicRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user) return <Redirect to="/app" />;
+  if (user) return <Redirect to={['superadmin', 'admin'].includes(user.role ?? '') ? '/admin' : '/app'} />;
   return <Component />;
 }
 
@@ -52,7 +63,9 @@ function Router() {
       <Route path="/support" component={Support} />
       <Route path="/login" component={() => <PublicRoute component={Login} />} />
       <Route path="/register" component={() => <PublicRoute component={Register} />} />
-      <Route path="/app" component={() => <ProtectedRoute component={AppLayout} />} />
+      <Route path="/app"   component={() => <ProtectedRoute component={AppLayout} />} />
+      <Route path="/admin/login" component={AdminLogin} />
+      <Route path="/admin" component={() => <AdminRoute     component={AdminLayout} />} />
       <Route path="/post/:postId" component={PublicPost} />
       <Route path="/evento/:eventId" component={PublicEvent} />
       <Route path="/desafio/:challengeId" component={PublicChallenge} />

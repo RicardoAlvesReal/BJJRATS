@@ -28,7 +28,7 @@ export const users = pgTable('users', {
   lastTrainingDate: text('last_training_date'),
   athleteType:      text('athlete_type'),
   isAcademyAdmin:   boolean('is_academy_admin').default(false),
-  role:             text('role').default('student'),   // 'student' | 'professor'
+  role:             text('role').default('student'),   // 'superadmin' | 'admin' | 'professor' | 'student'
   academyName:      text('academy_name'),
   academyAddress:   text('academy_address'),
   academyCity:      text('academy_city'),

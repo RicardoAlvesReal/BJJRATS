@@ -422,6 +422,11 @@ export default function Landing() {
               onMouseLeave={e => (e.currentTarget.style.color = '#555')}>
               Privacidade
             </a>
+            <a href="/admin" style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.65rem', color: '#333', textTransform: 'uppercase', letterSpacing: '0.1em', textDecoration: 'none', transition: 'color 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#CC0000')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#333')}>
+              🔒 Área Restrita
+            </a>
           </div>
 
           <p className="lp-footer-copy">© 2026 THE BJJRATS. TODOS OS DIREITOS RESERVADOS.</p>

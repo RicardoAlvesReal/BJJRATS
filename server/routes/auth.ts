@@ -46,7 +46,7 @@ router.post('/register', async (req, res) => {
     academyState:  rest.academyState   || null,
   });
   const [user] = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
-  const token = signToken(uid);
+  const token = signToken(uid, user.role ?? 'student');
   res.status(201).json({ token, user: sanitize(user) });
 });
 
@@ -67,7 +67,7 @@ router.post('/login', async (req, res) => {
     res.status(401).json({ error: 'Credenciais inválidas' });
     return;
   }
-  const token = signToken(user.uid);
+  const token = signToken(user.uid, user.role ?? 'student');
   res.json({ token, user: sanitize(user) });
 });
 
@@ -75,7 +75,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   const [user] = await db.select().from(users).where(eq(users.uid, req.userId!)).limit(1);
   if (!user) { res.status(404).json({ error: 'Usuário não encontrado' }); return; }
-  res.json({ user: sanitize(user) });
+  res.json(sanitize(user));
 });
 
 // POST /api/auth/reset-password  (stub — implementar via emailService)
