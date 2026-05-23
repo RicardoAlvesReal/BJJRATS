@@ -1128,7 +1128,7 @@ function StudentPostModal({ academyId, user, profile, onClose, onSaved }: any) {
     try {
       let photoURL = '';
       if (photo) {
-        photoURL = await api.upload.file(photo);
+        photoURL = await api.upload.file(photo, 'comunidade');
       }
       await api.posts.create({
         uid: user.uid,

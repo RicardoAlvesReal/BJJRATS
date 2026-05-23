@@ -130,7 +130,7 @@ export default function AppLayout() {
     if (!photoFile || !user) return;
     setUploadingPhoto(true);
     try {
-      const url = await api.upload.file(photoFile);
+      const url = await api.upload.file(photoFile, 'perfil');
       await updateProfileData({ photo: url });
       setShowPhotoModal(false);
       setPhotoFile(null);

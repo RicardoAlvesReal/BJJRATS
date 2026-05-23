@@ -118,7 +118,7 @@ export default function Register() {
 
   // ── Upload helper ──────────────────────────────────────────────────────────
   const uploadFile = async (file: File): Promise<string> => {
-    return api.upload.file(file);
+    return api.upload.file(file, 'perfil');
   };
 
   // ── Passo 1: Dados de acesso ───────────────────────────────────────────────

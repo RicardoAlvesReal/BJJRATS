@@ -550,7 +550,7 @@ export default function ProfessorPanel({ onBack }: Props) {
     try {
       let receiptUrl: string | undefined;
       if (receiptFile) {
-        receiptUrl = await api.upload.file(receiptFile);
+        receiptUrl = await api.upload.file(receiptFile, 'mensalidades');
       }
       await handleMarkPaid(showPaymentModal, receiptUrl);
       setShowPaymentModal(null);
@@ -994,26 +994,6 @@ export default function ProfessorPanel({ onBack }: Props) {
     }
   }, [user]);
 
-  // Reduz imagem para no máximo 800px e qualidade 0.7 antes de base64 (fallback quando Storage não está disponível)
-  const compressImage = (file: File, maxPx = 800, quality = 0.7): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) { reject(new Error('canvas')); return; }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
-
   const handleSavePost = async () => {
     if (!user || !profile || !postText.trim()) return;
     setSavingPost(true);
@@ -1021,17 +1001,10 @@ export default function ProfessorPanel({ onBack }: Props) {
       let photoURL: string | null = null;
 
       if (postPhoto) {
-        // 1ª tentativa: upload via API
         try {
-          photoURL = await api.upload.file(postPhoto);
+          photoURL = await api.upload.file(postPhoto, 'comunidade');
         } catch {
-          // Fallback: comprimir e salvar como base64
-          try {
-            photoURL = await compressImage(postPhoto);
-            toast.info('Foto salva em modo compacto (Storage indisponível)');
-          } catch {
-            toast.warning('Não foi possível incluir a foto. Post será publicado sem imagem.');
-          }
+          toast.warning('Não foi possível fazer upload da foto. Post será publicado sem imagem.');
         }
       }
 
@@ -1508,7 +1481,7 @@ export default function ProfessorPanel({ onBack }: Props) {
                         try {
                           const urls: string[] = [];
                           for (const file of files) {
-                            const url = await api.upload.file(file);
+                            const url = await api.upload.file(file, 'perfil');
                             urls.push(url);
                           }
                           setAcademyFormData(p => ({ ...p, photoUrls: [...p.photoUrls, ...urls] }));
@@ -3171,7 +3144,7 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
     try {
       let receiptUrl: string | undefined;
       if (memberReceiptFile) {
-        receiptUrl = await api.upload.file(memberReceiptFile);
+        receiptUrl = await api.upload.file(memberReceiptFile, 'mensalidades');
       }
       await handleMemberMarkPaid(memberReceiptModal, receiptUrl);
       setMemberReceiptModal(null);

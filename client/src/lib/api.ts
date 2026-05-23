@@ -428,10 +428,10 @@ export const achievements = {
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export const upload = {
-  file: async (file: File): Promise<string> => {
+  file: async (file: File, category = 'geral'): Promise<string> => {
     const form = new FormData();
     form.append('file', file);
-    const res = await apiFetch<{ url: string }>('/api/upload', {
+    const res = await apiFetch<{ url: string }>(`/api/upload?category=${encodeURIComponent(category)}`, {
       method: 'POST',
       body: form,
       headers: {} as Record<string, string>,

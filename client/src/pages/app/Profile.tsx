@@ -303,7 +303,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
     if (!file || !user) return;
     setUploadingLogo(true);
     try {
-      const url = await api.upload.file(file);
+      const url = await api.upload.file(file, 'perfil');
       await updateProfileData({ academyLogoUrl: url, academyLogo: url });
       await refreshProfile();
       toast.success('Logomarca atualizada!');
@@ -316,7 +316,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
     if (!file || !user) return;
     setUploadingPhoto(true);
     try {
-      const url = await api.upload.file(file);
+      const url = await api.upload.file(file, 'perfil');
       await updateProfileData({ photo: url });
       await refreshProfile();
       toast.success('Foto atualizada!');
@@ -365,7 +365,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
     try {
       let url = '';
       try {
-        url = await api.upload.file(file);
+        url = await api.upload.file(file, 'perfil');
       } catch {
         // Fallback: base64 comprimido
         url = await new Promise<string>((resolve, reject) => {

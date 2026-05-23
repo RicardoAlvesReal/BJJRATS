@@ -240,7 +240,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
   const uploadTrainingPhoto = async (file: File): Promise<string | null> => {
     if (!user) return null;
     try {
-      return await api.upload.file(file);
+      return await api.upload.file(file, 'treinos');
     } catch (e) {
       console.error('Upload photo error:', e);
       return null;

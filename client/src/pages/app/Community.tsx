@@ -575,7 +575,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
     try {
       let photoURL = '';
       if (newPostPhoto) {
-        photoURL = await api.upload.file(newPostPhoto);
+        photoURL = await api.upload.file(newPostPhoto, 'comunidade');
       }
       const postData: any = {
         uid: user.uid,
