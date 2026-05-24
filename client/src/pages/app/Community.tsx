@@ -2,9 +2,10 @@
 // Design: "Cage Fighter" — Brutalismo Tático
 // Tabs: Feed (comunidade), Ranking, Desafios, Eventos
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { MapView } from '@/components/Map';
+import { AcademyMap } from '@/components/AcademyMap';
 import { toast } from 'sonner';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import RankingList from '@/components/RankingList';
@@ -713,7 +714,15 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
         ))}
       </div>
 
-      <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={activeTab}
+          style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+        >
 
         {/* ─── CONQUISTAS TAB ────────────────────────────────────────────── */}
         {activeTab === 'conquistas' && (
@@ -1191,7 +1200,8 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
         {/* ─── LOCALIZE UMA ACADEMIA TAB ───────────────────────────────── */}
         {activeTab === 'localize' && <LocalizarAcademiaTab />}
 
-      </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -1352,6 +1362,36 @@ const ESTADOS_BR = [
   'SP','SE','TO',
 ];
 
+const CIDADES_POR_ESTADO: Record<string, string[]> = {
+  AC: ['Acrelândia','Assis Brasil','Brasiléia','Bujari','Capixaba','Cruzeiro do Sul','Epitaciolândia','Feijó','Jordão','Mâncio Lima','Manoel Urbano','Marechal Thaumaturgo','Plácido de Castro','Porto Acre','Porto Walter','Rio Branco','Rodrigues Alves','Santa Rosa do Purus','Sena Madureira','Senador Guiomard','Tarauacá','Xapuri'],
+  AL: ['Arapiraca','Batalha','Campo Alegre','Coruripe','Delmiro Gouveia','Maceió','Palmeira dos Índios','Penedo','Rio Largo','Santana do Ipanema','São Miguel dos Campos','União dos Palmares'],
+  AP: ['Amapá','Calçoene','Cutias','Ferreira Gomes','Itaubal','Laranjal do Jari','Macapá','Mazagão','Oiapoque','Pedra Branca do Amapari','Porto Grande','Pracuúba','Santana','Serra do Navio','Tartarugalzinho','Vitória do Jari'],
+  AM: ['Autazes','Barcelos','Benjamin Constant','Borba','Carauari','Coari','Eirunepé','Humaitá','Itacoatiara','Itamarati','Lábrea','Manacapuru','Manaus','Maués','Novo Airão','Parintins','Tabatinga','Tefé'],
+  BA: ['Alagoinhas','Barreiras','Camaçari','Cruz das Almas','Eunápolis','Feira de Santana','Ibicaraí','Ilhéus','Itabuna','Itapetinga','Jequié','Juazeiro','Lauro de Freitas','Paulo Afonso','Porto Seguro','Salvador','Santo Antônio de Jesus','Senhor do Bonfim','Simões Filho','Teixeira de Freitas','Valença','Vitória da Conquista'],
+  CE: ['Caucaia','Crato','Fortaleza','Iguatu','Itapipoca','Juazeiro do Norte','Maracanaú','Maranguape','Pacatuba','Quixadá','Russas','Sobral'],
+  DF: ['Águas Claras','Brazlândia','Brasília','Ceilândia','Cruzeiro','Gama','Guará','Lago Norte','Lago Sul','Núcleo Bandeirante','Park Way','Planaltina','Riacho Fundo','Samambaia','Santa Maria','São Sebastião','Sobradinho','Taguatinga'],
+  ES: ['Afonso Cláudio','Alegre','Anchieta','Aracruz','Barra de São Francisco','Cachoeiro de Itapemirim','Cariacica','Colatina','Domingos Martins','Ecoporanga','Guarapari','Itapemirim','João Neiva','Linhares','Marataízes','Mimoso do Sul','Montanha','Mucurici','Nova Venécia','Piúma','Santa Maria de Jetibá','São Gabriel da Palha','São Mateus','Serra','Viana','Vila Velha','Vitória'],
+  GO: ['Águas Lindas de Goiás','Anápolis','Aparecida de Goiânia','Caldas Novas','Catalão','Formosa','Goiânia','Goiás','Itumbiara','Jataí','Luziânia','Mineiros','Morrinhos','Niquelândia','Planaltina','Rio Verde','Senador Canedo','Trindade','Valparaíso de Goiás'],
+  MA: ['Açailândia','Bacabal','Barra do Corda','Caxias','Chapadinha','Codó','Coroatá','Grajaú','Imperatriz','Paço do Lumiar','Pinheiro','Santa Inês','São João dos Patos','São Luís','Timon','Viana','Zé Doca'],
+  MT: ['Alta Floresta','Barra do Garças','Cáceres','Campo Novo do Parecis','Colider','Cuiabá','Juara','Juína','Lucas do Rio Verde','Matupá','Pontes e Lacerda','Primavera do Leste','Rondonópolis','Sinop','Sorriso','Tangará da Serra','Várzea Grande'],
+  MS: ['Aquidauana','Campo Grande','Corumbá','Coxim','Dourados','Maracaju','Naviraí','Nova Andradina','Paranaíba','Ponta Porã','Sidrolândia','Três Lagoas'],
+  MG: ['Araguari','Araxá','Barbacena','Belo Horizonte','Betim','Conselheiro Lafaiete','Contagem','Coronel Fabriciano','Divinópolis','Governador Valadares','Ipatinga','Itabira','Itajubá','Juiz de Fora','Lavras','Leopoldina','Mariana','Montes Claros','Muriaé','Nova Lima','Ouro Preto','Passos','Patos de Minas','Poços de Caldas','Pouso Alegre','Ribeirão das Neves','Sabará','Santa Luzia','Santos Dumont','São João del-Rei','São Sebastião do Paraíso','Sete Lagoas','Teófilo Otoni','Ubá','Uberaba','Uberlândia','Unaí','Varginha','Viçosa'],
+  PA: ['Abaetetuba','Altamira','Ananindeua','Belém','Bragança','Cametá','Castanhal','Itaituba','Marabá','Marituba','Paragominas','Parauapebas','Redenção','Santarém','Tailândia','Tucuruí'],
+  PB: ['Bayeux','Cajazeiras','Campina Grande','Guarabira','João Pessoa','Patos','Santa Rita','Sousa'],
+  PR: ['Apucarana','Araucária','Campo Largo','Cascavel','Colombo','Curitiba','Foz do Iguaçu','Francisco Beltrão','Guarapuava','Londrina','Maringá','Paranaguá','Pinhais','Ponta Grossa','São José dos Pinhais','Toledo','Umuarama'],
+  PE: ['Cabo de Santo Agostinho','Caruaru','Garanhuns','Jaboatão dos Guararapes','Olinda','Paulista','Petrolina','Recife','São Lourenço da Mata','Vitória de Santo Antão'],
+  PI: ['Campo Maior','Floriano','Parnaíba','Picos','Piripiri','Teresina'],
+  RJ: ['Angra dos Reis','Belford Roxo','Cabo Frio','Campos dos Goytacazes','Duque de Caxias','Itaboraí','Macaé','Mesquita','Nilópolis','Niterói','Nova Friburgo','Nova Iguaçu','Petrópolis','Queimados','Rio de Janeiro','São Gonçalo','São João de Meriti','Teresópolis','Volta Redonda'],
+  RN: ['Caicó','Ceará-Mirim','Macaíba','Mossoró','Natal','Parnamirim','São Gonçalo do Amarante'],
+  RS: ['Alvorada','Bagé','Bento Gonçalves','Cachoeirinha','Canoas','Caxias do Sul','Erechim','Gravataí','Guaíba','Lajeado','Montenegro','Novo Hamburgo','Pelotas','Porto Alegre','Rio Grande','Santa Cruz do Sul','Santa Maria','São Leopoldo','Sapucaia do Sul','Uruguaiana','Viamão'],
+  RO: ['Ariquemes','Cacoal','Ji-Paraná','Jaru','Ouro Preto do Oeste','Porto Velho','Rolim de Moura','Vilhena'],
+  RR: ['Alto Alegre','Boa Vista','Bonfim','Cantá','Caracaraí','Mucajaí','Rorainópolis'],
+  SC: ['Balneário Camboriú','Biguaçu','Blumenau','Caçador','Chapecó','Criciúma','Florianópolis','Itajaí','Jaraguá do Sul','Joinville','Lages','Palhoça','Rio do Sul','São José','São Miguel do Oeste','Tubarão'],
+  SP: ['Araçatuba','Araraquara','Barueri','Bauru','Carapicuíba','Cotia','Diadema','Embu das Artes','Franca','Guarujá','Guarulhos','Itaquaquecetuba','Jacareí','Jundiaí','Limeira','Marília','Mauá','Mogi das Cruzes','Mogi Guaçu','Osasco','Piracicaba','Praia Grande','Presidente Prudente','Ribeirão Preto','Santo André','Santos','São Bernardo do Campo','São Caetano do Sul','São José do Rio Preto','São José dos Campos','São Paulo','São Vicente','Sorocaba','Suzano','Taboão da Serra','Taubaté'],
+  SE: ['Aracaju','Barra dos Coqueiros','Estância','Itabaiana','Lagarto','Nossa Senhora do Socorro','São Cristóvão'],
+  TO: ['Araguaína','Araguatins','Arraias','Colinas do Tocantins','Dianópolis','Gurupi','Palmas','Paraíso do Tocantins','Porto Nacional','Tocantinópolis'],
+};
+
 interface AcademyListing {
   id: string;
   name: string;
@@ -1395,7 +1435,6 @@ function LocalizarAcademiaTab() {
   const [filterCity, setFilterCity] = useState('');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
-  const mapRef = useRef<google.maps.Map | null>(null);
 
   // Modal expandido de academia
   const [expandedAcademy, setExpandedAcademy] = useState<AcademyListing | null>(null);
@@ -1628,17 +1667,14 @@ function LocalizarAcademiaTab() {
   };
 
   const filtered = academies.filter(a => {
-    const matchState = !filterState || (a.state || '').toUpperCase() === filterState;
+    const matchState = !filterState || (a.state || '').trim().toUpperCase() === filterState;
     const matchCity = !filterCity || (a.city || '').toLowerCase().includes(filterCity.toLowerCase());
     const matchSearch = !search || (a.name || '').toLowerCase().includes(search.toLowerCase()) || (a.ownerName || '').toLowerCase().includes(search.toLowerCase());
     return matchState && matchCity && matchSearch;
   });
 
-  // Cidades disponíveis para o estado selecionado
-  const cities = filterState
-    ? Array.from(new Set(academies.filter(a => (a.state || '').toUpperCase() === filterState && a.city).map(a => a.city!)))
-        .sort()
-    : [];
+  // Cidades disponíveis para o estado selecionado (lista estática)
+  const cities = filterState ? (CIDADES_POR_ESTADO[filterState] ?? []) : [];
 
   const S = {
     label: { fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase' as const, letterSpacing: '0.06em' },
@@ -1695,32 +1731,22 @@ function LocalizarAcademiaTab() {
             ))}
           </select>
           {/* Cidade */}
-          {cities.length > 0 ? (
-            <select
-              value={filterCity}
-              onChange={e => setFilterCity(e.target.value)}
-              style={{
-                background: '#111', border: '1px solid #2A2A2A', color: filterCity ? '#FFF' : '#555',
-                fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem',
-                textTransform: 'uppercase', padding: '0.625rem 0.5rem', cursor: 'pointer', outline: 'none',
-              }}
-            >
-              <option value="">TODAS AS CIDADES</option>
-              {cities.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          ) : (
-            <input
-              type="text"
-              placeholder="CIDADE"
-              value={filterCity}
-              onChange={e => setFilterCity(e.target.value)}
-              style={{
-                background: '#111', border: '1px solid #2A2A2A', color: '#FFF',
-                fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem',
-                textTransform: 'uppercase', padding: '0.625rem 0.5rem', outline: 'none',
-              }}
-            />
-          )}
+          <select
+            value={filterCity}
+            onChange={e => setFilterCity(e.target.value)}
+            disabled={!filterState}
+            style={{
+              background: '#111', border: '1px solid #2A2A2A',
+              color: filterCity ? '#FFF' : '#555',
+              fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem',
+              textTransform: 'uppercase', padding: '0.625rem 0.5rem',
+              cursor: filterState ? 'pointer' : 'not-allowed', outline: 'none',
+              opacity: filterState ? 1 : 0.4,
+            }}
+          >
+            <option value="">{filterState ? 'TODAS AS CIDADES' : 'SELECIONE O ESTADO'}</option>
+            {cities.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
       </div>
 
@@ -1735,56 +1761,7 @@ function LocalizarAcademiaTab() {
       {/* Mapa */}
       {viewMode === 'map' && (
         <div style={{ border: '1px solid #2A2A2A', overflow: 'hidden' }}>
-          <MapView
-            initialCenter={{ lat: -14.235, lng: -51.925 }}
-            initialZoom={4}
-            onMapReady={(map) => {
-              mapRef.current = map;
-              // Geocodificar e adicionar pins para cada academia
-              const geocoder = new window.google.maps.Geocoder();
-              filtered.forEach(a => {
-                if (a.lat && a.lng) {
-                  const marker = new window.google.maps.marker.AdvancedMarkerElement({
-                    map,
-                    position: { lat: a.lat, lng: a.lng },
-                    title: a.name,
-                  });
-                  const infoWindow = new window.google.maps.InfoWindow({
-                    content: `<div style="font-family:sans-serif;padding:4px"><b>${a.name}</b><br/>${a.city || ''}${a.state ? ` — ${a.state}` : ''}</div>`,
-                  });
-                  marker.addListener('click', () => infoWindow.open({ anchor: marker, map }));
-                } else if (a.address || (a.city && a.state)) {
-                  const addr = a.address || `${a.city}, ${a.state}, Brasil`;
-                  geocoder.geocode({ address: addr }, (results: any, status: any) => {
-                    if (status === 'OK' && results[0]) {
-                      const pos = results[0].geometry.location;
-                      const marker = new window.google.maps.marker.AdvancedMarkerElement({
-                        map,
-                        position: pos,
-                        title: a.name,
-                      });
-                      const infoWindow = new window.google.maps.InfoWindow({
-                        content: `<div style="font-family:sans-serif;padding:4px"><b>${a.name}</b><br/>${a.city || ''}${a.state ? ` — ${a.state}` : ''}</div>`,
-                      });
-                      marker.addListener('click', () => infoWindow.open({ anchor: marker, map }));
-                    }
-                  });
-                }
-              });
-              // Localização atual
-              if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                  map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                  map.setZoom(11);
-                  new window.google.maps.marker.AdvancedMarkerElement({
-                    map,
-                    position: { lat: pos.coords.latitude, lng: pos.coords.longitude },
-                    title: 'Você está aqui',
-                  });
-                });
-              }
-            }}
-          />
+          <AcademyMap academies={filtered} />
         </div>
       )}
 

@@ -2,6 +2,7 @@
 // Design: "Cage Fighter" — Brutalismo Tático
 // Metas de treino + conquistas desbloqueadas/bloqueadas
 import { useState, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -222,6 +223,14 @@ export default function Goals() {
           <button onClick={() => setActiveTab('desafios')} style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.625rem 1rem', border: 'none', background: 'transparent', color: activeTab === 'desafios' ? '#CC0000' : '#555', borderBottom: activeTab === 'desafios' ? '2px solid #CC0000' : '2px solid transparent', cursor: 'pointer', whiteSpace: 'nowrap' }}>DESAFIOS {challenges.filter(c => c.enrolled).length > 0 ? `(${challenges.filter(c => c.enrolled).length})` : ''}</button>
         </div>
       </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+        >
 
       {/* ─── Desafios Tab ─────────────────────────────────────────────────── */}
       {activeTab === 'desafios' && (
@@ -397,6 +406,8 @@ export default function Goals() {
           )}
         </div>
       )}
+      </motion.div>
+      </AnimatePresence>
 
       {/* ─── Edit Targets Modal ──────────────────────────────────────────────── */}
       {editingTargets && (

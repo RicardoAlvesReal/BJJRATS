@@ -3,6 +3,7 @@
 // Painel de gestão da academia: Visão Geral, Feed, Eventos, Desafios, Membros
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import api from '@/lib/api';
 import { sendOverdueWhatsApp, sendSuspendWhatsApp, sendLowFrequencyWhatsApp } from '@/lib/whatsappService';
@@ -1296,7 +1297,14 @@ export default function ProfessorPanel({ onBack }: Props) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '2rem' }}>
-
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+          >
         {/* ── Visão Geral ── */}
         {activeTab === 'overview' && (
           <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -1941,7 +1949,12 @@ export default function ProfessorPanel({ onBack }: Props) {
                 </button>
               ))}
             </div>
-
+            <motion.div
+              key={membersSubTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+            >
             {/* Sub-aba: Lista */}
             {membersSubTab === 'list' && (
               <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -2129,9 +2142,12 @@ export default function ProfessorPanel({ onBack }: Props) {
                 )}
               </div>
             )}
+            </motion.div>
 
           </div>
         )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Modal de detalhe do membro */}
@@ -2172,7 +2188,12 @@ export default function ProfessorPanel({ onBack }: Props) {
               );
             })}
           </div>
-
+          <motion.div
+            key={financialSubTab}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+          >
           {/* ─── Sub-aba: MATRÍCULAS ────────────────────────────────────────────────────────────────────── */}
           {financialSubTab === 'enrollments' && (() => {
             // Membros da academia sem matrícula ativa
@@ -2687,6 +2708,7 @@ export default function ProfessorPanel({ onBack }: Props) {
               </div>
             </div>
           )}
+          </motion.div>
 
         </div>
       )}

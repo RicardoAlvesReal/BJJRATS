@@ -4,6 +4,7 @@
 // v2: separação Alunos / Academia / Comunidade, dois botões de perfil, badges SVG de loja
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
+import { motion } from 'framer-motion';
 
 const HERO_BG = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-hero-bg-EvuzUMvwhPb4GgYFs4uUr2.webp';
 const LOGO = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp';
@@ -179,21 +180,41 @@ export default function Landing() {
         <div className="lp-hero-content">
 
           {/* Logomarca grande */}
-          <div className="lp-hero-logo-block">
+          <motion.div
+            className="lp-hero-logo-block"
+            initial={{ opacity: 0, scale: 0.88 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+          >
             <img src={LOGO} alt="BJJRats" className="lp-hero-logo-img" />
             <span className="lp-hero-wordmark"><span style={{ color: '#FFF' }}>BJJ</span><span style={{ color: '#CC0000' }}>RATS</span></span>
-          </div>
+          </motion.div>
 
-          <div className="lp-badge">
+          <motion.div
+            className="lp-badge"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.05 }}
+          >
             <span className="lp-badge-dot" />
             ACESSO ABERTO — FASE BETA
-          </div>
-          <h1 className="lp-hero-h1">
+          </motion.div>
+          <motion.h1
+            className="lp-hero-h1"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.15 }}
+          >
             TREINE.<br />EVOLUA.<br /><span style={{ color: '#CC0000' }}>DOMINE.</span>
-          </h1>
-          <p className="lp-hero-p">
+          </motion.h1>
+          <motion.p
+            className="lp-hero-p"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut', delay: 0.4 }}
+          >
             O app feito para praticantes e professores de Jiu-Jitsu. Registre cada treino, acompanhe sua jornada até a próxima faixa e construa a comunidade da sua academia.
-          </p>
+          </motion.p>
 
           {/* Dois botões de perfil */}
           <div className="lp-hero-cta">
@@ -253,8 +274,15 @@ export default function Landing() {
             <span className="lp-block-count">6 FUNCIONALIDADES</span>
           </div>
           <div className="lp-feat-grid">
-            {FEATURES_ALUNO.map(f => (
-              <div key={f.num} className="lp-feat-card lp-fc-aluno">
+            {FEATURES_ALUNO.map((f, i) => (
+              <motion.div
+                key={f.num}
+                className="lp-feat-card lp-fc-aluno"
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.35, ease: 'easeOut', delay: i * 0.06 }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <span className="lp-feat-num lp-fn-aluno">{f.num}</span>
                   <span style={{ fontSize: '1.5rem' }}>{f.icon}</span>
@@ -262,7 +290,7 @@ export default function Landing() {
                 <div className="lp-feat-tag lp-ft-aluno">Para Alunos</div>
                 <h3 className="lp-feat-title">{f.title}</h3>
                 <p className="lp-feat-desc">{f.desc}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
           <div className="lp-block-cta">
@@ -280,8 +308,15 @@ export default function Landing() {
             <span className="lp-block-count">8 FUNCIONALIDADES</span>
           </div>
           <div className="lp-feat-grid">
-            {FEATURES_ACADEMIA.map(f => (
-              <div key={f.num} className="lp-feat-card lp-fc-academia">
+            {FEATURES_ACADEMIA.map((f, i) => (
+              <motion.div
+                key={f.num}
+                className="lp-feat-card lp-fc-academia"
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.35, ease: 'easeOut', delay: i * 0.05 }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <span className="lp-feat-num lp-fn-academia">{f.num}</span>
                   <span style={{ fontSize: '1.5rem' }}>{f.icon}</span>
@@ -289,7 +324,7 @@ export default function Landing() {
                 <div className="lp-feat-tag lp-ft-academia">Para Academias</div>
                 <h3 className="lp-feat-title">{f.title}</h3>
                 <p className="lp-feat-desc">{f.desc}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
           <div className="lp-block-cta">
@@ -307,8 +342,15 @@ export default function Landing() {
             <span className="lp-block-count">4 FUNCIONALIDADES</span>
           </div>
           <div className="lp-feat-grid">
-            {FEATURES_COMUNIDADE.map(f => (
-              <div key={f.num} className="lp-feat-card lp-fc-comunidade">
+            {FEATURES_COMUNIDADE.map((f, i) => (
+              <motion.div
+                key={f.num}
+                className="lp-feat-card lp-fc-comunidade"
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.35, ease: 'easeOut', delay: i * 0.07 }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                   <span className="lp-feat-num lp-fn-comunidade">{f.num}</span>
                   <span style={{ fontSize: '1.5rem' }}>{f.icon}</span>
@@ -316,7 +358,7 @@ export default function Landing() {
                 <div className="lp-feat-tag lp-ft-comunidade">Comunidade</div>
                 <h3 className="lp-feat-title">{f.title}</h3>
                 <p className="lp-feat-desc">{f.desc}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
           <div className="lp-block-cta">

@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
 import Dashboard from './app/Dashboard';
 import History from './app/History';
@@ -455,14 +456,23 @@ export default function AppLayout() {
       {/* Conteúdo principal */}
       <div className="bjj-main-content">
         {/* Tab Content */}
-        <div className="pb-safe">
-          {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} />}
-          {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
-          {activeTab === 'academy' && <Academy />}
-          {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
-          {activeTab === 'goals' && <Goals />}
-          {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onEdit={(t) => setEditTraining(t)} />}
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            className="pb-safe"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} />}
+            {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
+            {activeTab === 'academy' && <Academy />}
+            {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
+            {activeTab === 'goals' && <Goals />}
+            {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onEdit={(t) => setEditTraining(t)} />}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Modal de compartilhamento */}
         {shareData && (

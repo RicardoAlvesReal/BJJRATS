@@ -198,6 +198,7 @@ export default function Register() {
     e.preventDefault();
     if (!form.academyName) return toast.error('Informe o nome da academia');
     if (!form.academyCity) return toast.error('Informe a cidade');
+    if (!form.academyState) return toast.error('Selecione o estado (UF)');
     setStep(5);
   };
 
@@ -541,8 +542,14 @@ export default function Register() {
                 <input className="bjj-input" placeholder="Sua cidade" value={form.academyCity} onChange={e => update('academyCity', e.target.value)} />
               </div>
               <div>
-                <label className="bjj-label">UF</label>
-                <input className="bjj-input" placeholder="SP" maxLength={2} value={form.academyState} onChange={e => update('academyState', e.target.value.toUpperCase())} />
+                <label className="bjj-label">UF *</label>
+                <select className="bjj-input" value={form.academyState} onChange={e => update('academyState', e.target.value)}
+                  style={{ cursor: 'pointer' }}>
+                  <option value="">UF</option>
+                  {['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <button type="submit" style={{ background: '#1A6ECC', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: 'pointer', marginTop: '0.5rem' }}>

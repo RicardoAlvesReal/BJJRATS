@@ -2,6 +2,7 @@
 // Design: "Cage Fighter" — Brutalismo Tático
 // Identical to mobile app: XP, streak, charts, recent trainings from Firestore
 import { useEffect, useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import WeeklyGoalBar from '@/components/WeeklyGoalBar';
@@ -128,7 +129,12 @@ export default function Dashboard({ onNewTraining }: Props) {
         />
 
         {/* Stats Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+        <motion.div
+          style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}
+          initial="hidden"
+          animate="show"
+          variants={{ show: { transition: { staggerChildren: 0.07 } } }}
+        >
           {[
             { label: 'TREINOS TOTAL', value: trainings.length, icon: '🥋' },
             { label: 'ESTA SEMANA', value: weekTrainings, icon: '📅' },
@@ -136,18 +142,28 @@ export default function Dashboard({ onNewTraining }: Props) {
             { label: 'HORAS NO TATAME', value: `${hrs}h`, icon: '⏱' },
             { label: 'CONQUISTAS', value: `${unlockedCount}/${ACHIEVEMENTS.length}`, icon: '🏆' },
           ].map(s => (
-            <div key={s.label} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.875rem', textAlign: 'center' }}>
+            <motion.div
+              key={s.label}
+              variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } } }}
+              style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.875rem', textAlign: 'center' }}
+            >
               <p style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>{s.icon}</p>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.75rem', color: '#FFFFFF', lineHeight: 1 }}>{s.value}</p>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>{s.label}</p>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
 
         {/* New Training CTA */}
-        <button onClick={onNewTraining} style={{ background: '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1.125rem', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', cursor: 'pointer', transition: 'background 0.15s' }}>
+        <motion.button
+          onClick={onNewTraining}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
+          transition={{ duration: 0.12 }}
+          style={{ background: '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1.125rem', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', cursor: 'pointer' }}
+        >
           + REGISTRAR TREINO
-        </button>
+        </motion.button>
 
         {/* Activity Calendar */}
         {trainings.length > 0 && (

@@ -2,6 +2,7 @@
 // Design: "Cage Fighter" — Brutalismo Tático
 // Feed da academia, eventos, desafios, membros, painel admin
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -549,7 +550,16 @@ export default function Academy() {
             );
           })}
         </div>
-      </div>      {/* ─── Feed Tab ───────────────────────────────────────────────────────────── */}
+      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+        >
+      {/* ─── Feed Tab ───────────────────────────────────────────────────────────── */}
       {activeTab === 'feed' && (
         <div
           ref={feedContainerRef}
@@ -1083,6 +1093,8 @@ export default function Academy() {
           )}
         </div>
       )}
+      </motion.div>
+      </AnimatePresence>
 
       {/* ─── Student Post Modal ──────────────────────────────────────── */}
       {showStudentPostModal && (
