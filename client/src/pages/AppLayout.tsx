@@ -1,9 +1,10 @@
-// BJJRats PWA — App Layout with TabBar
-// Design: "Cage Fighter" — Brutalismo Tático
-
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LayoutDashboard, CalendarCheck, School, Users, Target, User } from 'lucide-react';
+import { pageVariant as pageVariants, pageTransition, overlayVariant as overlayVariants, modalVariant as modalVariants } from '@/lib/animations';
+import { COLORS } from '@/lib/design';
+import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import api from '@/lib/api';
 import Dashboard from './app/Dashboard';
 import History from './app/History';
@@ -15,79 +16,44 @@ import Goals from './app/Goals';
 import TrainingShareModal, { type TrainingData as ShareTrainingData, type ShareUserData } from './app/TrainingShareModal';
 import ProfessorPanel from './app/ProfessorPanel';
 import { useAuth } from '@/contexts/AuthContext';
+
 type Tab = 'dashboard' | 'history' | 'academy' | 'community' | 'goals' | 'profile';
 
 const TABS: { id: Tab; label: string; icon: (active: boolean) => ReactNode }[] = [
   {
     id: 'dashboard',
     label: 'INÍCIO',
-    icon: (active) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? '#CC0000' : '#444'} stroke="none">
-        <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-      </svg>
-    ),
+    icon: (active) => <LayoutDashboard size={22} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'history',
     label: 'TREINOS',
-    icon: (active) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#CC0000' : '#444'} strokeWidth="2">
-        <rect x="3" y="4" width="18" height="18" rx="0" ry="0"/>
-        <line x1="16" y1="2" x2="16" y2="6"/>
-        <line x1="8" y1="2" x2="8" y2="6"/>
-        <line x1="3" y1="10" x2="21" y2="10"/>
-        <line x1="8" y1="14" x2="8" y2="14" strokeLinecap="square" strokeWidth="3"/>
-        <line x1="12" y1="14" x2="12" y2="14" strokeLinecap="square" strokeWidth="3"/>
-        <line x1="16" y1="14" x2="16" y2="14" strokeLinecap="square" strokeWidth="3"/>
-      </svg>
-    ),
+    icon: (active) => <CalendarCheck size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'academy',
     label: 'ACADEMIA',
-    icon: (active) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#CC0000' : '#444'} strokeWidth="2">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-        <polyline points="9 22 9 12 15 12 15 22"/>
-      </svg>
-    ),
+    icon: (active) => <School size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'community',
     label: 'COMUNIDADE',
-    icon: (active) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#CC0000' : '#444'} strokeWidth="2">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-        <circle cx="9" cy="7" r="4"/>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-      </svg>
-    ),
+    icon: (active) => <Users size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'goals',
     label: 'METAS',
-    icon: (active) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#CC0000' : '#444'} strokeWidth="2">
-        <circle cx="12" cy="12" r="10"/>
-        <circle cx="12" cy="12" r="6"/>
-        <circle cx="12" cy="12" r="2"/>
-      </svg>
-    ),
+    icon: (active) => <Target size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'profile',
     label: 'PERFIL',
-    icon: (active) => (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#CC0000' : '#444'} strokeWidth="2">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-        <circle cx="12" cy="7" r="4"/>
-      </svg>
-    ),
+    icon: (active) => <User size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
 ];
 
 export default function AppLayout() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [showNewTraining, setShowNewTraining] = useState(false);
   const [editTraining, setEditTraining] = useState<import('@/lib/bjjrats-constants').Training | null>(null);
@@ -100,19 +66,19 @@ export default function AppLayout() {
     if (!confirm('Deseja sair da sua conta?')) return;
     await logout();
   };
+
   const isProfessor = profile?.role === 'professor';
+
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  // Verificar se o usuário não tem foto ao carregar o perfil
   useEffect(() => {
     if (!profile || !user) return;
     const hasPhoto = !!(profile.photo);
     const dismissed = sessionStorage.getItem(`photo_modal_dismissed_${user.uid}`);
     if (!hasPhoto && !dismissed) {
-      // Mostrar modal após 1.5s para não assustar o usuário no primeiro acesso
       const t = setTimeout(() => setShowPhotoModal(true), 1500);
       return () => clearTimeout(t);
     }
@@ -137,7 +103,7 @@ export default function AppLayout() {
       setPhotoFile(null);
       setPhotoPreview(null);
     } catch {
-      // silencioso — não bloquear o usuário
+      // silencioso
     } finally {
       setUploadingPhoto(false);
     }
@@ -148,7 +114,6 @@ export default function AppLayout() {
     setShowPhotoModal(false);
   };
 
-  // Verificar notificações de promoção pendentes
   const [promotionNotif, setPromotionNotif] = useState<{ title: string; message: string; belt: string } | null>(null);
   const [communityBadge, setCommunityBadge] = useState(false);
   const [requestNotif, setRequestNotif] = useState<{ title: string; message: string; approved: boolean } | null>(null);
@@ -204,7 +169,7 @@ export default function AppLayout() {
                 const dueFormatted = new Date(p.dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
                 setPaymentNotif({
                   title: '⏰ Vencimento Próximo',
-                  body: `Sua mensalidade de R$ ${p.amount?.toFixed(2)} vence em ${dueFormatted}. Pague via PIX para não ficar em atraso.`,
+                  body: `Sua mensalidade de R$ ${p.amount?.toFixed(2)} vence em ${dueFormatted}.`,
                   amount: p.amount || 0,
                   dueDate: p.dueDate || '',
                   pixKey: p.pixKey || '',
@@ -238,169 +203,200 @@ export default function AppLayout() {
     name: profile?.name,
     belt: profile?.belt,
     academy: profile?.academy,
-    // Usar foto do perfil
     photoURL: profile?.photo ?? undefined,
-  };
-
-  const BELT_COLORS_MAP: Record<string, string> = {
-    Branca: '#FFFFFF', Azul: '#1A6ECC', Roxa: '#7B2FBE', Marrom: '#8B4513', Preta: '#111111',
   };
 
   return (
     <div className="bjj-app-wrapper">
-      {/* Banner de promoção de faixa */}
-      {promotionNotif && (
-        <div
-          onClick={() => setPromotionNotif(null)}
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.92)', zIndex: 9999,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: '2rem', cursor: 'pointer',
-          }}
-        >
-          <div style={{ textAlign: 'center', maxWidth: '320px' }}>
-            <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: BELT_COLORS_MAP[promotionNotif.belt] || '#CC0000', margin: '0 auto 1.5rem', border: '4px solid #CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '2rem' }}>🏅</span>
-            </div>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '2rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em', lineHeight: 1.1, marginBottom: '0.75rem' }}>{promotionNotif.title}</p>
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '1rem', color: '#CCC', lineHeight: 1.5, marginBottom: '2rem' }}>{promotionNotif.message}</p>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Toque para fechar</p>
-          </div>
-        </div>
-      )}
-
-      {/* Notificação de aprovação/recusa de vínculo */}
-      {requestNotif && (
-        <div
-          onClick={() => setRequestNotif(null)}
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.92)', zIndex: 9999,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: '2rem', cursor: 'pointer',
-          }}
-        >
-          <div style={{ textAlign: 'center', maxWidth: '320px' }}>
-            <div style={{
-              width: '80px', height: '80px', borderRadius: '50%',
-              background: requestNotif.approved ? '#0D9E6E' : '#CC0000',
-              margin: '0 auto 1.5rem', border: `4px solid ${requestNotif.approved ? '#0D9E6E' : '#CC0000'}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-              <span style={{ fontSize: '2.5rem' }}>{requestNotif.approved ? '✅' : '❌'}</span>
-            </div>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.75rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em', lineHeight: 1.1, marginBottom: '0.75rem' }}>{requestNotif.title}</p>
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '1rem', color: '#CCC', lineHeight: 1.5, marginBottom: '2rem' }}>{requestNotif.message}</p>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Toque para fechar</p>
-          </div>
-        </div>
-      )}
-
-      {/* Notificações sociais (curtidas e comentários) */}
-      {socialNotifs.length > 0 && (
-        <div style={{ position: 'fixed', top: '1rem', right: '1rem', zIndex: 9998, display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '280px' }}>
-          {socialNotifs.map((n, i) => (
-            <div
-              key={n.id}
-              onClick={() => setSocialNotifs(prev => prev.filter((_, idx) => idx !== i))}
-              style={{ background: '#111', border: `1px solid ${n.type === 'like' ? '#CC0000' : '#0D9E6E'}`, padding: '0.75rem 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem', boxShadow: '0 4px 16px rgba(0,0,0,0.6)' }}
-            >
-              <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{n.type === 'like' ? '❤️' : '💬'}</span>
-              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#CCC', lineHeight: 1.3, flex: 1 }}>{n.message}</p>
-              <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#555', flexShrink: 0 }}>TAP</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Notificação de cobrança para o aluno */}
-      {paymentNotif && (
-        <div
-          onClick={() => setPaymentNotif(null)}
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.92)', zIndex: 9999,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: '2rem', cursor: 'pointer',
-          }}
-        >
-          <div style={{ textAlign: 'center', maxWidth: '320px' }} onClick={e => e.stopPropagation()}>
-            <div style={{
-              width: '80px', height: '80px', borderRadius: '50%',
-              background: '#1A1000', border: '4px solid #FF8C00',
-              margin: '0 auto 1.5rem',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-              <span style={{ fontSize: '2.5rem' }}>💳</span>
-            </div>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFF', letterSpacing: '0.05em', lineHeight: 1.1, marginBottom: '0.5rem' }}>{paymentNotif.title}</p>
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.9rem', color: '#CCC', lineHeight: 1.5, marginBottom: '1rem' }}>{paymentNotif.body}</p>
-            {paymentNotif.pixKey && (
-              <div style={{ background: '#111', border: '1px dashed #FF8C00', padding: '0.75rem', marginBottom: '1rem', textAlign: 'left' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '0.375rem' }}>CHAVE PIX DO PROFESSOR</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#FF8C00', wordBreak: 'break-all' }}>{paymentNotif.pixKey}</span>
-                  <button
-                    onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(paymentNotif!.pixKey); }}
-                    style={{ background: 'transparent', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer', flexShrink: 0 }}
-                  >COPIAR</button>
-                </div>
+      {/* Promotion Notification Modal */}
+      <AnimatePresence>
+        {promotionNotif && (
+          <motion.div
+            key="promo"
+            className="bjj-modal-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            onClick={() => setPromotionNotif(null)}
+          >
+            <motion.div className="bjj-modal-box" variants={modalVariants} onClick={e => e.stopPropagation()}>
+              <div
+                className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center"
+                style={{ background: BELT_COLORS[promotionNotif.belt] || '#CC0000', border: '4px solid #CC0000' }}
+              >
+                <span className="text-3xl">🏅</span>
               </div>
-            )}
-            <button
-              onClick={() => setPaymentNotif(null)}
-              style={{ background: '#FF8C00', border: 'none', color: '#000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem 2rem', cursor: 'pointer', width: '100%' }}
-            >ENTENDIDO</button>
-          </div>
-        </div>
-      )}
+              <p className="text-[2rem] font-black text-white uppercase tracking-[0.05em] leading-tight mb-3 font-['Barlow_Condensed']">{promotionNotif.title}</p>
+              <p className="text-base text-[#CCC] leading-relaxed mb-6 font-['Barlow']">{promotionNotif.message}</p>
+              <p className="text-[0.75rem] text-[#555] uppercase tracking-[0.1em] font-['Barlow_Condensed']">Toque para fechar</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Modal de foto obrigatória */}
-      {showPhotoModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-          <div style={{ background: '#111', border: '1px solid #222', padding: '1.5rem', maxWidth: '320px', width: '100%', textAlign: 'center' }}>
-            <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#1A1A1A', border: '3px dashed #333', margin: '0 auto 1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer' }}
-              onClick={() => document.getElementById('photo-modal-input')?.click()}>
-              {photoPreview ? (
-                <img src={photoPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-              ) : (
-                <span style={{ fontSize: '2rem' }}>📷</span>
+      {/* Request Notification */}
+      <AnimatePresence>
+        {requestNotif && (
+          <motion.div
+            key="request"
+            className="bjj-modal-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            onClick={() => setRequestNotif(null)}
+          >
+            <motion.div className="bjj-modal-box" variants={modalVariants} onClick={e => e.stopPropagation()}>
+              <div
+                className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center"
+                style={{
+                  background: requestNotif.approved ? '#0D9E6E' : '#CC0000',
+                  border: `4px solid ${requestNotif.approved ? '#0D9E6E' : '#CC0000'}`,
+                }}
+              >
+                <span className="text-3xl">{requestNotif.approved ? '✅' : '❌'}</span>
+              </div>
+              <p className="text-[1.75rem] font-black text-white uppercase tracking-[0.05em] leading-tight mb-3 font-['Barlow_Condensed']">{requestNotif.title}</p>
+              <p className="text-base text-[#CCC] leading-relaxed mb-6 font-['Barlow']">{requestNotif.message}</p>
+              <p className="text-[0.75rem] text-[#555] uppercase tracking-[0.1em] font-['Barlow_Condensed']">Toque para fechar</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Social Notifications */}
+      <AnimatePresence>
+        {socialNotifs.length > 0 && (
+          <motion.div
+            key="social"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="fixed top-4 right-4 z-[9998] flex flex-col gap-2 max-w-[280px]"
+          >
+            {socialNotifs.map((n, i) => (
+              <motion.div
+                key={n.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                onClick={() => setSocialNotifs(prev => prev.filter((_, idx) => idx !== i))}
+                className="bjj-notification"
+                style={{ cursor: 'pointer', borderColor: n.type === 'like' ? '#CC0000' : '#0D9E6E' }}
+              >
+                <span className="text-lg shrink-0">{n.type === 'like' ? '❤️' : '💬'}</span>
+                <p className="text-[0.8rem] text-[#CCC] leading-tight flex-1 font-['Barlow']">{n.message}</p>
+                <span className="text-[0.6rem] text-[#555] shrink-0 font-['Barlow_Condensed']">TAP</span>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Payment Notification */}
+      <AnimatePresence>
+        {paymentNotif && (
+          <motion.div
+            key="payment"
+            className="bjj-modal-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            onClick={() => setPaymentNotif(null)}
+          >
+            <motion.div className="bjj-modal-box" variants={modalVariants} onClick={e => e.stopPropagation()}>
+              <div className="w-20 h-20 rounded-full bg-[#1A1000] border-4 border-[#FF8C00] mx-auto mb-6 flex items-center justify-center">
+                <span className="text-3xl">💳</span>
+              </div>
+              <p className="text-[1.5rem] font-black text-white uppercase tracking-[0.05em] leading-tight mb-2 font-['Barlow_Condensed']">{paymentNotif.title}</p>
+              <p className="text-[0.9rem] text-[#CCC] leading-relaxed mb-4 font-['Barlow']">{paymentNotif.body}</p>
+              {paymentNotif.pixKey && (
+                <div className="bg-[#111] border border-dashed border-[#FF8C00] rounded-xl p-3 mb-4 text-left">
+                  <p className="text-[0.65rem] text-[#888] uppercase mb-1.5 font-['Barlow_Condensed']">CHAVE PIX DO PROFESSOR</p>
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-[0.8rem] text-[#FF8C00] break-all font-['Barlow']">{paymentNotif.pixKey}</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(paymentNotif!.pixKey); }}
+                      className="bg-transparent border border-[#FF8C00] text-[#FF8C00] text-[0.65rem] font-bold uppercase px-2 py-1 shrink-0 font-['Barlow_Condensed'] rounded-md"
+                    >COPIAR</button>
+                  </div>
+                </div>
               )}
-            </div>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFF', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>ADICIONE SUA FOTO</p>
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', lineHeight: 1.5, marginBottom: '1.25rem' }}>Sua foto aparece no feed da comunidade, nos posts de treino e no ranking. Ajuda outros atletas a te reconhecer.</p>
-            <input id="photo-modal-input" type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoSelect} />
-            <button
-              onClick={() => document.getElementById('photo-modal-input')?.click()}
-              style={{ background: '#1A1A1A', border: '1px solid #333', color: '#CCC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 1rem', cursor: 'pointer', width: '100%', marginBottom: '0.5rem' }}
-            >{photoPreview ? 'TROCAR FOTO' : 'ESCOLHER FOTO'}</button>
-            {photoFile && (
               <button
-                onClick={handlePhotoUpload}
-                disabled={uploadingPhoto}
-                style={{ background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem 1rem', cursor: uploadingPhoto ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '0.5rem', opacity: uploadingPhoto ? 0.7 : 1 }}
-              >{uploadingPhoto ? 'ENVIANDO...' : 'SALVAR FOTO'}</button>
-            )}
-            <button
-              onClick={handleDismissPhotoModal}
-              style={{ background: 'transparent', border: 'none', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.5rem', cursor: 'pointer', width: '100%' }}
-            >AGORA NÃO</button>
-          </div>
-        </div>
-      )}
+                onClick={() => setPaymentNotif(null)}
+                className="w-full bg-[#FF8C00] text-black text-[0.875rem] font-black uppercase py-3 rounded-xl font-['Barlow_Condensed']"
+              >ENTENDIDO</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Sidebar — apenas desktop */}
-      <aside className="bjj-sidebar">
-        {/* Logo */}
+      {/* Photo Modal */}
+      <AnimatePresence>
+        {showPhotoModal && (
+          <motion.div
+            key="photo"
+            className="bjj-modal-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+          >
+            <motion.div className="bjj-modal-box" variants={modalVariants}>
+              <div
+                className="w-20 h-20 rounded-full bg-[#1A1A1A] border-2 border-dashed border-[#333] mx-auto mb-4 flex items-center justify-center overflow-hidden cursor-pointer"
+                onClick={() => document.getElementById('photo-modal-input')?.click()}
+              >
+                {photoPreview ? (
+                  <img src={photoPreview} alt="" className="w-full h-full object-cover rounded-full" />
+                ) : (
+                  <span className="text-3xl">📷</span>
+                )}
+              </div>
+              <p className="text-[1.25rem] font-black text-white uppercase tracking-[0.05em] mb-2 font-['Barlow_Condensed']">ADICIONE SUA FOTO</p>
+              <p className="text-[0.8rem] text-[#888] leading-relaxed mb-5 font-['Barlow']">
+                Sua foto aparece no feed e no ranking. Ajuda outros atletas a te reconhecer.
+              </p>
+              <input id="photo-modal-input" type="file" accept="image/*" className="hidden" onChange={handlePhotoSelect} />
+              <button
+                onClick={() => document.getElementById('photo-modal-input')?.click()}
+                className="w-full bg-[#1A1A1A] border border-[#333] text-[#CCC] text-[0.8rem] font-bold uppercase py-2.5 rounded-xl mb-2 font-['Barlow_Condensed']"
+              >{photoPreview ? 'TROCAR FOTO' : 'ESCOLHER FOTO'}</button>
+              {photoFile && (
+                <button
+                  onClick={handlePhotoUpload}
+                  disabled={uploadingPhoto}
+                  className="w-full bjj-btn-primary !py-3 !mb-2"
+                >{uploadingPhoto ? 'ENVIANDO...' : 'SALVAR FOTO'}</button>
+              )}
+              <button
+                onClick={handleDismissPhotoModal}
+                className="w-full bg-transparent border-none text-[#444] text-[0.75rem] uppercase py-2 font-['Barlow_Condensed']"
+              >AGORA NÃO</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Sidebar — Desktop only */}
+      <aside className={`bjj-sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
         <div className="bjj-sidebar-logo">
-          <span style={{ fontSize: '1.5rem' }}>🥋</span>
-          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#FFF' }}>
-            BJJ<span style={{ color: '#CC0000' }}>RATS</span>
+          <span className="text-2xl">🥋</span>
+          <span className="text-[1.25rem] font-black uppercase tracking-[0.08em] text-white font-['Barlow_Condensed']">
+            BJJ<span className="text-[#CC0000]">RATS</span>
           </span>
+          <button
+            className="bjj-sidebar-toggle"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: sidebarCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
         </div>
 
-        {/* Perfil resumido */}
         {profile && (
           <div className="bjj-sidebar-profile">
             <div className="bjj-sidebar-avatar">
@@ -417,7 +413,6 @@ export default function AppLayout() {
           </div>
         )}
 
-        {/* Navegação */}
         <nav className="bjj-sidebar-nav">
           {TABS.map(tab => (
             <button
@@ -434,13 +429,12 @@ export default function AppLayout() {
           ))}
         </nav>
 
-        {/* Novo Treino + Sair */}
         <div className="bjj-sidebar-footer">
           <button className="bjj-sidebar-new-btn" onClick={() => setShowNewTraining(true)}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            NOVO TREINO
+            <span>NOVO TREINO</span>
           </button>
           <button className="bjj-sidebar-logout-btn" onClick={handleLogout}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -448,22 +442,22 @@ export default function AppLayout() {
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            SAIR
+            <span>SAIR</span>
           </button>
         </div>
       </aside>
 
-      {/* Conteúdo principal */}
+      {/* Main Content */}
       <div className="bjj-main-content">
-        {/* Tab Content */}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
             className="pb-safe"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={pageTransition}
           >
             {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} />}
             {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
@@ -474,7 +468,6 @@ export default function AppLayout() {
           </motion.div>
         </AnimatePresence>
 
-        {/* Modal de compartilhamento */}
         {shareData && (
           <TrainingShareModal
             training={shareData}
@@ -489,20 +482,19 @@ export default function AppLayout() {
         )}
       </div>
 
-      {/* Tab Bar — apenas mobile */}
+      {/* Tab Bar — Mobile only */}
       <nav className="bjj-tab-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)' }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
             className={`bjj-tab-item ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => { setActiveTab(tab.id); if (tab.id === 'community') setCommunityBadge(false); }}
-            style={{ padding: '0.5rem 0.125rem', position: 'relative' }}
           >
             {tab.icon(activeTab === tab.id)}
             {tab.id === 'community' && communityBadge && activeTab !== 'community' && (
-              <span style={{ position: 'absolute', top: '4px', right: '8px', width: '8px', height: '8px', borderRadius: '50%', background: '#CC0000', border: '1.5px solid #0A0A0A' }} />
+              <span className="absolute top-[4px] right-[8px] w-2 h-2 rounded-full bg-[#CC0000] border-[1.5px] border-[#0A0A0A]" />
             )}
-            <span style={{ fontSize: '0.48rem', letterSpacing: '0.03em' }}>{tab.label}</span>
+            <span className="text-[0.48rem] tracking-[0.03em]">{tab.label}</span>
           </button>
         ))}
       </nav>

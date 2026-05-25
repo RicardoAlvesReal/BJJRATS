@@ -6,10 +6,10 @@ export type Belt = typeof BELTS[number];
 
 export const BELT_COLORS: Record<string, string> = {
   Branca: '#FFFFFF',
-  Azul: '#3B82F6',
-  Roxa: '#7C3AED',
-  Marrom: '#92400E',
-  Preta: '#374151',
+  Azul: '#1A6ECC',
+  Roxa: '#7C1ACC',
+  Marrom: '#8B4513',
+  Preta: '#111111',
 };
 
 export const SESSION_TYPES = [

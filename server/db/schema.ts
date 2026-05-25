@@ -248,3 +248,17 @@ export const userAchievements = pgTable('user_achievements', {
   achievementId: text('achievement_id').notNull(),
   unlockedAt:    timestamp('unlocked_at').defaultNow(),
 });
+
+// ─── competitions ──────────────────────────────────────────────────────────
+export const competitions = pgTable('competitions', {
+  id:          text('id').primaryKey(),
+  uid:         text('uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  name:        text('name').notNull(),
+  date:        text('date'),
+  location:    text('location'),
+  category:    text('category'),
+  weightClass: text('weight_class'),
+  result:      text('result').default('gold'),
+  notes:       text('notes'),
+  createdAt:   timestamp('created_at').defaultNow(),
+});

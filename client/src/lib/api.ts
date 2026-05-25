@@ -200,6 +200,19 @@ export interface Promotion {
   promotedAt?: string;
 }
 
+export interface Competition {
+  id: string;
+  uid: string;
+  name: string;
+  date: string;
+  location: string;
+  category: string;
+  weightClass: string;
+  result: string;
+  notes: string;
+  createdAt?: any;
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export const auth = {
@@ -425,6 +438,17 @@ export const achievements = {
     apiFetch<Record<string, unknown>>('/api/achievements', { method: 'POST', body: JSON.stringify(data) }),
 };
 
+// ─── Competitions ──────────────────────────────────────────────────────────
+
+export const competitions = {
+  list: (uid?: string) =>
+    apiFetch<Competition[]>(`/api/competitions${uid ? `?uid=${uid}` : ''}`),
+  create: (data: Omit<Competition, 'id' | 'createdAt'>) =>
+    apiFetch<Competition>('/api/competitions', { method: 'POST', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    apiFetch<{ success: boolean }>(`/api/competitions/${id}`, { method: 'DELETE' }),
+};
+
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export const upload = {
@@ -458,6 +482,7 @@ const api = {
   classes,
   promotions,
   achievements,
+  competitions,
   upload,
   admin,
 };

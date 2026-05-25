@@ -1,5 +1,5 @@
 // BJJRats PWA — New Training Screen (+ Edit Mode)
-// Design: "Cage Fighter" — Brutalismo Tático
+// Design: Dark Modern — Glassmorphism + BJJ
 // Idêntico ao app móvel: tipo de sessão, modalidade, duração, intensidade, técnicas por categoria,
 // foto do treino (upload para Firebase Storage), anotações, XP preview e card para redes sociais
 import { useRef, useState, useCallback, useEffect } from 'react';
@@ -392,9 +392,9 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         // Calcular XP bônus por colocação em competição
         let placementBonus = 0;
         if (form.sessionType === 'competicao' && compData.placement) {
-          if (compData.placement === '1º lugar') placementBonus = 50;
-          else if (compData.placement === '2º lugar') placementBonus = 30;
-          else if (compData.placement === '3º lugar') placementBonus = 20;
+          if (compData.placement.includes('1º')) placementBonus = 50;
+          else if (compData.placement.includes('2º')) placementBonus = 30;
+          else if (compData.placement.includes('3º')) placementBonus = 20;
         }
 
         await refreshProfile();
@@ -463,7 +463,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         const totalXpMsg = placementBonus > 0 ? `+${xpGained} XP + ${placementBonus} XP bônus 🏆` : `+${xpGained} XP 🥋`;
         toast.success(`Treino salvo! ${totalXpMsg}`);
         if (placementBonus > 0) {
-          const medal = compData.placement === '1º lugar' ? '🥇' : compData.placement === '2º lugar' ? '🥈' : '🥉';
+          const medal = compData.placement.includes('1º') ? '🥇' : compData.placement.includes('2º') ? '🥈' : '🥉';
           toast.success(`${medal} Bônus de pódio: +${placementBonus} XP!`, { duration: 4000 });
         }
         // Mostrar tela de sucesso com opção de gerar card
@@ -533,45 +533,44 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
   const techCount = countSelectedTechs();
   const activeCat = TECH_CATEGORIES.find(c => c.id === activeCategory) || TECH_CATEGORIES[0];
 
-  // ── Tela de sucesso pós-salvamento ─────────────────────────────────────────
+/* success saved state */
   if (savedData) {
     const shareUser: ShareUserData = {
       name: profile?.name,
       belt: profile?.belt,
       academy: profile?.academy,
-      // Usar photo do Firestore, ou photoURL do Firebase Auth como fallback
       photoURL: (profile?.photo || user?.photoURL) ?? undefined,
     };
     const sess = SESSION_TYPES.find(s => s.id === savedData.training.sessionType);
+
     return (
-      <div style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1.5rem', gap: '1.5rem' }}>
-        {/* XP Badge */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '5rem', color: '#CC0000', lineHeight: 1 }}>+{savedData.xp}</div>
+      <div className="bjj-content" style={{ minHeight: '100vh', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div>
+          <div className="!font-black !text-6xl !leading-none" style={{ color: '#CC0000' }}>+{savedData.xp}</div>
           <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#888', marginTop: '0.25rem' }}>XP GANHOS</div>
         </div>
 
         {/* Resumo */}
-        <div style={{ width: '100%', maxWidth: '400px', background: '#111', border: '2px solid #1E1E1E', borderLeft: `4px solid ${sess?.color || '#CC0000'}`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div className="bjj-card !text-left" style={{ borderLeft: `4px solid ${sess?.color || '#CC0000'}` }}>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFFFFF' }}>{sess?.icon} {sess?.label || savedData.training.sessionType}</p>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', color: '#888' }}>{savedData.training.trainingDate} · {savedData.training.duration} min</p>
           {savedData.training.academy && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', color: '#666' }}>🏢 {savedData.training.academy}</p>}
         </div>
 
         {/* Pergunta */}
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', textAlign: 'center' }}>DESEJA GERAR CARD PARA REDES SOCIAIS?</p>
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFF' }}>DESEJA GERAR CARD PARA REDES SOCIAIS?</p>
 
         {/* Botões */}
-        <div style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="flex flex-col gap-3 w-full" style={{ maxWidth: '400px' }}>
           <button
             onClick={() => setShowShareModal(true)}
-            style={{ background: '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1.1rem', border: 'none', cursor: 'pointer', width: '100%' }}
+            className="bjj-btn-primary"
           >
             📲 SIM, GERAR CARD
           </button>
           <button
             onClick={onSaved}
-            style={{ background: 'transparent', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', border: '1px solid #2A2A2A', cursor: 'pointer', width: '100%' }}
+            className="bjj-btn-ghost !w-full !border !border-[#2A2A2A] !justify-center !text-[#555] !text-[0.875rem]"
           >
             NÃO, IR PARA HISTÓRICO
           </button>
@@ -597,32 +596,32 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
   return (
     <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '80px' }}>
       {/* Header */}
-      <div style={{ padding: '1rem 1.25rem', borderBottom: '2px solid #CC0000', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#CC0000', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
+      <div className="bjj-header">
+        <button onClick={onBack} className="bjj-btn-ghost !text-[#CC0000] !p-1">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>
+        <h1 className="bjj-header-title">
           {isEditMode ? '✏️ EDITAR TREINO' : 'NOVO TREINO'}
         </h1>
       </div>
 
-      <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div className="bjj-content">
 
         {/* Date */}
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>DATA DO TREINO</label>
+          <label className="bjj-label">DATA DO TREINO</label>
           <input
             type="text"
             value={form.trainingDate}
             onChange={e => update('trainingDate', e.target.value)}
             placeholder="DD/MM/AAAA"
-            style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', padding: '0.75rem', outline: 'none', boxSizing: 'border-box' }}
+            className="bjj-input"
           />
         </div>
 
         {/* Session Type */}
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>TIPO DE SESSÃO</label>
+          <label className="bjj-label">TIPO DE SESSÃO</label>
           <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
             {SESSION_TYPES.map(s => (
               <button key={s.id} type="button" onClick={() => update('sessionType', s.id)} style={{ padding: '0.5rem 0.75rem', border: `2px solid ${form.sessionType === s.id ? s.color : '#2A2A2A'}`, background: form.sessionType === s.id ? s.color + '30' : '#111', color: form.sessionType === s.id ? s.color : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -634,32 +633,32 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
         {/* Campos de Competição (aparecem quando sessionType === 'competicao') */}
         {form.sessionType === 'competicao' && (
-          <div style={{ background: '#1A1A0A', border: '2px solid #CC8800', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', color: '#CC8800', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div className="bjj-card !bg-[#1A1A0A] !border-[#CC8800]" style={{ borderLeft: '3px solid #CC8800' }}>
+            <div className="bjj-header-title !text-[0.85rem]" style={{ color: '#CC8800' }}>
               🏆 DADOS DA COMPETIÇÃO
             </div>
 
             {/* Torneio */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>TORNEIO</label>
-              <input type="text" value={compData.tournament} onChange={e => updateComp('tournament', e.target.value)} placeholder="Ex: Campeonato Brasileiro" style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }} />
+              <label className="bjj-label">TORNEIO</label>
+              <input type="text" value={compData.tournament} onChange={e => updateComp('tournament', e.target.value)} placeholder="Ex: Campeonato Brasileiro" className="bjj-input" />
             </div>
 
             {/* Liga */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>LIGA</label>
-              <input type="text" value={compData.league} onChange={e => updateComp('league', e.target.value)} placeholder="Ex: CBJJ, IBJJF, SJJSAF" style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }} />
+              <label className="bjj-label">LIGA</label>
+              <input type="text" value={compData.league} onChange={e => updateComp('league', e.target.value)} placeholder="Ex: CBJJ, IBJJF, SJJSAF" className="bjj-input" />
             </div>
 
             {/* Cidade/Estado */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>CIDADE / ESTADO</label>
-              <input type="text" value={compData.city} onChange={e => updateComp('city', e.target.value)} placeholder="Ex: São Paulo/SP" style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }} />
+              <label className="bjj-label">CIDADE / ESTADO</label>
+              <input type="text" value={compData.city} onChange={e => updateComp('city', e.target.value)} placeholder="Ex: São Paulo/SP" className="bjj-input" />
             </div>
 
             {/* Faixa */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>FAIXA</label>
+              <label className="bjj-label">FAIXA</label>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                 {COMP_BELTS.map(b => (
                   <button key={b} type="button" onClick={() => updateComp('belt', b)} style={{ padding: '0.5rem 0.75rem', border: `2px solid ${compData.belt === b ? '#CC8800' : '#2A2A2A'}`, background: compData.belt === b ? '#CC880030' : '#111', color: compData.belt === b ? '#CC8800' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', cursor: 'pointer' }}>
@@ -671,7 +670,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
             {/* Gênero */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>GÊNERO</label>
+              <label className="bjj-label">GÊNERO</label>
               <div style={{ display: 'flex', gap: '0.375rem' }}>
                 <button type="button" onClick={() => updateComp('gender', 'M')} style={{ flex: 1, padding: '0.625rem', border: `2px solid ${compData.gender === 'M' ? '#CC8800' : '#2A2A2A'}`, background: compData.gender === 'M' ? '#CC880030' : '#111', color: compData.gender === 'M' ? '#CC8800' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', cursor: 'pointer' }}>
                   ♂ MASCULINO
@@ -684,7 +683,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
             {/* Categoria de Peso */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>CATEGORIA DE PESO</label>
+              <label className="bjj-label">CATEGORIA DE PESO</label>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                 {COMP_WEIGHT_CATEGORIES[compData.gender as 'M' | 'F'].map(w => (
                   <button key={w} type="button" onClick={() => updateComp('weightCategory', w)} style={{ padding: '0.4rem 0.625rem', border: `2px solid ${compData.weightCategory === w ? '#CC8800' : '#2A2A2A'}`, background: compData.weightCategory === w ? '#CC880030' : '#111', color: compData.weightCategory === w ? '#CC8800' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', cursor: 'pointer' }}>
@@ -696,7 +695,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
             {/* Categoria de Idade */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>CATEGORIA DE IDADE</label>
+              <label className="bjj-label">CATEGORIA DE IDADE</label>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                 {COMP_AGE_CATEGORIES.map(a => (
                   <button key={a} type="button" onClick={() => updateComp('ageCategory', a)} style={{ padding: '0.4rem 0.625rem', border: `2px solid ${compData.ageCategory === a ? '#CC8800' : '#2A2A2A'}`, background: compData.ageCategory === a ? '#CC880030' : '#111', color: compData.ageCategory === a ? '#CC8800' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', cursor: 'pointer' }}>
@@ -708,7 +707,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
             {/* Quantas Lutas */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>QUANTAS LUTAS</label>
+              <label className="bjj-label">QUANTAS LUTAS</label>
               <div style={{ display: 'flex', gap: '0.375rem' }}>
                 {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
                   <button key={n} type="button" onClick={() => updateComp('fights', n)} style={{ flex: 1, padding: '0.625rem 0', border: `2px solid ${compData.fights === n ? '#CC8800' : '#2A2A2A'}`, background: compData.fights === n ? '#CC880030' : '#111', color: compData.fights === n ? '#CC8800' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer' }}>
@@ -720,7 +719,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
             {/* Colocação Final */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>COLOCAÇÃO FINAL</label>
+              <label className="bjj-label">COLOCAÇÃO FINAL</label>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                 {COMP_PLACEMENTS.map(p => (
                   <button key={p} type="button" onClick={() => updateComp('placement', p)} style={{ padding: '0.5rem 0.75rem', border: `2px solid ${compData.placement === p ? '#CC8800' : '#2A2A2A'}`, background: compData.placement === p ? '#CC880030' : '#111', color: compData.placement === p ? '#CC8800' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', cursor: 'pointer' }}>
@@ -734,14 +733,14 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
         {/* Campos de Outros Treinos (aparecem quando sessionType === 'outros_treinos') */}
         {form.sessionType === 'outros_treinos' && (
-          <div style={{ background: '#0A1A2A', border: '2px solid #0EA5E9', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', color: '#0EA5E9', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div className="bjj-card !bg-[#0A1A2A] !border-[#0EA5E9]" style={{ borderLeft: '3px solid #0EA5E9' }}>
+            <div className="bjj-header-title !text-[0.85rem]" style={{ color: '#0EA5E9' }}>
               🏃 ATIVIDADE COMPLEMENTAR
             </div>
 
             {/* Tipo de Atividade */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>ATIVIDADE</label>
+              <label className="bjj-label">ATIVIDADE</label>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                 {EXTRA_ACTIVITIES.map(a => (
                   <button key={a.id} type="button" onClick={() => updateExtra('activity', a.id)} style={{ padding: '0.5rem 0.625rem', border: `2px solid ${extraData.activity === a.id ? '#0EA5E9' : '#2A2A2A'}`, background: extraData.activity === a.id ? '#0EA5E930' : '#111', color: extraData.activity === a.id ? '#0EA5E9' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', cursor: 'pointer' }}>
@@ -753,7 +752,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
             {/* Duração */}
             <div>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>TEMPO (MINUTOS)</label>
+              <label className="bjj-label">TEMPO (MINUTOS)</label>
               <input
                 type="number"
                 min="1"
@@ -761,16 +760,16 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
                 value={extraData.duration || ''}
                 onChange={e => updateExtra('duration', parseInt(e.target.value) || 0)}
                 placeholder="Ex: 45"
-                style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }}
+                className="bjj-input"
               />
               {extraData.duration > 0 && extraData.duration < 40 && (
-                <div style={{ marginTop: '0.375rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#F59E0B' }}>
+                <div style={{ marginTop: '0.375rem', fontSize: '0.65rem', color: '#F59E0B' }}>
                   ⚠️ Atividades com menos de 40 min não ganham pontos extras
                 </div>
               )}
               {/* Pace médio exibido junto ao tempo para corrida e ciclismo */}
               {EXTRA_ACTIVITIES.find(a => a.id === extraData.activity)?.hasDistance && extraData.duration > 0 && extraData.distance > 0 && (
-                <div style={{ marginTop: '0.5rem', background: '#0A1A2A', border: '1px solid #0EA5E9', padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div className="bjj-card !bg-[#0A1A2A] !border-[#0EA5E9] !p-[0.5rem_0.75rem]" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', color: '#888', textTransform: 'uppercase' }}>PACE MÉDIO</span>
                   <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#0EA5E9' }}>{calcPace()} /km</span>
                 </div>
@@ -780,10 +779,10 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
             {/* Distância (só para corrida e ciclismo) */}
             {EXTRA_ACTIVITIES.find(a => a.id === extraData.activity)?.hasDistance && (
               <div>
-                <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>DISTÂNCIA (KM)</label>
-                <input type="number" step="0.1" min="0" value={extraData.distance || ''} onChange={e => updateExtra('distance', parseFloat(e.target.value) || 0)} placeholder="Ex: 5.0" style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }} />
+                <label className="bjj-label">DISTÂNCIA (KM)</label>
+                <input type="number" step="0.1" min="0" value={extraData.distance || ''} onChange={e => updateExtra('distance', parseFloat(e.target.value) || 0)} placeholder="Ex: 5.0" className="bjj-input" />
                 {extraData.distance > 0 && extraData.duration > 0 && (
-                  <div style={{ marginTop: '0.375rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#888' }}>
+                  <div style={{ marginTop: '0.375rem', fontSize: '0.65rem', color: '#888' }}>
                     Pace atualizado automaticamente acima
                   </div>
                 )}
@@ -793,16 +792,16 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
             {/* Calorias (só para corrida e ciclismo) */}
             {EXTRA_ACTIVITIES.find(a => a.id === extraData.activity)?.hasCalories && (
               <div>
-                <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.375rem' }}>CALORIAS (ESTIMATIVA EDITÁVEL)</label>
-                <input type="number" min="0" value={extraData.calories || ''} onChange={e => { updateExtra('calories', parseInt(e.target.value) || 0); updateExtra('caloriesEdited', true); }} placeholder="Calorias" style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }} />
-                <div style={{ marginTop: '0.25rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#666' }}>
+                <label className="bjj-label">CALORIAS (ESTIMATIVA EDITÁVEL)</label>
+                <input type="number" min="0" value={extraData.calories || ''} onChange={e => { updateExtra('calories', parseInt(e.target.value) || 0); updateExtra('caloriesEdited', true); }} placeholder="Calorias" className="bjj-input" />
+                <div style={{ marginTop: '0.25rem', fontSize: '0.6rem', color: '#666' }}>
                   Estimativa baseada em MET × peso médio (80kg). Edite se necessário.
                 </div>
               </div>
             )}
 
             {/* Pontos extras */}
-            <div style={{ background: '#111', border: '1px solid #2A2A2A', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="bjj-card flex justify-between items-center" style={{ borderLeft: `3px solid ${calcExtraXP() > 0 ? '#0EA5E9' : '#2A2A2A'}` }}>
               <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: '#888', textTransform: 'uppercase' }}>PONTOS EXTRAS</span>
               <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: calcExtraXP() > 0 ? '#0EA5E9' : '#444' }}>
                 +{calcExtraXP()} XP
@@ -814,7 +813,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         {/* Modality (ocultar para outros treinos) */}
         {form.sessionType !== 'outros_treinos' && (
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>MODALIDADE</label>
+          <label className="bjj-label">MODALIDADE</label>
           <div style={{ display: 'flex', gap: '0.375rem' }}>
             {MODALITIES.map(m => (
               <button key={m.id} type="button" onClick={() => update('modality', m.id)} style={{ flex: 1, padding: '0.75rem', border: `2px solid ${form.modality === m.id ? m.color : '#2A2A2A'}`, background: form.modality === m.id ? m.color + '30' : '#111', color: form.modality === m.id ? m.color : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -828,7 +827,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         {/* Duration */}
         {form.sessionType !== 'outros_treinos' && (
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>DURAÇÃO: {form.duration} MINUTOS</label>
+          <label className="bjj-label">DURAÇÃO: {form.duration} MINUTOS</label>
           <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
             {[30, 45, 60, 75, 90, 120].map(n => (
               <button key={n} type="button" onClick={() => update('duration', n)} style={{ flex: 1, minWidth: '50px', padding: '0.625rem 0', border: `2px solid ${form.duration === n ? '#CC0000' : '#2A2A2A'}`, background: form.duration === n ? '#CC000030' : '#111', color: form.duration === n ? '#CC0000' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -842,7 +841,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         {/* Intensity */}
         {form.sessionType !== 'outros_treinos' && (
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>INTENSIDADE: {INTENSITY_LABELS[form.intensity]}</label>
+          <label className="bjj-label">INTENSIDADE: {INTENSITY_LABELS[form.intensity]}</label>
           <div style={{ display: 'flex', gap: '0.375rem' }}>
             {[1, 2, 3, 4, 5].map(n => (
               <button key={n} type="button" onClick={() => update('intensity', n)} style={{ flex: 1, height: '44px', border: `2px solid ${form.intensity >= n ? '#CC0000' : '#2A2A2A'}`, background: form.intensity >= n ? '#CC0000' : '#111', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -856,7 +855,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         {/* Satisfaction */}
         {form.sessionType !== 'outros_treinos' && (
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>SATISFAÇÃO: {SATISFACTION_LABELS[form.satisfaction]}</label>
+          <label className="bjj-label">SATISFAÇÃO: {SATISFACTION_LABELS[form.satisfaction]}</label>
           <div style={{ display: 'flex', gap: '0.375rem' }}>
             {[1, 2, 3, 4, 5].map(n => (
               <button key={n} type="button" onClick={() => update('satisfaction', n)} style={{ flex: 1, height: '44px', border: `2px solid ${form.satisfaction === n ? '#1A6ECC' : '#2A2A2A'}`, background: form.satisfaction === n ? '#1A6ECC' : '#111', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -870,7 +869,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         {/* Techniques by category */}
         {form.sessionType !== 'outros_treinos' && (
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>TÉCNICAS PRATICADAS ({techCount})</label>
+          <label className="bjj-label">TÉCNICAS PRATICADAS ({techCount})</label>
           {/* Category tabs */}
           <div style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', paddingBottom: '0.375rem', marginBottom: '0.625rem' }}>
             {TECH_CATEGORIES.map(cat => {
@@ -901,7 +900,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
           {/* Academia */}
           <div style={{ position: 'relative' }}>
-            <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>ACADEMIA</label>
+            <label className="bjj-label">ACADEMIA</label>
             <input
               type="text"
               value={form.academy}
@@ -909,7 +908,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
               onFocus={() => setShowAcademySuggestions(true)}
               onBlur={() => setTimeout(() => setShowAcademySuggestions(false), 150)}
               placeholder="Nome da academia"
-              style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }}
+              className="bjj-input"
             />
             {showAcademySuggestions && savedAcademies.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1A1A1A', border: '1px solid #CC0000', zIndex: 50, maxHeight: '160px', overflowY: 'auto' }}>
@@ -923,7 +922,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
           </div>
           {/* Professor */}
           <div style={{ position: 'relative' }}>
-            <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>PROFESSOR</label>
+            <label className="bjj-label">PROFESSOR</label>
             <input
               type="text"
               value={form.professor}
@@ -931,7 +930,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
               onFocus={() => setShowProfessorSuggestions(true)}
               onBlur={() => setTimeout(() => setShowProfessorSuggestions(false), 150)}
               placeholder="Nome do professor"
-              style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem', outline: 'none', boxSizing: 'border-box' }}
+              className="bjj-input"
             />
             {showProfessorSuggestions && savedProfessors.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1A1A1A', border: '1px solid #CC0000', zIndex: 50, maxHeight: '160px', overflowY: 'auto' }}>
@@ -948,38 +947,38 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
         {/* ── FOTO DO TREINO ── */}
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>FOTO DO TREINO</label>
+          <label className="bjj-label">FOTO DO TREINO</label>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
           {photoPreview ? (
-            <div style={{ position: 'relative', width: '100%', background: '#0A0A0A', border: '2px solid #CC0000', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '120px' }}>
+            <div className="bjj-card !bg-[#0A0A0A] !border-[#CC0000] flex items-center justify-center" style={{ minHeight: '120px', position: 'relative' }}>
               <img src={photoPreview} alt="Preview" style={{ width: '100%', height: 'auto', maxHeight: '320px', objectFit: 'contain', display: 'block' }} />
-              <button type="button" onClick={handleRemovePhoto} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.75)', border: 'none', color: '#FFFFFF', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', borderRadius: '2px' }}>×</button>
+              <button type="button" onClick={handleRemovePhoto} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.75)', border: 'none', color: '#FFF', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', borderRadius: '2px' }}>×</button>
               <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.65)', padding: '4px 10px', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
                 <span style={{ color: '#FFFFFF', fontSize: '11px', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📷 Alterar</span>
               </div>
             </div>
           ) : (
-            <button type="button" onClick={() => fileInputRef.current?.click()} style={{ width: '100%', height: '100px', background: '#111', border: '2px dashed #2A2A2A', color: '#555', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', transition: 'border-color 0.15s' }} onMouseEnter={e => (e.currentTarget.style.borderColor = '#CC0000')} onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2A2A')}>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="bjj-card !border-dashed !border-[#2A2A2A] flex flex-col items-center justify-center text-[#555] cursor-pointer" style={{ height: '100px', gap: '6px' }} onMouseEnter={e => (e.currentTarget.style.borderColor = '#CC0000')} onMouseLeave={e => (e.currentTarget.style.borderColor = '#2A2A2A')}>
               <span style={{ fontSize: '28px' }}>📷</span>
               <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Adicionar Foto do Treino</span>
-              <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#444' }}>Clique para selecionar da galeria</span>
+              <span style={{ fontSize: '0.65rem', color: '#444' }}>Clique para selecionar da galeria</span>
             </button>
           )}
         </div>
 
         {/* Notes */}
         <div>
-          <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>OBSERVAÇÕES</label>
-          <textarea value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="O que você aprendeu hoje? Pontos a melhorar..." rows={3} style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', resize: 'none', boxSizing: 'border-box', lineHeight: 1.5 }} />
+          <label className="bjj-label">OBSERVAÇÕES</label>
+          <textarea value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="O que você aprendeu hoje? Pontos a melhorar..." className="bjj-input !resize-none" rows={3} />
         </div>
 
         {/* XP Preview */}
-        <div style={{ background: '#111', borderLeft: `3px solid ${form.sessionType === 'outros_treinos' ? '#0EA5E9' : '#CC0000'}`, padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="bjj-card" style={{ borderLeft: `3px solid ${form.sessionType === 'outros_treinos' ? '#0EA5E9' : '#CC0000'}` }}>
           <div>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888' }}>{isEditMode ? 'XP RECALCULADO' : (form.sessionType === 'outros_treinos' ? 'PONTOS EXTRAS' : 'XP A GANHAR')}</p>
+            <p style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888' }}>{isEditMode ? 'XP RECALCULADO' : (form.sessionType === 'outros_treinos' ? 'PONTOS EXTRAS' : 'XP A GANHAR')}</p>
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '2.5rem', color: form.sessionType === 'outros_treinos' ? '#0EA5E9' : '#CC0000', lineHeight: 1 }}>+{form.sessionType === 'outros_treinos' ? calcExtraXP() : xp}</p>
           </div>
-          <div style={{ textAlign: 'right', fontSize: '0.65rem', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase', lineHeight: 1.8 }}>
+          <div style={{ textAlign: 'right', fontSize: '0.65rem', color: '#555', textTransform: 'uppercase', lineHeight: 1.8 }}>
             {form.sessionType === 'outros_treinos' ? (
               <>
                 {extraData.duration >= 40 ? <div>40+ MIN: +5 XP EXTRA</div> : <div style={{ color: '#F59E0B' }}>MÍNIMO 40 MIN</div>}
@@ -1003,7 +1002,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         <button
           onClick={handleSave}
           disabled={loading || deleting}
-          style={{ background: isEditMode ? '#1A6ECC' : '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1.25rem', border: 'none', width: '100%', cursor: (loading || deleting) ? 'not-allowed' : 'pointer', opacity: (loading || deleting) ? 0.7 : 1 }}
+          className="bjj-btn-primary"
         >
           {loading
             ? (photoFile ? 'ENVIANDO FOTO...' : (isEditMode ? 'ATUALIZANDO...' : 'SALVANDO...'))
@@ -1017,7 +1016,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
               <button
                 onClick={() => setConfirmDelete(true)}
                 disabled={loading || deleting}
-                style={{ width: '100%', background: 'none', border: '1px solid #3A0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', opacity: (loading || deleting) ? 0.4 : 1 }}
+                className="bjj-btn-outline !border-[#3A0000] !text-[#CC0000]"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <polyline points="3 6 5 6 21 6"/>
@@ -1028,25 +1027,25 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
                 EXCLUIR TREINO
               </button>
             ) : (
-              <div style={{ background: '#1A0000', border: '1px solid #CC0000', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#FF4444', textTransform: 'uppercase', textAlign: 'center', margin: 0 }}>
+              <div className="bjj-card !bg-[#1A0000] !border-[#CC0000]">
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#FF4444', textTransform: 'uppercase', textAlign: 'center' }}>
                   ⚠️ Confirmar exclusão?
                 </p>
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', textAlign: 'center', margin: 0, lineHeight: 1.4 }}>
+                <p style={{ fontSize: '0.75rem', color: '#888', textAlign: 'center', lineHeight: 1.4 }}>
                   Esta ação não pode ser desfeita. O treino e o XP serão removidos permanentemente.
                 </p>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     onClick={() => setConfirmDelete(false)}
                     disabled={deleting}
-                    style={{ flex: 1, background: 'none', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.75rem', cursor: 'pointer' }}
+                    className="bjj-btn-ghost !text-[#888]"
                   >
                     CANCELAR
                   </button>
                   <button
                     onClick={handleDelete}
                     disabled={deleting}
-                    style={{ flex: 1, background: '#CC0000', border: 'none', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.75rem', cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1 }}
+                    className="bjj-btn-primary !bg-[#CC0000]"
                   >
                     {deleting ? 'EXCLUINDO...' : 'SIM, EXCLUIR'}
                   </button>

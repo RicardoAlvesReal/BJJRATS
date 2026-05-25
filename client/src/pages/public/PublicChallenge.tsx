@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'wouter';
 import api from '@/lib/api';
+import { BELT_COLORS } from '@/lib/bjjrats-constants';
 
 interface Challenge {
   id: string;
@@ -39,10 +40,6 @@ export default function PublicChallenge() {
   const [ranking, setRanking] = useState<RankEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-
-  const BELT_COLORS: Record<string, string> = {
-    Branca: '#FFFFFF', Azul: '#1A6ECC', Roxa: '#7C1ACC', Marrom: '#8B4513', Preta: '#888888',
-  };
 
   useEffect(() => {
     const load = async () => {

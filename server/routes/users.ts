@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, or, ilike } from 'drizzle-orm';
+import { eq, ne, and, or, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
@@ -21,7 +21,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
     athleteType: users.athleteType, bjjSince: users.bjjSince,
   }).from(users).$dynamic();
 
-  const conditions = [];
+  const conditions = [ne(users.role, 'superadmin')];
   if (role)      conditions.push(eq(users.role, role));
   if (academyId) conditions.push(eq(users.academyId, academyId));
   if (search)    conditions.push(or(ilike(users.name, `%${search}%`), ilike(users.academyName, `%${search}%`), ilike(users.academyCity, `%${search}%`)));

@@ -3,16 +3,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* BJJRats PWA — "Cage Fighter" Design System
-   Typography: Barlow Condensed 900 + Barlow 400
-   Colors: #0A0A0A (black) + #CC0000 (red) + #FFFFFF (white)
-   Style: Brutalismo Tático — sem cantos arredondados, bordas vermelhas cortantes */
-
 @theme inline {
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 2px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -48,39 +43,39 @@
 }
 
 :root {
-  --radius: 0px;
-  --background: oklch(0.07 0 0);
+  --radius: 8px;
+  --background: oklch(0.04 0 0);
   --foreground: oklch(0.98 0 0);
-  --card: oklch(0.1 0 0);
+  --card: oklch(0.08 0.003 0 / 0.5);
   --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.1 0 0);
+  --popover: oklch(0.08 0.003 0 / 0.95);
   --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.45 0.22 27);
+  --primary: oklch(0.55 0.25 27);
   --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.13 0 0);
+  --secondary: oklch(0.12 0.005 0);
   --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.15 0 0);
-  --muted-foreground: oklch(0.55 0 0);
-  --accent: oklch(0.45 0.22 27);
+  --muted: oklch(0.12 0.005 0);
+  --muted-foreground: oklch(0.55 0.01 0);
+  --accent: oklch(0.55 0.25 27 / 0.15);
   --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.45 0.22 27);
+  --destructive: oklch(0.55 0.25 27);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.2 0 0);
-  --input: oklch(0.15 0 0);
-  --ring: oklch(0.45 0.22 27);
-  --chart-1: oklch(0.45 0.22 27);
-  --chart-2: oklch(0.55 0.18 27);
-  --chart-3: oklch(0.35 0.22 27);
-  --chart-4: oklch(0.65 0.15 27);
-  --chart-5: oklch(0.25 0.22 27);
-  --sidebar: oklch(0.08 0 0);
+  --border: oklch(0.18 0.005 0);
+  --input: oklch(0.15 0.005 0);
+  --ring: oklch(0.55 0.25 27 / 0.5);
+  --chart-1: oklch(0.55 0.25 27);
+  --chart-2: oklch(0.45 0.2 200);
+  --chart-3: oklch(0.6 0.2 150);
+  --chart-4: oklch(0.5 0.2 280);
+  --chart-5: oklch(0.4 0.2 50);
+  --sidebar: oklch(0.06 0.003 0 / 0.8);
   --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.45 0.22 27);
+  --sidebar-primary: oklch(0.55 0.25 27);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.13 0 0);
+  --sidebar-accent: oklch(0.12 0.005 0);
   --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.2 0 0);
-  --sidebar-ring: oklch(0.45 0.22 27);
+  --sidebar-border: oklch(0.18 0.005 0);
+  --sidebar-ring: oklch(0.55 0.25 27 / 0.5);
 }
 
 @layer base {
@@ -92,10 +87,7 @@
     @apply bg-background text-foreground;
     font-family: 'Barlow', sans-serif;
     -webkit-font-smoothing: antialiased;
-    background-color: #0A0A0A;
-    color: #FFFFFF;
     overflow-x: hidden;
-    /* Mobile: prevent horizontal scroll */
     max-width: 100vw;
   }
   html {
@@ -130,37 +122,60 @@
     padding-right: 1rem;
   }
 
-  .flex {
-    min-height: 0;
-    min-width: 0;
-  }
-
   @media (min-width: 640px) {
-    .container {
-      padding-left: 1.5rem;
-      padding-right: 1.5rem;
-    }
+    .container { padding-left: 1.5rem; padding-right: 1.5rem; }
   }
-
   @media (min-width: 1024px) {
-    .container {
-      padding-left: 2rem;
-      padding-right: 2rem;
-      max-width: 480px;
-    }
+    .container { padding-left: 2rem; padding-right: 2rem; max-width: 480px; }
   }
 
-  /* BJJRats Custom Components */
+  .flex { min-height: 0; min-width: 0; }
+
+  /* ─── Glassmorphism ─── */
+  .bjj-glass {
+    background: rgba(10, 10, 10, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .bjj-glass-strong {
+    background: rgba(10, 10, 10, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* ─── Cards ─── */
   .bjj-card {
-    background: #111111;
-    border-left: 3px solid #CC0000;
+    background: #111;
+    border: 1px solid #1E1E1E;
+    border-radius: 12px;
     padding: 1rem;
     position: relative;
+    transition: all 0.25s ease;
+  }
+  .bjj-card:hover {
+    border-color: #CC000040;
+    box-shadow: 0 0 20px rgba(204, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .bjj-card-accent {
+    border-left: 3px solid #CC0000;
+  }
+  .bjj-card-accent:hover {
+    border-color: #CC000060;
+    border-left-color: #CC0000;
+  }
+  .bjj-card-glow {
+    box-shadow: 0 0 30px rgba(204, 0, 0, 0.06);
+  }
+  .bjj-card-glow:hover {
+    box-shadow: 0 0 40px rgba(204, 0, 0, 0.12), 0 4px 20px rgba(0, 0, 0, 0.4);
   }
 
+  /* ─── Buttons ─── */
   .bjj-btn-primary {
-    background: #CC0000;
-    color: #FFFFFF;
+    background: linear-gradient(135deg, #CC0000, #FF2200);
+    color: #FFF;
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 900;
     font-size: 1rem;
@@ -168,15 +183,27 @@
     letter-spacing: 0.1em;
     padding: 0.875rem 2rem;
     border: none;
+    border-radius: 10px;
     width: 100%;
-    transition: background 0.15s, transform 0.1s;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 15px rgba(204, 0, 0, 0.3);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
   }
   .bjj-btn-primary:hover {
-    background: #FF0000;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(204, 0, 0, 0.45);
   }
   .bjj-btn-primary:active {
-    transform: scale(0.98);
-    background: #AA0000;
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(204, 0, 0, 0.3);
+  }
+  .bjj-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
   }
 
   .bjj-btn-outline {
@@ -188,57 +215,86 @@
     text-transform: uppercase;
     letter-spacing: 0.1em;
     padding: 0.875rem 2rem;
-    border: 2px solid #CC0000;
+    border: 2px solid rgba(204, 0, 0, 0.5);
+    border-radius: 10px;
     width: 100%;
-    transition: all 0.15s;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
   }
   .bjj-btn-outline:hover {
-    background: #CC0000;
-    color: #FFFFFF;
+    background: rgba(204, 0, 0, 0.1);
+    border-color: #CC0000;
+    box-shadow: 0 0 20px rgba(204, 0, 0, 0.15);
   }
 
+  .bjj-btn-ghost {
+    background: transparent;
+    color: #888;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.5rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+  .bjj-btn-ghost:hover {
+    color: #FFF;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: #333;
+  }
+
+  /* ─── Inputs ─── */
   .bjj-input {
-    background: #1A1A1A;
-    border: 1px solid #333333;
-    border-bottom: 2px solid #CC0000;
-    color: #FFFFFF;
+    background: #111;
+    border: 1px solid #2A2A2A;
+    border-radius: 10px;
+    color: #FFF;
     font-family: 'Barlow', sans-serif;
-    font-size: 1rem;
-    padding: 0.875rem 1rem;
+    font-size: 0.9rem;
+    padding: 0.75rem 1rem;
     width: 100%;
     outline: none;
-    transition: border-color 0.15s;
+    transition: all 0.2s ease;
   }
   .bjj-input:focus {
     border-color: #CC0000;
-    border-bottom-color: #FF0000;
-    background: #1F1F1F;
+    box-shadow: 0 0 0 3px rgba(204, 0, 0, 0.1);
+    background: #151515;
   }
-  .bjj-input::placeholder {
-    color: #555555;
-  }
+  .bjj-input::placeholder { color: #555; }
 
   .bjj-label {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 700;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #888888;
-    margin-bottom: 0.25rem;
+    color: #888;
+    margin-bottom: 0.375rem;
     display: block;
   }
 
+  /* ─── Tab Bar ─── */
   .bjj-tab-bar {
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    background: #0D0D0D;
-    border-top: 2px solid #CC0000;
+    background: rgba(13, 13, 13, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(204, 0, 0, 0.2);
     display: flex;
     z-index: 100;
-    /* Full width on all screens */
     max-width: 100%;
     margin: 0 auto;
     padding-bottom: env(safe-area-inset-bottom, 0);
@@ -258,113 +314,294 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0.625rem 0.25rem;
-    color: #444444;
+    padding: 0.5rem 0.25rem;
+    color: #444;
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 700;
-    font-size: 0.6rem;
+    font-size: 0.55rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    transition: color 0.15s;
+    transition: all 0.2s ease;
     gap: 0.25rem;
     border: none;
     background: transparent;
+    position: relative;
   }
   .bjj-tab-item.active {
     color: #CC0000;
   }
   .bjj-tab-item.active svg {
-    filter: drop-shadow(0 0 4px #CC0000);
+    filter: drop-shadow(0 0 6px #CC0000);
+  }
+  .bjj-tab-item::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    background: #CC0000;
+    transition: all 0.25s ease;
+    transform: translateX(-50%);
+    border-radius: 0 0 2px 2px;
+  }
+  .bjj-tab-item.active::after {
+    width: 40px;
+  }
+  .bjj-tab-item:not(.active):hover {
+    color: #666;
   }
 
+  /* ─── Section Title ─── */
   .bjj-section-title {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 900;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #FFFFFF;
+    color: #FFF;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.625rem;
+    margin-bottom: 0.75rem;
   }
   .bjj-section-title::before {
     content: '';
     display: inline-block;
     width: 4px;
-    height: 1.5rem;
-    background: #CC0000;
+    height: 1.25rem;
+    background: linear-gradient(to bottom, #CC0000, #FF4400);
+    border-radius: 2px;
     flex-shrink: 0;
   }
 
+  /* ─── Stat Card ─── */
   .bjj-stat-card {
-    background: #111111;
+    background: #111;
     border: 1px solid #1E1E1E;
-    border-top: 2px solid #CC0000;
+    border-radius: 12px;
     padding: 1rem;
     text-align: center;
+    transition: all 0.25s ease;
+  }
+  .bjj-stat-card:hover {
+    border-color: #CC000040;
+    box-shadow: 0 0 20px rgba(204, 0, 0, 0.06);
+    transform: translateY(-2px);
   }
   .bjj-stat-number {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 900;
-    font-size: 2.5rem;
-    color: #CC0000;
+    font-size: 2rem;
+    background: linear-gradient(135deg, #CC0000, #FF4400);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
     line-height: 1;
   }
   .bjj-stat-label {
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 700;
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #666666;
+    color: #666;
     margin-top: 0.25rem;
   }
 
+  /* ─── Belt Badge ─── */
   .bjj-belt-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
     font-family: 'Barlow Condensed', sans-serif;
     font-weight: 700;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     padding: 0.25rem 0.625rem;
     border: 1px solid currentColor;
+    border-radius: 6px;
   }
 
+  /* ─── XP Bar ─── */
   .bjj-xp-bar {
-    height: 4px;
+    height: 6px;
     background: #1A1A1A;
     position: relative;
     overflow: hidden;
+    border-radius: 3px;
   }
   .bjj-xp-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #CC0000, #FF3333);
-    transition: width 0.5s ease;
+    background: linear-gradient(90deg, #CC0000, #FF4400, #FF6600);
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 3px;
+    position: relative;
+  }
+  .bjj-xp-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 2s infinite;
   }
 
-  /* Page transitions */
+  /* ─── Gradient Text ─── */
+  .bjj-text-gradient {
+    background: linear-gradient(135deg, #CC0000, #FF4400);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ─── Tag/Pill ─── */
+  .bjj-tag {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 0.2rem 0.6rem;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  /* ─── Notification Toast ─── */
+  .bjj-notification {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 9999;
+    background: rgba(17, 17, 17, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid #CC0000;
+    border-radius: 12px;
+    padding: 0.875rem 1.125rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(204, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: 320px;
+    animation: slideInRight 0.3s ease;
+  }
+
+  /* ─── Skeleton ─── */
+  .bjj-skeleton {
+    background: linear-gradient(90deg, #1A1A1A 25%, #222 50%, #1A1A1A 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 8px;
+  }
+
+  /* ─── Header ─── */
+  .bjj-header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid rgba(204, 0, 0, 0.15);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .bjj-header-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 900;
+    font-size: 1.25rem;
+    text-transform: uppercase;
+    color: #FFF;
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── Content wrapper ─── */
+  .bjj-content {
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .bjj-content-gap {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* ─── Divider ─── */
+  .bjj-divider {
+    border: none;
+    border-top: 1px solid #1A1A1A;
+    margin: 0.5rem 0;
+  }
+
+  /* ─── Modal overlay ─── */
+  .bjj-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    animation: fadeIn 0.2s ease;
+  }
+  .bjj-modal-box {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 16px;
+    padding: 1.5rem;
+    max-width: 360px;
+    width: 100%;
+    text-align: center;
+    animation: scaleIn 0.25s ease;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  }
+
+  /* ─── Activity Calendar ─── */
+  .bjj-activity-dot {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    transition: all 0.15s ease;
+  }
+  .bjj-activity-dot:hover {
+    transform: scale(1.25);
+    box-shadow: 0 0 8px currentColor;
+  }
+
+  /* ─── Progress bar ─── */
+  .bjj-progress {
+    height: 4px;
+    background: #0D0D0D;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .bjj-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ─── Page transitions ─── */
   .page-enter {
-    animation: slideInRight 0.15s ease forwards;
-  }
-  @keyframes slideInRight {
-    from { transform: translateX(20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+    animation: slideInRight 0.2s ease forwards;
   }
 
-  /* Scrollbar */
+  /* ─── Scrollbar ─── */
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: #0A0A0A; }
-  ::-webkit-scrollbar-thumb { background: #CC0000; }
+  ::-webkit-scrollbar-thumb { background: #CC0000; border-radius: 2px; }
 
-  /* Mobile safe area */
+  /* ─── Safe area / Layout ─── */
   .pb-safe {
     padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0));
   }
-  /* App wrapper — full width on mobile, centered entre 480px e 1023px, full no desktop */
+
   .bjj-app-wrapper {
     background: #0A0A0A;
     min-height: 100vh;
@@ -372,17 +609,13 @@
     position: relative;
   }
   @media (min-width: 480px) and (max-width: 1023px) {
-    .bjj-app-wrapper {
-      max-width: 480px;
-      margin: 0 auto;
-    }
+    .bjj-app-wrapper { max-width: 480px; margin: 0 auto; }
   }
 
-  /* Sidebar — oculta em mobile */
+  /* ─── Sidebar ─── */
   .bjj-sidebar { display: none; }
   .bjj-main-content { width: 100%; }
 
-  /* ─── Layout Desktop (≥ 1024px) ─────────────────────────────────── */
   @media (min-width: 1024px) {
     .bjj-app-wrapper {
       max-width: 100%;
@@ -391,21 +624,26 @@
       align-items: stretch;
       min-height: 100vh;
     }
-
-    /* Sidebar vertical */
     .bjj-sidebar {
       display: flex;
       flex-direction: column;
       width: clamp(220px, 16vw, 280px);
       min-width: clamp(220px, 16vw, 280px);
-      background: #0D0D0D;
-      border-right: 2px solid #CC0000;
+      background: rgba(13, 13, 13, 0.95);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid rgba(204, 0, 0, 0.15);
       position: fixed;
       left: 0;
       top: 0;
       bottom: 0;
       z-index: 50;
       overflow-y: auto;
+      transition: width 0.25s ease, min-width 0.25s ease;
+    }
+    .bjj-sidebar.collapsed {
+      width: 70px;
+      min-width: 70px;
+      overflow: visible;
     }
     .bjj-sidebar-logo {
       display: flex;
@@ -413,7 +651,42 @@
       gap: 0.75rem;
       padding: 1.5rem 1.25rem 1.25rem;
       border-bottom: 1px solid #1A1A1A;
+      position: relative;
     }
+    .bjj-sidebar-toggle {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: 1px solid #2A2A2A;
+      border-radius: 6px;
+      color: #555;
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      z-index: 60;
+    }
+    .bjj-sidebar-toggle:hover {
+      color: #CCC;
+      border-color: #CC0000;
+    }
+    .bjj-sidebar.collapsed .bjj-sidebar-toggle {
+      right: -17px;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      background: rgba(13,13,13,0.95);
+      border-color: #CC0000;
+      color: #CCC;
+      box-shadow: 0 0 10px rgba(0,0,0,0.6);
+    }
+    .bjj-sidebar.collapsed .bjj-sidebar-logo span:last-of-type { display: none; }
+    .bjj-sidebar.collapsed .bjj-sidebar-logo { justify-content: center; padding: 1.5rem 0.5rem 1.25rem; }
     .bjj-sidebar-profile {
       display: flex;
       align-items: center;
@@ -421,9 +694,11 @@
       padding: 0.875rem 1.25rem;
       border-bottom: 1px solid #1A1A1A;
     }
+    .bjj-sidebar.collapsed .bjj-sidebar-profile { justify-content: center; padding: 0.875rem 0; }
+    .bjj-sidebar.collapsed .bjj-sidebar-name { display: none; }
+    .bjj-sidebar.collapsed .bjj-sidebar-belt { display: none; }
     .bjj-sidebar-avatar {
-      width: 40px;
-      height: 40px;
+      width: 40px; height: 40px;
       border-radius: 50%;
       background: #1A1A1A;
       border: 2px solid #CC0000;
@@ -434,17 +709,13 @@
       justify-content: center;
       font-size: 1.1rem;
     }
-    .bjj-sidebar-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    .bjj-sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .bjj-sidebar-name {
       font-family: 'Barlow Condensed', sans-serif;
       font-weight: 700;
       font-size: 0.875rem;
       text-transform: uppercase;
-      color: #FFFFFF;
+      color: #FFF;
       margin: 0 0 0.125rem;
       line-height: 1.2;
     }
@@ -477,26 +748,32 @@
       border: none;
       border-left: 3px solid transparent;
       cursor: pointer;
-      transition: color 0.15s, background 0.15s;
+      transition: all 0.2s ease;
       position: relative;
       text-align: left;
       width: 100%;
     }
-    .bjj-sidebar-item:hover {
-      color: #CCC;
-      background: #111;
+    .bjj-sidebar.collapsed .bjj-sidebar-item {
+      justify-content: center;
+      padding: 0.875rem 0;
+      gap: 0;
+      border-left: none;
+      border-top: 3px solid transparent;
     }
+    .bjj-sidebar.collapsed .bjj-sidebar-item span { display: none; }
+    .bjj-sidebar.collapsed .bjj-sidebar-item.active {
+      border-left-color: transparent;
+      border-top-color: #CC0000;
+    }
+    .bjj-sidebar-item:hover { color: #CCC; background: rgba(255,255,255,0.03); }
     .bjj-sidebar-item.active {
       color: #CC0000;
       background: rgba(204, 0, 0, 0.07);
       border-left-color: #CC0000;
     }
-    .bjj-sidebar-item.active svg {
-      filter: drop-shadow(0 0 4px #CC0000);
-    }
+    .bjj-sidebar-item.active svg { filter: drop-shadow(0 0 6px #CC0000); }
     .bjj-sidebar-badge {
-      width: 8px;
-      height: 8px;
+      width: 8px; height: 8px;
       border-radius: 50%;
       background: #CC0000;
       border: 1.5px solid #0D0D0D;
@@ -507,14 +784,16 @@
       padding: 1rem 1.25rem;
       border-top: 1px solid #1A1A1A;
     }
+    .bjj-sidebar.collapsed .bjj-sidebar-footer { padding: 1rem 0.5rem; display: flex; flex-direction: column; align-items: center; }
     .bjj-sidebar-new-btn {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
       width: 100%;
-      background: #CC0000;
+      background: linear-gradient(135deg, #CC0000, #FF2200);
       border: none;
+      border-radius: 10px;
       color: #FFF;
       font-family: 'Barlow Condensed', sans-serif;
       font-weight: 900;
@@ -523,9 +802,16 @@
       letter-spacing: 0.1em;
       padding: 0.75rem 1rem;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 15px rgba(204, 0, 0, 0.3);
     }
-    .bjj-sidebar-new-btn:hover { background: #FF1111; }
+    .bjj-sidebar.collapsed .bjj-sidebar-new-btn { width: 38px; height: 38px; padding: 0; border-radius: 50%; gap: 0; }
+    .bjj-sidebar.collapsed .bjj-sidebar-new-btn span { display: none; }
+    .bjj-sidebar.collapsed .bjj-sidebar-new-btn svg { width: 16px; height: 16px; }
+    .bjj-sidebar-new-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(204, 0, 0, 0.4);
+    }
     .bjj-sidebar-logout-btn {
       display: flex;
       align-items: center;
@@ -535,6 +821,7 @@
       margin-top: 0.5rem;
       background: transparent;
       border: 1px solid #2A2A2A;
+      border-radius: 8px;
       color: #555;
       font-family: 'Barlow Condensed', sans-serif;
       font-weight: 700;
@@ -543,20 +830,23 @@
       letter-spacing: 0.1em;
       padding: 0.625rem 1rem;
       cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
+      transition: all 0.2s ease;
     }
+    .bjj-sidebar.collapsed .bjj-sidebar-logout-btn { width: 38px; height: 38px; padding: 0; border-radius: 50%; gap: 0; }
+    .bjj-sidebar.collapsed .bjj-sidebar-logout-btn span { display: none; }
+    .bjj-sidebar.collapsed .bjj-sidebar-logout-btn svg { width: 16px; height: 16px; }
     .bjj-sidebar-logout-btn:hover {
       color: #CC0000;
       border-color: #CC0000;
     }
-
-    /* Área de conteúdo principal */
     .bjj-main-content {
       margin-left: clamp(220px, 16vw, 280px);
       flex: 1;
       display: flex;
       flex-direction: column;
+      transition: margin-left 0.25s ease;
     }
+    .bjj-sidebar.collapsed + .bjj-main-content { margin-left: 70px; }
     .bjj-main-content > .pb-safe {
       padding-top: clamp(1.25rem, 2vh, 3rem);
       padding-bottom: clamp(1.25rem, 2vh, 3rem);
@@ -566,18 +856,41 @@
       padding-right: clamp(1.25rem, 2vw, 3rem);
       margin: 0 auto;
     }
-
-    /* Esconde tab bar no desktop */
     .bjj-tab-bar { display: none !important; }
   }
 }
 
+/* ─── Animations ─── */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes slideInRight {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes scaleIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(204, 0, 0, 0.2); }
+  50% { box-shadow: 0 0 25px rgba(204, 0, 0, 0.4); }
+}
 
-/* ─── Login / Register Page ───────────────────────────────────────────────── */
+/* ─── Login / Register ─── */
 .bjj-login-wrapper {
   min-height: 100vh;
   position: relative;
@@ -641,8 +954,6 @@
 
 @media (min-width: 1024px) {
   .bjj-login-wrapper { flex-direction: row; }
-
-  /* Hero — ocupa 55% e escala proporcionalmente com o viewport */
   .bjj-login-hero {
     position: relative;
     flex: 0 0 55%;
@@ -704,8 +1015,6 @@
     line-height: 1.65;
     max-width: clamp(260px, 22vw, 380px);
   }
-
-  /* Painel direito — toma o espaço restante, padding escala com vw */
   .bjj-login-panel {
     flex: 1;
     min-width: 0;

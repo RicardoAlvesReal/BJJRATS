@@ -1,9 +1,10 @@
 // BJJRats PWA — Community Screen
-// Design: "Cage Fighter" — Brutalismo Tático
+// Design: Dark Modern — Glassmorphism + BJJ
 // Tabs: Feed (comunidade), Ranking, Desafios, Eventos
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { tabVariant, tabTransition } from '@/lib/animations';
 import api from '@/lib/api';
 import { AcademyMap } from '@/components/AcademyMap';
 import { toast } from 'sonner';
@@ -198,8 +199,8 @@ function AcademySearchByCity() {
 
   return (
     <div>
-      <div style={{ background: '#111', border: '1px solid #CC000033', borderLeft: '3px solid #CC0000', padding: '1rem', marginBottom: '1rem' }}>
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFFFFF', marginBottom: '0.25rem' }}>ENCONTRE SUA ACADEMIA</p>
+      <div className="bjj-card !border-[#CC000033]" style={{ borderLeft: '3px solid #CC0000', marginBottom: '1rem' }}>
+        <p className="bjj-header-title !text-[1rem]" style={{ marginBottom: '0.25rem' }}>ENCONTRE SUA ACADEMIA</p>
         <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#888', lineHeight: 1.5 }}>Busque por cidade, nome da academia ou professor para solicitar vínculo.</p>
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -207,21 +208,21 @@ function AcademySearchByCity() {
           type="text" value={search} onChange={e => setSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder="Ex: São Paulo, Templo BJJ..."
-          style={{ flex: 1, background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.875rem', outline: 'none' }}
+            className="bjj-input"
         />
         <button onClick={handleSearch} disabled={loading}
-          style={{ background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 1rem', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                      className="bjj-btn-primary !w-auto !text-[0.8rem] !px-4">
           {loading ? '...' : 'BUSCAR'}
         </button>
       </div>
       {searched && !loading && results.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '2rem', background: '#111', border: '1px solid #1E1E1E' }}>
+        <div style={{ textAlign: 'center', padding: '2rem' }} className="bjj-card">
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', textTransform: 'uppercase', color: '#555' }}>NENHUMA ACADEMIA ENCONTRADA</p>
           <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#444', marginTop: '0.5rem' }}>Tente outra cidade ou nome</p>
         </div>
       )}
       {results.map(a => (
-        <div key={a.professorUid} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+        <div key={a.professorUid} className="bjj-card flex gap-3 items-start">
           <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #CC0000', flexShrink: 0, background: '#1A0000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {a.academyLogoUrl ? <img src={a.academyLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.25rem' }}>🏫</span>}
           </div>
@@ -230,7 +231,7 @@ function AcademySearchByCity() {
             {(a.academyCity || a.academyState) && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', marginBottom: '0.2rem' }}>📍 {[a.academyCity, a.academyState].filter(Boolean).join(' · ')}</p>}
             <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#666', marginBottom: '0.75rem' }}>👤 Prof. {a.professorName}</p>
             <button onClick={() => handleLink(a)} disabled={linking === a.professorUid}
-              style={{ background: linking === a.professorUid ? '#333' : '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.5rem 1rem', cursor: linking === a.professorUid ? 'not-allowed' : 'pointer', width: '100%' }}>
+                              className="bjj-btn-primary !text-[0.75rem] !px-4 !py-[0.5rem] !w-auto">
               {linking === a.professorUid ? 'ENVIANDO...' : '🔗 SOLICITAR VÍNCULO'}
             </button>
           </div>
@@ -701,8 +702,8 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   return (
     <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '80px' }}>
       {/* Header */}
-      <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '2px solid #CC0000' }}>
-        <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>COMUNIDADE</h1>
+      <div className="bjj-header" style={{ borderBottom: '2px solid #CC0000' }}>
+        <h1 className="bjj-header-title !text-[1.5rem]">COMUNIDADE</h1>
       </div>
 
       {/* Tabs */}
@@ -717,13 +718,13 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={activeTab}
-          style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
+          className="bjj-content"
+          variants={tabVariant}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={tabTransition}
         >
-
         {/* ─── CONQUISTAS TAB ────────────────────────────────────────────── */}
         {activeTab === 'conquistas' && (
           <ConquistasTab
@@ -822,17 +823,17 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
 
             {/* Caixa de novo post */}
             {!showNewPost ? (
-              <button onClick={() => setShowNewPost(true)} style={{ background: '#111', border: '1px solid #2A2A2A', color: '#555', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.875rem', textAlign: 'left', cursor: 'pointer', width: '100%' }}>
+              <button onClick={() => setShowNewPost(true)} className="bjj-card !border-[#2A2A2A] !text-[#555] !text-[0.875rem] !font-['Barlow'] !p-[0.875rem] cursor-pointer w-full text-left">
                 💬 Compartilhe algo com a comunidade...
               </button>
             ) : (
-              <div style={{ background: '#111', border: '1px solid #2A2A2A', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+              <div className="bjj-card">
                 <textarea
                   value={newPostText}
                   onChange={e => setNewPostText(e.target.value)}
                   placeholder="Compartilhe algo com a comunidade..."
                   rows={3}
-                  style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', resize: 'none', boxSizing: 'border-box', lineHeight: 1.5 }}
+                    className="bjj-input !bg-[#0A0A0A] !resize-none"
                 />
 
                 {/* Preview da foto */}
@@ -867,12 +868,12 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                   {/* Botão de foto */}
                   <button
                     onClick={() => photoInputRef.current?.click()}
-                    style={{ background: 'transparent', border: '1px solid #2A2A2A', color: newPostPhoto ? '#CC0000' : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.625rem 0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }}
+                    className="bjj-btn-ghost !border !border-[#2A2A2A] !text-[0.75rem]"
                   >
                     🖼️ {newPostPhoto ? 'FOTO ✓' : 'FOTO'}
                   </button>
-                  <button onClick={() => { setShowNewPost(false); setNewPostPhoto(null); setNewPostPhotoPreview(null); }} style={{ flex: 1, background: 'transparent', border: '1px solid #2A2A2A', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer' }}>CANCELAR</button>
-                  <button onClick={handleNewPost} disabled={postingPost || (!newPostText.trim() && !newPostPhoto)} style={{ flex: 2, background: '#CC0000', border: 'none', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer', opacity: postingPost || (!newPostText.trim() && !newPostPhoto) ? 0.5 : 1 }}>
+                  <button onClick={() => { setShowNewPost(false); setNewPostPhoto(null); setNewPostPhotoPreview(null); }}                     className="bjj-btn-ghost !border !border-[#2A2A2A] !text-[0.875rem]">CANCELAR</button>
+                  <button onClick={handleNewPost} disabled={postingPost || (!newPostText.trim() && !newPostPhoto)}                     className="bjj-btn-primary !flex-[2]">
                     {postingPost ? 'PUBLICANDO...' : 'PUBLICAR'}
                   </button>
                 </div>
@@ -885,7 +886,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
               <>
                 {/* Posts da comunidade */}
                 {communityPosts.length === 0 ? (
-                  <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
+                  <div className="bjj-card !text-center" style={{ padding: '2rem' }}>
                     <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📰</p>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM POST AINDA</p>
                     <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#444', marginTop: '0.5rem' }}>Seja o primeiro a compartilhar algo!</p>
@@ -898,7 +899,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                 const postTypeColor = post.type ? POST_TYPE_COLORS[post.type] || '#555' : '#555';
 
                 return (
-                  <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', position: 'relative' }}>
+                  <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} className="bjj-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
                         <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: `2px solid ${beltColor}`, background: beltColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
@@ -930,7 +931,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                     {post.text && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#CCC', lineHeight: 1.6, marginBottom: '0.75rem', whiteSpace: 'pre-line' }}>{post.text}</p>}
                     {post.photoURL && <img src={post.photoURL} alt="" style={{ width: '100%', maxHeight: '300px', objectFit: 'cover', marginBottom: '0.75rem' }} />}
                     {post.trainingData && (
-                      <div style={{ background: '#0A0A0A', border: '1px solid #CC000033', borderLeft: '3px solid #CC0000', padding: '0.625rem 0.75rem', marginBottom: '0.75rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                      <div className="bjj-card !bg-[#0A0A0A] !border-[#CC000033]" style={{ borderLeft: '3px solid #CC0000' }}>
                         <div style={{ display: 'flex', flex: 1, gap: '1rem', flexWrap: 'wrap' }}>
                           {[
                             { label: 'TIPO', value: post.trainingData.sessionType || '—' },
@@ -982,7 +983,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                                       : <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.55rem', color: cBelt }}>{(c.authorName || 'A')[0].toUpperCase()}</span>
                                     }
                                   </div>
-                                  <div style={{ flex: 1, background: '#0A0A0A', border: '1px solid #1E1E1E', padding: '0.375rem 0.625rem' }}>
+                                  <div className="bjj-card !bg-[#0A0A0A] !p-[0.375rem_0.625rem]" style={{ border: '1px solid #1E1E1E' }}>
                                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: cBelt, marginBottom: '0.2rem' }}>{c.authorName}</p>
                                     <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#CCC', lineHeight: 1.4 }}>{c.text}</p>
                                   </div>
@@ -1000,12 +1001,12 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                               onChange={e => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
                               onKeyDown={e => { if (e.key === 'Enter') handlePostComment(post); }}
                               placeholder="Escreva um comentário..."
-                              style={{ flex: 1, background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#CCC', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', padding: '0.5rem 0.75rem', outline: 'none' }}
+                              className="bjj-input !bg-[#0A0A0A] !text-[0.8rem] !p-[0.5rem_0.75rem]"
                             />
                             <button
                               onClick={() => handlePostComment(post)}
                               disabled={postingComment === post.id || !(commentText[post.id] || '').trim()}
-                              style={{ background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer', opacity: postingComment === post.id ? 0.6 : 1, flexShrink: 0 }}
+                              className="bjj-btn-primary !text-[0.75rem] !px-3 !py-[0.5rem] !w-auto"
                             >
                               {postingComment === post.id ? '...' : 'OK'}
                             </button>
@@ -1032,7 +1033,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
             {challengesLoading ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
             ) : challenges.length === 0 ? (
-              <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
+              <div className="bjj-card !text-center" style={{ padding: '2rem' }}>
                 <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚔️</p>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM DESAFIO ATIVO</p>
                 <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#444', marginTop: '0.5rem' }}>Os desafios criados pelo seu professor aparecerão aqui.</p>
@@ -1048,7 +1049,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                 const daysLeft = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86400000));
 
                 return (
-                  <div key={ch.id} style={{ background: '#111', border: `1px solid ${isCompleted ? '#CC8800' : '#1E1E1E'}`, padding: '1rem' }}>
+                  <div key={ch.id} className="bjj-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.625rem' }}>
                       <div>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFFFFF' }}>{ch.title}</p>
@@ -1100,7 +1101,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
             {eventsLoading ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
             ) : events.length === 0 ? (
-              <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
+              <div className="bjj-card !text-center" style={{ padding: '2rem' }}>
                 <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📅</p>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM EVENTO</p>
                 <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#444', marginTop: '0.5rem' }}>Eventos criados por professores aparecerão aqui.</p>

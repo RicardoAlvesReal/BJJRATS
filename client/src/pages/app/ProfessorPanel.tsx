@@ -5,6 +5,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
+import { tabVariant, tabTransition } from '@/lib/animations';
+import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import api from '@/lib/api';
 import { sendOverdueWhatsApp, sendSuspendWhatsApp, sendLowFrequencyWhatsApp } from '@/lib/whatsappService';
 import { useAuth } from '@/contexts/AuthContext';
@@ -154,14 +156,6 @@ interface TrainRequest {
   createdAtStr: string;
   read: boolean;
 }
-
-const BELT_COLORS: Record<string, string> = {
-  Branca: '#FFFFFF',
-  Azul: '#1A6ECC',
-  Roxa: '#7C1ACC',
-  Marrom: '#8B4513',
-  Preta: '#888888',
-};
 
 const PANEL_TABS: { id: PanelTab; label: string; icon: string }[] = [
   { id: 'overview', label: 'VISÃO GERAL', icon: '📊' },
@@ -1300,12 +1294,12 @@ export default function ProfessorPanel({ onBack }: Props) {
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-          >
-        {/* ── Visão Geral ── */}
+            variants={tabVariant}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={tabTransition}
+          >        {/* ── Visão Geral ── */}
         {activeTab === 'overview' && (
           <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {/* Academia info */}
@@ -1951,11 +1945,11 @@ export default function ProfessorPanel({ onBack }: Props) {
             </div>
             <motion.div
               key={membersSubTab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
-            >
-            {/* Sub-aba: Lista */}
+              variants={tabVariant}
+              initial="initial"
+              animate="animate"
+              transition={tabTransition}
+            >            {/* Sub-aba: Lista */}
             {membersSubTab === 'list' && (
               <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.625rem' }}>
@@ -2190,11 +2184,11 @@ export default function ProfessorPanel({ onBack }: Props) {
           </div>
           <motion.div
             key={financialSubTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-          >
-          {/* ─── Sub-aba: MATRÍCULAS ────────────────────────────────────────────────────────────────────── */}
+            variants={tabVariant}
+            initial="initial"
+            animate="animate"
+            transition={tabTransition}
+          >          {/* ─── Sub-aba: MATRÍCULAS ────────────────────────────────────────────────────────────────────── */}
           {financialSubTab === 'enrollments' && (() => {
             // Membros da academia sem matrícula ativa
             const enrolledUids = new Set(enrollments.filter(e => e.status !== 'cancelled').map(e => e.studentUid));
@@ -3712,9 +3706,7 @@ function FrequenciaTab({ professorUid, accentColor }: { professorUid: string; ac
     setSelectedDay(null);
   };
 
-  const BELT_COLORS_LOCAL: Record<string, string> = {
-    Branca: '#FFFFFF', Azul: '#1A6ECC', Roxa: '#8B2FC9', Marrom: '#8B4513', Preta: '#333333',
-  };
+  const BELT_COLORS_LOCAL = BELT_COLORS;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 1.25rem', paddingBottom: '80px' }}>
@@ -4461,11 +4453,6 @@ function RelatoriosTab({
       });
     });
     toast.success(`${targets.length} janela(s) do WhatsApp abertas`);
-  };
-
-  const BELT_COLORS: Record<string, string> = {
-    'Branca': '#FFF', 'Azul': '#4A90D9', 'Roxa': '#9B59B6',
-    'Marrom': '#8B4513', 'Preta': '#333',
   };
 
   const S = {

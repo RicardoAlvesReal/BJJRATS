@@ -1,9 +1,11 @@
 // BJJRats PWA — Academy Screen
-// Design: "Cage Fighter" — Brutalismo Tático
+// Design: Dark Modern — Glassmorphism + BJJ
 // Feed da academia, eventos, desafios, membros, painel admin
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { tabVariant, tabTransition } from '@/lib/animations';
+import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import AcademySearch from './AcademySearch';
@@ -85,11 +87,6 @@ interface Member {
   athleteType?: string;
   isAcademyAdmin?: boolean;
 }
-
-const BELT_COLORS: Record<string, string> = {
-  Branca: '#FFFFFF', Azul: '#1A6ECC', Roxa: '#7C1ACC',
-  Marrom: '#8B4513', Preta: '#111111',
-};
 
 const EVENT_TYPES = [
   { id: 'seminario', label: 'Seminário', color: '#0D9E6E' },
@@ -505,7 +502,7 @@ export default function Academy() {
   return (
     <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '5rem' }}>
       {/* Header */}
-      <div style={{ background: '#0A0A0A', borderBottom: '1px solid #1E1E1E', padding: '1rem 1.25rem 0' }}>
+      <div className="bjj-header" style={{ background: '#0A0A0A', borderBottom: '1px solid #1E1E1E', padding: '1rem 1.25rem 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             {/* Logo da academia */}
@@ -524,7 +521,7 @@ export default function Academy() {
               );
             })()}
             <div>
-              <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF', lineHeight: 1 }}>
+              <h1 className="bjj-header-title" style={{ lineHeight: 1 }}>
                 {profile?.academy || 'ACADEMIA'}
               </h1>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', textTransform: 'uppercase', color: '#555', letterSpacing: '0.1em' }}>
@@ -554,19 +551,19 @@ export default function Academy() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
-        >
-      {/* ─── Feed Tab ───────────────────────────────────────────────────────────── */}
+          variants={tabVariant}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={tabTransition}
+        >      {/* ─── Feed Tab ───────────────────────────────────────────────────────────── */}
       {activeTab === 'feed' && (
         <div
           ref={feedContainerRef}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', position: 'relative' }}
+          className="bjj-content"
         >
           {/* Pull to refresh indicator */}
           {pullDistance > 0 && (
@@ -596,7 +593,7 @@ export default function Academy() {
           {/* Caixa de postagem para TODOS os membros */}
           <button
             onClick={() => setShowStudentPostModal(true)}
-            style={{ background: '#111', border: '1px solid #2A2A2A', color: '#555', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.875rem 1rem', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.75rem', borderRadius: '2px' }}
+            className="bjj-card !border-[#2A2A2A] !text-[#555] !text-[0.875rem] !font-['Barlow'] !p-[0.875rem_1rem] !rounded-[2px] flex items-center gap-3 cursor-pointer text-left"
           >
             <span style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#1A1A1A', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.875rem' }}>💬</span>
             <span>Compartilhe algo com a academia...</span>
@@ -605,7 +602,7 @@ export default function Academy() {
           {postsLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
           ) : posts.length === 0 ? (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2.5rem', textAlign: 'center' }}>
+            <div className="bjj-card !text-center" style={{ padding: '2.5rem' }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM POST AINDA</p>
               <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#444', marginTop: '0.5rem' }}>Seja o primeiro a postar algo para a academia!</p>
             </div>
@@ -623,7 +620,7 @@ export default function Academy() {
               const postText = post.text || post.content || '';
               const authorPhoto = post.authorPhotoURL || postAny.authorPhoto || null;
               return (
-                <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: `3px solid ${isTrainingPost ? '#CC0000' : typeColor}`, padding: '1rem' }}>
+                <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} className="bjj-card" style={{ borderLeft: `3px solid ${isTrainingPost ? '#CC0000' : typeColor}` }}>
                   {/* Header: avatar + nome + badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                     <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
@@ -716,7 +713,7 @@ export default function Academy() {
                                     : <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.55rem', color: cBelt }}>{(c.authorName || 'A')[0].toUpperCase()}</span>
                                   }
                                 </div>
-                                <div style={{ flex: 1, background: '#0A0A0A', border: '1px solid #1E1E1E', padding: '0.375rem 0.625rem' }}>
+                                <div className="bjj-card !bg-[#0A0A0A] !p-[0.375rem_0.625rem]" style={{ border: '1px solid #1E1E1E' }}>
                                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: cBelt, marginBottom: '0.2rem' }}>{c.authorName}</p>
                                   <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#CCC', lineHeight: 1.4 }}>{c.text}</p>
                                 </div>
@@ -734,12 +731,12 @@ export default function Academy() {
                             onChange={e => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
                             onKeyDown={e => { if (e.key === 'Enter') handlePostComment(post); }}
                             placeholder="Escreva um comentário..."
-                            style={{ flex: 1, background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#CCC', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', padding: '0.5rem 0.75rem', outline: 'none' }}
+                            className="bjj-input !bg-[#0A0A0A] !text-[0.8rem] !p-[0.5rem_0.75rem]"
                           />
                           <button
                             onClick={() => handlePostComment(post)}
                             disabled={postingComment === post.id || !(commentText[post.id] || '').trim()}
-                            style={{ background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer', opacity: postingComment === post.id ? 0.6 : 1, flexShrink: 0 }}
+                            className="bjj-btn-primary !text-[0.75rem] !px-3 !py-[0.5rem] !w-auto"
                           >
                             {postingComment === post.id ? '...' : 'OK'}
                           </button>
@@ -756,16 +753,16 @@ export default function Academy() {
 
       {/* ─── Events Tab ───────────────────────────────────────────────────────── */}
       {activeTab === 'events' && (
-        <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="bjj-content">
           {isAdmin && (
-            <button onClick={() => setShowEventoModal(true)} style={{ background: '#1A6ECC', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', border: 'none', cursor: 'pointer' }}>
+            <button onClick={() => setShowEventoModal(true)} className="bjj-btn-primary !bg-[#1A6ECC]">
               + CRIAR EVENTO
             </button>
           )}
           {eventsLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
           ) : events.length === 0 ? (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2.5rem', textAlign: 'center' }}>
+            <div className="bjj-card !text-center" style={{ padding: '2.5rem' }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM EVENTO</p>
             </div>
           ) : (
@@ -790,7 +787,7 @@ export default function Academy() {
                 }
               };
               return (
-                <div key={event.id} style={{ background: '#111', border: `1px solid ${isRegistered ? '#0D9E6E' : '#1E1E1E'}`, borderLeft: `3px solid ${evType.color}`, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                <div key={event.id} className="bjj-card" style={{ borderLeft: `3px solid ${evType.color}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.4rem', border: `1px solid ${evType.color}`, background: evType.color + '20', color: evType.color }}>
                       {evType.label}
@@ -857,12 +854,12 @@ export default function Academy() {
 
       {/* ─── Challenges Tab ───────────────────────────────────────────────────── */}
       {activeTab === 'challenges' && (
-        <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="bjj-content">
 
           {challengesLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
           ) : challenges.length === 0 ? (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2.5rem', textAlign: 'center' }}>
+            <div className="bjj-card !text-center" style={{ padding: '2.5rem' }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM DESAFIO ATIVO</p>
             </div>
           ) : (
@@ -895,7 +892,7 @@ export default function Academy() {
           {membersLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
           ) : members.length === 0 ? (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2.5rem', textAlign: 'center' }}>
+            <div className="bjj-card !text-center" style={{ padding: '2.5rem' }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM MEMBRO</p>
             </div>
           ) : (
@@ -1389,7 +1386,7 @@ const TYPE_COLOR: Record<string, string> = {
   'Open Mat': '#25D366', 'Gi': '#4A90D9', 'No-Gi': '#9B59B6', 'Outro': '#888',
 };
 const SCHEDULE_BELT_COLORS: Record<string, string> = {
-  'Branca': '#FFFFFF', 'Azul': '#1E90FF', 'Roxa': '#8B4FBF', 'Marrom': '#8B4513', 'Preta': '#111',
+  ...BELT_COLORS,
 };
 
 function AcademyScheduleView({ professorUid, userId, userProfile }: {

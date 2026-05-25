@@ -2,9 +2,12 @@
 // Design: "Cage Fighter" — Brutalismo Tático
 // Identical to mobile app: achievements, athlete type, belt progress, stats, edit profile
 import { useState, useCallback, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { fadeUp, staggerContainer } from '@/lib/animations';
+import { COLORS } from '@/lib/design';
 import {
   Training, BELT_COLORS, BELTS, ACHIEVEMENTS, SESSION_TYPES,
   calcXP, calcStreak, parseTrainingDate, topTecnicas,
@@ -48,8 +51,7 @@ interface ProfileProps {
 }
 
 export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps = {}) {
-  const { user, profile, refreshProfile, logout, updateProfileData } = useAuth();
-  const [loggingOut, setLoggingOut] = useState(false);
+  const { user, profile, refreshProfile, updateProfileData } = useAuth();
   const [unlinking, setUnlinking] = useState(false);
 
   const handleUnlinkAcademy = async () => {
@@ -63,17 +65,6 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
       toast.error('Erro ao desvincular da academia');
     } finally {
       setUnlinking(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    if (!confirm('Deseja sair da sua conta?')) return;
-    setLoggingOut(true);
-    try {
-      await logout();
-    } catch {
-      toast.error('Erro ao sair');
-      setLoggingOut(false);
     }
   };
   const [trainings, setTrainings] = useState<Training[]>([]);
@@ -125,8 +116,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const loadCompetitions = useCallback(async () => {
     if (!user) return;
     try {
-      const compList = await api.users.list() as any[]; // competitions not on API; use local state
-      setCompetitions(compList.filter((c: any) => c.uid === user.uid).sort((a: any, b: any) => (b.date || '').localeCompare(a.date || '')));
+      const compList = await api.competitions.list(user.uid);
+      setCompetitions(compList.sort((a: any, b: any) => (b.date || '').localeCompare(a.date || '')));
     } catch { /* silencioso */ }
   }, [user]);
 
@@ -134,7 +125,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
     if (!user || !compForm.name || !compForm.date) return;
     setSavingComp(true);
     try {
-      const data = {
+      await api.competitions.create({
         uid: user.uid,
         name: compForm.name || '',
         date: compForm.date || '',
@@ -143,12 +134,10 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
         weightClass: compForm.weightClass || '',
         result: compForm.result || 'gold',
         notes: compForm.notes || '',
-        createdAt: new Date(),
-      };
-      const newComp: Competition = { id: Date.now().toString(), uid: user.uid, ...data } as Competition;
-      setCompetitions(prev => [newComp, ...prev]);
+      });
       setCompForm({ name: '', date: '', location: '', category: '', weightClass: '', result: 'gold', notes: '' });
       setShowCompForm(false);
+      await loadCompetitions();
       toast.success('Competição registrada!');
     } catch {
       toast.error('Erro ao salvar competição');
@@ -160,6 +149,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const handleDeleteCompetition = async (id: string) => {
     if (!confirm('Remover esta competição?')) return;
     try {
+      await api.competitions.delete(id);
       setCompetitions(prev => prev.filter(c => c.id !== id));
       toast.success('Competição removida');
     } catch {
@@ -243,6 +233,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const unlockedAchievements = ACHIEVEMENTS.filter(a => a.check(trainings));
   const beltColor = BELT_COLORS[profile?.belt || 'Branca'] || '#FFFFFF';
   const athleteType = ATHLETE_TYPES.find(t => t.id === profile?.athleteType) || ATHLETE_TYPES[2];
+  const fadeUpVariant = fadeUp as any;
+  const containerVariant = staggerContainer as any;
 
   // ── Stats detalhadas ──────────────────────────────────────────────────────
   const treinsWeek = treinsNaSemana(trainings);
@@ -427,18 +419,19 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
 
   if (editing) {
     return (
-      <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '80px' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '2px solid #CC0000', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', color: '#CC0000', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
+      <div className="bg-background min-h-screen">
+        <div className="bjj-header">
+          <button onClick={() => setEditing(false)} className="text-[#CC0000] bg-none border-none cursor-pointer p-1 flex items-center">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>EDITAR PERFIL</h1>
+          <h1 className="bjj-header-title">EDITAR PERFIL</h1>
+          <div className="w-5" />
         </div>
-        <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        <div className="bjj-content">
 
           {/* Foto de perfil */}
           <div>
-            <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>FOTO DE PERFIL</label>
+            <label className="bjj-label">FOTO DE PERFIL</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
               <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: '#111', border: `2px solid ${profile?.belt ? (BELT_COLORS[profile.belt] || '#CC0000') : '#CC0000'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                 {profile?.photo
@@ -456,21 +449,21 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             { key: 'name', label: 'NOME', placeholder: 'Seu nome' },
           ].map(f => (
             <div key={f.key}>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>{f.label}</label>
-              <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+              <label className="bjj-label">{f.label}</label>
+              <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} className="bjj-input" />
             </div>
           ))}
 
           {/* Academia — busca academias reais cadastradas por professores */}
           <div style={{ position: 'relative' }}>
-            <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>ACADEMIA</label>
+            <label className="bjj-label">ACADEMIA</label>
             <input
               type="text"
               value={academySearch}
               onChange={e => { setAcademySearch(e.target.value); setAcademySearchOpen(true); searchAcademies(e.target.value); }}
               onFocus={() => setAcademySearchOpen(true)}
               placeholder="Buscar academia cadastrada..."
-              style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', boxSizing: 'border-box' }}
+              className="bjj-input"
             />
             {searchingAcademy && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.375rem' }}>Buscando...</p>}
             {academySearchOpen && academyResults.length > 0 && (
@@ -501,8 +494,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
 
           {/* Professor — preenchido automaticamente ao selecionar academia */}
           <div>
-            <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>PROFESSOR</label>
-            <input type="text" value={editForm.professor || ''} onChange={e => setEditForm((p: any) => ({ ...p, professor: e.target.value }))} placeholder="Nome do professor" style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+            <label className="bjj-label">PROFESSOR</label>
+            <input type="text" value={editForm.professor || ''} onChange={e => setEditForm((p: any) => ({ ...p, professor: e.target.value }))} placeholder="Nome do professor" className="bjj-input" />
           </div>
 
           {[
@@ -511,12 +504,12 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             { key: 'heightCm', label: 'ALTURA (CM)', placeholder: 'Ex: 175' },
           ].map(f => (
             <div key={f.key}>
-              <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>{f.label}</label>
-              <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+              <label className="bjj-label">{f.label}</label>
+              <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} className="bjj-input" />
             </div>
           ))}
           <div>
-            <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>FAIXA</label>
+            <label className="bjj-label">FAIXA</label>
             <div style={{ display: 'flex', gap: '0.375rem' }}>
               {BELTS.map(b => (
                 <button key={b} type="button" onClick={() => setEditForm((p: any) => ({ ...p, belt: b }))} style={{ flex: 1, padding: '0.5rem', border: `2px solid ${editForm.belt === b ? (BELT_COLORS[b] || '#CC0000') : '#2A2A2A'}`, background: editForm.belt === b ? (BELT_COLORS[b] || '#CC0000') + '30' : '#111', color: editForm.belt === b ? (BELT_COLORS[b] || '#CC0000') : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', cursor: 'pointer' }}>
@@ -526,7 +519,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             </div>
           </div>
           <div>
-            <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', display: 'block', marginBottom: '0.5rem' }}>TIPO DE ATLETA</label>
+            <label className="bjj-label">TIPO DE ATLETA</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
               {ATHLETE_TYPES.map(t => (
                 <button key={t.id} type="button" onClick={() => setEditForm((p: any) => ({ ...p, athleteType: t.id }))} style={{ padding: '0.75rem', border: `2px solid ${editForm.athleteType === t.id ? '#CC0000' : '#2A2A2A'}`, background: editForm.athleteType === t.id ? '#1A0000' : '#111', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -539,7 +532,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               ))}
             </div>
           </div>
-          <button onClick={handleSave} disabled={saving} style={{ background: '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1.125rem', border: 'none', width: '100%', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+          <button onClick={handleSave} disabled={saving} className="bjj-btn-primary">
             {saving ? 'SALVANDO...' : 'SALVAR PERFIL'}
           </button>
         </div>
@@ -564,8 +557,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   }
 
   return (
-    <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '80px' }}>
-      {/* Modal de compartilhamento de stats */}
+    <div className="bg-background min-h-screen">
       {showShareCard && (
         <StatsShareCard
           trainings={trainings}
@@ -576,136 +568,132 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           onClose={() => setShowShareCard(false)}
         />
       )}
-      {/* Header */}
-      <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '2px solid #CC0000', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>MEU PERFIL</h1>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+      <div className="bjj-header">
+        <h1 className="bjj-header-title">MEU PERFIL</h1>
+        <div className="flex gap-2 items-center">
           {(profile?.role === 'superadmin' || profile?.role === 'admin') && (
-            <a href="/admin" style={{ background: '#1A0000', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', textDecoration: 'none' }}>
-              ⚙️ ADMIN
-            </a>
+            <a href="/admin" className="text-[0.65rem] font-bold uppercase tracking-[0.05em] px-2.5 py-1.5 rounded border border-[#CC0000] bg-[#1A0000] text-[#CC0000] no-underline flex items-center gap-1 font-['Barlow_Condensed']">⚙️ ADMIN</a>
           )}
           {onOpenProfessorPanel && (
-            <button onClick={onOpenProfessorPanel} style={{ background: '#001A33', border: '1px solid #1A6ECC', color: '#1A6ECC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              🏫 PAINEL
-            </button>
+            <button onClick={onOpenProfessorPanel} className="text-[0.65rem] font-bold uppercase tracking-[0.05em] px-2.5 py-1.5 rounded border border-[#1A6ECC] bg-[#001A33] text-[#1A6ECC] cursor-pointer flex items-center gap-1 font-['Barlow_Condensed']">🏫 PAINEL</button>
           )}
-          <button onClick={handleEditOpen} style={{ background: 'none', border: '1px solid #333', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.5rem 0.875rem', cursor: 'pointer' }}>
-            EDITAR
-          </button>
+          <button onClick={handleEditOpen} className="bjj-btn-ghost !text-[0.65rem] !px-2.5 !py-1.5 !border !border-[#333]">EDITAR</button>
         </div>
       </div>
 
-      <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <motion.div variants={containerVariant} initial="hidden" animate="show" className="bjj-content">
 
         {/* Profile card */}
-        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1.25rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <div style={{ width: '72px', height: '72px', borderRadius: '50%', border: `3px solid ${beltColor}`, background: beltColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-            {profile?.photo ? <img src={profile.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '2rem' }}>🥋</span>}
+        <motion.div variants={fadeUpVariant} className="bjj-card flex gap-4 items-center">
+          <div
+            className="w-[72px] h-[72px] rounded-full flex items-center justify-center shrink-0 overflow-hidden"
+            style={{ border: `3px solid ${beltColor}`, background: beltColor + '20' }}
+          >
+            {profile?.photo ? <img src={profile.photo} alt="" className="w-full h-full object-cover" /> : <span className="text-2xl">🥋</span>}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.name || 'ATLETA'}</p>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: beltColor, marginTop: '0.125rem' }}>Faixa {profile?.belt || 'Branca'}</p>
-            {profile?.academy && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏫 {profile.academy}</p>}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <span style={{ fontSize: '1rem' }}>{athleteType.icon}</span>
-              <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#888' }}>{athleteType.label}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[1.25rem] font-black text-white uppercase tracking-[0.05em] truncate font-['Barlow_Condensed']">{profile?.name || 'ATLETA'}</p>
+            <p className="text-[0.875rem] font-bold font-['Barlow_Condensed'] mt-0.5" style={{ color: beltColor }}>Faixa {profile?.belt || 'Branca'}</p>
+            {profile?.academy && <p className="text-[0.75rem] text-[#555] truncate mt-1 font-['Barlow']">🏫 {profile.academy}</p>}
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-base">{athleteType.icon}</span>
+              <span className="text-[0.75rem] text-[#888] font-['Barlow_Condensed']">{athleteType.label}</span>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* XP / Level */}
-        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.5rem' }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFFFFF' }}>NÍVEL {currentLevel.level} — {currentLevel.name.toUpperCase()}</p>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#CC0000' }}>{userXP} XP</p>
+        <motion.div variants={fadeUpVariant} className="bjj-card">
+          <div className="flex justify-between items-baseline mb-2">
+            <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed']">NÍVEL {currentLevel.level} — {currentLevel.name.toUpperCase()}</p>
+            <p className="text-[1.25rem] font-black text-[#CC0000] font-['Barlow_Condensed']">{userXP} XP</p>
           </div>
-          <div style={{ background: '#080808', height: '6px', overflow: 'hidden' }}>
-            <div style={{ background: '#CC0000', height: '6px', width: `${xpProgress}%`, transition: 'width 0.5s ease' }} />
+          <div className="bjj-xp-bar">
+            <div className="bjj-xp-bar-fill" style={{ width: `${xpProgress}%` }} />
           </div>
-        </div>
+        </motion.div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+        <motion.div variants={fadeUpVariant} className="grid grid-cols-2 gap-2">
           {[
             { label: 'TREINOS', value: trainings.length, icon: '🥋' },
             { label: 'HORAS', value: `${hrs}h`, icon: '⏱' },
             { label: 'STREAK', value: `${str} dias`, icon: '🔥' },
             { label: 'CONQUISTAS', value: `${unlockedAchievements.length}/${ACHIEVEMENTS.length}`, icon: '🏆' },
           ].map(s => (
-            <div key={s.label} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.875rem', textAlign: 'center' }}>
-              <p style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>{s.icon}</p>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', color: '#FFFFFF', lineHeight: 1 }}>{s.value}</p>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>{s.label}</p>
+            <div key={s.label} className="bjj-stat-card">
+              <p className="text-[1.25rem] mb-1">{s.icon}</p>
+              <p className="bjj-stat-number">{s.value}</p>
+              <p className="text-[0.55rem] tracking-[0.1em] text-[#555] font-['Barlow_Condensed'] mt-1">{s.label}</p>
             </div>
           ))}
-        </div>
+        </motion.div>
 
         {/* Belt progress */}
-        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', marginBottom: '0.75rem' }}>🥋 PROGRESSÃO DE FAIXA</p>
-          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.375rem' }}>
+        <motion.div variants={fadeUpVariant} className="bjj-card">
+          <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-3">🥋 PROGRESSÃO DE FAIXA</p>
+          <div className="flex gap-1 mb-1.5">
             {BELTS.map((b, i) => {
               const beltIdx = BELTS.indexOf(profile?.belt as any || 'Branca');
               const isActive = i <= beltIdx;
-              return <div key={b} style={{ flex: 1, height: '10px', background: isActive ? (BELT_COLORS[b] || '#CC0000') : '#1A1A1A', border: b === profile?.belt ? `1px solid ${BELT_COLORS[b]}` : '1px solid transparent', transition: 'all 0.3s' }} />;
+              return <div key={b} className="flex-1 h-2.5 transition-all duration-300" style={{ background: isActive ? (BELT_COLORS[b] || '#CC0000') : '#1A1A1A', border: b === profile?.belt ? `1px solid ${BELT_COLORS[b]}` : '1px solid transparent' }} />;
             })}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div className="flex justify-between">
             {BELTS.map(b => (
-              <p key={b} style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', color: b === profile?.belt ? BELT_COLORS[b] : '#333', textTransform: 'uppercase', textAlign: 'center', flex: 1 }}>{b.substring(0, 3)}</p>
+              <p key={b} className="text-[0.55rem] uppercase text-center flex-1 font-['Barlow_Condensed']" style={{ color: b === profile?.belt ? BELT_COLORS[b] : '#333' }}>{b.substring(0, 3)}</p>
             ))}
           </div>
-        </div>
+        </motion.div>
 
         {/* Top techniques */}
         {tecnicas.length > 0 && (
-          <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', marginBottom: '0.75rem' }}>🥋 TÉCNICAS FAVORITAS</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <motion.div variants={fadeUpVariant} className="bjj-card">
+            <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-3">🥋 TÉCNICAS FAVORITAS</p>
+            <div className="flex flex-col gap-2">
               {tecnicas.map((t, i) => {
                 const maxQtd = tecnicas[0].qtd;
                 const pct = Math.round((t.qtd / maxQtd) * 100);
                 return (
                   <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#CCC', textTransform: 'uppercase' }}>{t.nome}</p>
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: '#CC0000' }}>{t.qtd}x</p>
+                    <div className="flex justify-between mb-1">
+                      <p className="text-[0.75rem] text-[#CCC] uppercase font-['Barlow_Condensed']">{t.nome}</p>
+                      <p className="text-[0.75rem] font-bold text-[#CC0000] font-['Barlow_Condensed']">{t.qtd}x</p>
                     </div>
-                    <div style={{ background: '#0D0D0D', height: '4px' }}>
-                      <div style={{ background: '#CC0000', height: '4px', width: `${pct}%` }} />
+                    <div className="h-1 bg-[#0D0D0D]">
+                      <div className="h-1 bg-[#CC0000] transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Achievements */}
-        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF' }}>🏆 CONQUISTAS</p>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: '#CC0000' }}>{unlockedAchievements.length}/{ACHIEVEMENTS.length}</p>
+        <motion.div variants={fadeUpVariant} className="bjj-card">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed']">🏆 CONQUISTAS</p>
+            <p className="text-[0.75rem] font-bold text-[#CC0000] font-['Barlow_Condensed']">{unlockedAchievements.length}/{ACHIEVEMENTS.length}</p>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+          <div className="grid grid-cols-3 gap-2">
             {ACHIEVEMENTS.map(a => {
               const unlocked = a.check(trainings);
               return (
-                <div key={a.id} style={{ background: unlocked ? '#1A0000' : '#0D0D0D', border: `1px solid ${unlocked ? '#CC0000' : '#1A1A1A'}`, padding: '0.75rem', textAlign: 'center', opacity: unlocked ? 1 : 0.4 }}>
-                  <p style={{ fontSize: '1.5rem', marginBottom: '0.375rem' }}>{a.icon}</p>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', color: unlocked ? '#FFFFFF' : '#555', lineHeight: 1.3 }}>{a.title}</p>
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.55rem', color: '#555', marginTop: '0.25rem', lineHeight: 1.3 }}>{a.desc}</p>
+                <div key={a.id} className="text-center p-3 rounded-lg transition-all" style={{ background: unlocked ? '#1A0000' : '#0D0D0D', border: `1px solid ${unlocked ? '#CC0000' : '#1A1A1A'}`, opacity: unlocked ? 1 : 0.4 }}>
+                  <p className="text-[1.5rem] mb-1.5">{a.icon}</p>
+                  <p className="text-[0.65rem] font-black uppercase font-['Barlow_Condensed']" style={{ color: unlocked ? '#FFF' : '#555' }}>{a.title}</p>
+                  <p className="text-[0.55rem] text-[#555] mt-1 leading-tight font-['Barlow']">{a.desc}</p>
                 </div>
               );
             })}
           </div>
-        </div>
+        </motion.div>
 
         {/* ── ESTATÍSTICAS DETALHADAS (apenas alunos) ── */}
         {profile?.role !== 'professor' && trainings.length > 0 && (
-          <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF' }}>📊 ESTATÍSTICAS DETALHADAS</p>
+          <motion.div variants={fadeUpVariant} className="bjj-card">
+            <p className="bjj-header-title !text-[0.875rem]">📊 ESTATÍSTICAS DETALHADAS</p>
 
             {/* Grade de métricas principais */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
@@ -1005,14 +993,14 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.625rem' }}>
                   <button
                     onClick={() => setShowHistory(true)}
-                    style={{ flex: 1, background: '#111', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.625rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem' }}
+                  className="bjj-btn-ghost !flex-1 !text-[0.7rem] !justify-center !border !border-[#2A2A2A] !text-[#888] !px-[0.625rem] !py-[0.625rem]"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                     VER HISTÓRICO COMPLETO {trainings.length > 5 ? `(+${trainings.length - 5})` : ''}
                   </button>
                   <button
                     onClick={() => setShowShareCard(true)}
-                    style={{ background: '#1A0000', border: '1px solid #CC000044', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.625rem 0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }}
+                    className="bjj-btn-ghost !bg-[#1A0000] !border !border-[#CC000044] !text-[#CC0000] !text-[0.7rem] !px-[0.875rem] !py-[0.625rem] !justify-center"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                     STATS
@@ -1021,12 +1009,12 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               </div>
             )}
 
-          </div>
+          </motion.div>
         )}
 
         {/* Seção exclusiva do Professor */}
         {profile?.role === 'professor' && (
-          <div style={{ background: '#001A33', border: '1px solid #1A6ECC', padding: '1rem' }}>
+          <div className="bjj-card !bg-[#001A33] !border-[#1A6ECC]">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A6ECC', marginBottom: '1rem' }}>🏫 IDENTIDADE DA ACADEMIA</p>
 
             {/* Logomarca */}
@@ -1121,7 +1109,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               <button
                 onClick={handleSaveEmailConfig}
                 disabled={savingEmailConfig}
-                style={{ width: '100%', background: savingEmailConfig ? '#1A0F00' : '#FF8C00', border: 'none', color: '#000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.75rem', cursor: savingEmailConfig ? 'not-allowed' : 'pointer', opacity: savingEmailConfig ? 0.7 : 1 }}
+                className="bjj-btn-primary !bg-[#FF8C00] !text-[#000] !text-[0.8rem]"
               >
                 {savingEmailConfig ? 'SALVANDO...' : '💾 SALVAR CONFIGURAÇÕES DE E-MAIL'}
               </button>
@@ -1144,7 +1132,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                     const code = user?.uid ? user.uid.substring(0, 6).toUpperCase() : '';
                     navigator.clipboard.writeText(code).then(() => toast.success('Código copiado!')).catch(() => toast.error('Erro ao copiar'));
                   }}
-                  style={{ background: '#1A6ECC', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem 1rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  className="bjj-btn-primary !bg-[#1A6ECC] !w-auto !text-[0.75rem] !px-4 !py-[0.875rem]"
                 >
                   COPIAR
                 </button>
@@ -1152,10 +1140,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             </div>
           </div>
         )}
-
-        {/* Histórico de promoções */}
         {promotions.length > 0 && (
-          <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
+          <div className="bjj-card">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', marginBottom: '1rem' }}>🏅 HISTÓRICO DE PROMOÇÕES</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {promotions.map((p) => {
@@ -1178,12 +1164,13 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
         )}
 
         {/* Histórico de Competições */}
-        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
+        <div className="bjj-card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', margin: 0 }}>🏅 COMPETIÇÕES</p>
             <button
               onClick={() => setShowCompForm(v => !v)}
-              style={{ background: showCompForm ? '#1A1A1A' : '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.35rem 0.75rem', cursor: 'pointer' }}
+              className="bjj-btn-ghost !bg-[#CC0000] !text-[#FFF] !text-[0.75rem] !px-3 !py-[0.35rem]"
+              style={{ background: showCompForm ? '#1A1A1A' : '#CC0000' }}
             >
               {showCompForm ? '✕ CANCELAR' : '+ ADICIONAR'}
             </button>
@@ -1253,7 +1240,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
 
           {/* Formulário de nova competição */}
           {showCompForm && (
-            <div style={{ background: '#0A0A0A', border: '1px solid #222', padding: '1rem', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="bjj-card">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: '0.25rem' }}>NOME DO CAMPEONATO *</label>
@@ -1261,7 +1248,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                     value={compForm.name || ''}
                     onChange={e => setCompForm(f => ({ ...f, name: e.target.value }))}
                     placeholder="Ex: Copa SP de Jiu-Jitsu"
-                    style={{ width: '100%', background: '#111', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem', boxSizing: 'border-box' }}
+                    className="bjj-input !p-[0.5rem]"
                   />
                 </div>
                 <div>
@@ -1270,7 +1257,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                     type="date"
                     value={compForm.date || ''}
                     onChange={e => setCompForm(f => ({ ...f, date: e.target.value }))}
-                    style={{ width: '100%', background: '#111', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem', boxSizing: 'border-box' }}
+                    className="bjj-input !p-[0.5rem]"
                   />
                 </div>
                 <div>
@@ -1279,7 +1266,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                     value={compForm.location || ''}
                     onChange={e => setCompForm(f => ({ ...f, location: e.target.value }))}
                     placeholder="Cidade / Estado"
-                    style={{ width: '100%', background: '#111', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem', boxSizing: 'border-box' }}
+                    className="bjj-input !p-[0.5rem]"
                   />
                 </div>
                 <div>
@@ -1288,7 +1275,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                     value={compForm.category || ''}
                     onChange={e => setCompForm(f => ({ ...f, category: e.target.value }))}
                     placeholder="Ex: Adulto Faixa Azul"
-                    style={{ width: '100%', background: '#111', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem', boxSizing: 'border-box' }}
+                    className="bjj-input !p-[0.5rem]"
                   />
                 </div>
                 <div>
@@ -1297,7 +1284,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                     value={compForm.weightClass || ''}
                     onChange={e => setCompForm(f => ({ ...f, weightClass: e.target.value }))}
                     placeholder="Ex: Leve / -76kg"
-                    style={{ width: '100%', background: '#111', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem', boxSizing: 'border-box' }}
+                    className="bjj-input !p-[0.5rem]"
                   />
                 </div>
                 <div>
@@ -1305,7 +1292,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                   <select
                     value={compForm.result || 'gold'}
                     onChange={e => setCompForm(f => ({ ...f, result: e.target.value as Competition['result'] }))}
-                    style={{ width: '100%', background: '#111', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem', boxSizing: 'border-box' }}
+                    className="bjj-input !p-[0.5rem]"
                   >
                     {COMP_RESULTS.map(r => (
                       <option key={r.value} value={r.value}>{r.emoji} {r.label}</option>
@@ -1319,14 +1306,14 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                     onChange={e => setCompForm(f => ({ ...f, notes: e.target.value }))}
                     placeholder="Detalhes, adversários, aprendizados..."
                     rows={2}
-                    style={{ width: '100%', background: '#111', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem', boxSizing: 'border-box', resize: 'vertical' }}
+                    className="bjj-input !p-[0.5rem] !resize-vertical"
                   />
                 </div>
               </div>
               <button
                 onClick={handleSaveCompetition}
                 disabled={savingComp || !compForm.name || !compForm.date}
-                style={{ background: savingComp || !compForm.name || !compForm.date ? '#1A1A1A' : '#CC0000', border: 'none', color: savingComp || !compForm.name || !compForm.date ? '#555' : '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.75rem', cursor: savingComp || !compForm.name || !compForm.date ? 'not-allowed' : 'pointer', width: '100%' }}
+                className="bjj-btn-primary !bg-[#CC0000]"
               >
                 {savingComp ? 'SALVANDO...' : '✓ SALVAR COMPETIÇÃO'}
               </button>
@@ -1369,7 +1356,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
 
         {/* Profile info */}
         {(profile?.bjjSince || profile?.weightKg || profile?.heightCm || profile?.professor) && (
-          <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
+          <div className="bjj-card">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', marginBottom: '0.75rem' }}>📋 INFORMAÇÕES</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {profile?.professor && <div style={{ display: 'flex', justifyContent: 'space-between' }}><p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase' }}>PROFESSOR</p><p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#CCC' }}>{profile.professor}</p></div>}
@@ -1390,24 +1377,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             <button
               onClick={handleUnlinkAcademy}
               disabled={unlinking}
-              style={{
-                width: '100%',
-                background: 'none',
-                border: '1px solid #1A2A3A',
-                color: '#4A8AB5',
-                fontFamily: 'Barlow Condensed, sans-serif',
-                fontWeight: 700,
-                fontSize: '0.875rem',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                padding: '0.875rem',
-                cursor: unlinking ? 'not-allowed' : 'pointer',
-                opacity: unlinking ? 0.5 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-              }}
+                          className="bjj-btn-outline !border-[#1A2A3A] !text-[#4A8AB5]"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
@@ -1419,40 +1389,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           </div>
         )}
 
-        {/* Logout */}
-        <div style={{ padding: '0.5rem 0', borderTop: '1px solid #1A1A1A', marginTop: '0.5rem' }}>
-          <button
-            onClick={handleLogout}
-            disabled={loggingOut}
-            style={{
-              width: '100%',
-              background: 'none',
-              border: '1px solid #2A0000',
-              color: '#CC0000',
-              fontFamily: 'Barlow Condensed, sans-serif',
-              fontWeight: 700,
-              fontSize: '0.875rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              padding: '0.875rem',
-              cursor: loggingOut ? 'not-allowed' : 'pointer',
-              opacity: loggingOut ? 0.5 : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-            {loggingOut ? 'SAINDO...' : 'SAIR DA CONTA'}
-          </button>
-        </div>
-
-      </div>
+        </motion.div>
     </div>
   );
 }

@@ -21,6 +21,7 @@ import academyReqRouter    from "./routes/academy-requests.js";
 import classesRouter       from "./routes/classes.js";
 import promotionsRouter    from "./routes/promotions.js";
 import achievementsRouter  from "./routes/achievements.js";
+import competitionsRouter  from "./routes/competitions.js";
 import uploadRouter        from "./routes/upload.js";
 import adminRouter         from "./routes/admin.js";
 
@@ -54,6 +55,7 @@ async function startServer() {
   app.use("/api/classes",          classesRouter);
   app.use("/api/promotions",       promotionsRouter);
   app.use("/api/achievements",     achievementsRouter);
+  app.use("/api/competitions",     competitionsRouter);
   app.use("/api/upload",           uploadRouter);
   app.use("/api/admin",            adminRouter);
 

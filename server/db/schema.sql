@@ -250,6 +250,20 @@ CREATE TABLE IF NOT EXISTS user_achievements (
   unlocked_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ─── competitions ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS competitions (
+  id           TEXT        PRIMARY KEY,
+  uid          TEXT        NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  name         TEXT        NOT NULL,
+  date         TEXT,
+  location     TEXT,
+  category     TEXT,
+  weight_class TEXT,
+  result       TEXT        DEFAULT 'gold',
+  notes        TEXT,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ─── Índices para performance ────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_trainings_uid            ON trainings(uid);
 CREATE INDEX IF NOT EXISTS idx_trainings_date           ON trainings(training_date);
@@ -271,3 +285,4 @@ CREATE INDEX IF NOT EXISTS idx_class_check_ins_academy  ON class_check_ins(acade
 CREATE INDEX IF NOT EXISTS idx_promotions_professor     ON promotions(professor_uid);
 CREATE INDEX IF NOT EXISTS idx_promotions_student       ON promotions(student_uid);
 CREATE INDEX IF NOT EXISTS idx_user_achievements_uid    ON user_achievements(uid);
+CREATE INDEX IF NOT EXISTS idx_competitions_uid         ON competitions(uid);

@@ -4,6 +4,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { tabVariant, tabTransition } from '@/lib/animations';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -226,12 +227,12 @@ export default function Goals() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
+          variants={tabVariant}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={tabTransition}
         >
-
       {/* ─── Desafios Tab ─────────────────────────────────────────────────── */}
       {activeTab === 'desafios' && (
         <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>

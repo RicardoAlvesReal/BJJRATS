@@ -1,9 +1,10 @@
-
-// Design: "Cage Fighter" — Brutalismo Tático
 import { useEffect, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { fadeUp, staggerContainer } from '@/lib/animations';
+import { COLORS } from '@/lib/design';
 import {
   Training, SESSION_TYPES, MODALITIES, INTENSITY_LABELS, SATISFACTION_LABELS,
   parseTrainingDate, getTechniquesList, countAllTechs, calcXP,
@@ -176,115 +177,84 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
   if (selectedExtra) {
     const act = EXTRA_ACTIVITIES.find(a => a.id === selectedExtra.activity);
     return (
-      <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '80px' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '2px solid #0EA5E9', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button onClick={() => setSelectedExtra(null)} style={{ background: 'none', border: 'none', color: '#0EA5E9', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
+      <div className="bg-background min-h-screen">
+        <div className="bjj-header" style={{ borderColor: '#0EA5E940' }}>
+          <button onClick={() => setSelectedExtra(null)} className="text-[#0EA5E9] bg-none border-none cursor-pointer p-1 flex items-center">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>DETALHE DA ATIVIDADE</h1>
+          <h1 className="bjj-header-title">DETALHE DA ATIVIDADE</h1>
+          <div className="w-5" />
         </div>
-        <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-          {/* Foto */}
+        <div className="bjj-content">
           {selectedExtra.trainingPhoto && (
-            <div style={{ width: '100%', background: '#0A0A0A', border: '2px solid #1E1E1E' }}>
-              <img src={selectedExtra.trainingPhoto} alt="Foto da atividade" style={{ width: '100%', height: 'auto', display: 'block' }} />
+            <div className="w-full bg-background border border-[#1E1E1E] rounded-xl overflow-hidden">
+              <img src={selectedExtra.trainingPhoto} alt="Foto da atividade" className="w-full h-auto block" />
             </div>
           )}
 
-          <div style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: '3px solid #0EA5E9', padding: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div className="bjj-card" style={{ borderLeft: '3px solid #0EA5E9' }}>
+            <div className="flex justify-between items-start">
               <div>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF' }}>{act?.icon || '🏃'} {act?.label || 'Atividade'}</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#0EA5E9', marginTop: '0.25rem' }}>OUTROS TREINOS</p>
+                <p className="text-[1.25rem] font-black text-white uppercase font-['Barlow_Condensed']">{act?.icon || '🏃'} {act?.label || 'Atividade'}</p>
+                <p className="text-[0.75rem] font-bold text-[#0EA5E9] font-['Barlow_Condensed'] mt-1">OUTROS TREINOS</p>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', color: '#0EA5E9', lineHeight: 1 }}>+{selectedExtra.extraXP} XP</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555', marginTop: '0.25rem' }}>{selectedExtra.trainingDate || '—'}</p>
+              <div className="text-right">
+                <p className="text-[1.5rem] font-black text-[#0EA5E9] leading-none font-['Barlow_Condensed']">+{selectedExtra.extraXP} XP</p>
+                <p className="text-[0.7rem] text-[#555] font-['Barlow_Condensed'] mt-1">{selectedExtra.trainingDate || '—'}</p>
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: selectedExtra.distance ? '1fr 1fr 1fr' : '1fr 1fr', gap: '0.5rem' }}>
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.75rem', textAlign: 'center' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#FFFFFF' }}>{selectedExtra.duration} min</p>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>DURAÇÃO</p>
-            </div>
-            {selectedExtra.distance ? (
-              <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.75rem', textAlign: 'center' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#FFFFFF' }}>{selectedExtra.distance} km</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>DISTÂNCIA</p>
+          <div className="grid gap-2" style={{ gridTemplateColumns: selectedExtra.distance ? '1fr 1fr 1fr' : '1fr 1fr' }}>
+            {[
+              { label: 'DURAÇÃO', value: `${selectedExtra.duration} min` },
+              ...(selectedExtra.distance ? [{ label: 'DISTÂNCIA', value: `${selectedExtra.distance} km` }] : []),
+              ...(selectedExtra.calories ? [{ label: 'CALORIAS', value: `${selectedExtra.calories} kcal` }] : [{ label: 'XP EXTRA', value: `${selectedExtra.extraXP}` }]),
+            ].map(s => (
+              <div key={s.label} className="bjj-stat-card">
+                <p className="bjj-stat-number">{s.value}</p>
+                <p className="text-[0.55rem] tracking-[0.1em] text-[#555] font-['Barlow_Condensed'] mt-1">{s.label}</p>
               </div>
-            ) : null}
-            {selectedExtra.calories ? (
-              <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.75rem', textAlign: 'center' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#FFFFFF' }}>{selectedExtra.calories} kcal</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>CALORIAS</p>
-              </div>
-            ) : (
-              <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.75rem', textAlign: 'center' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#FFFFFF' }}>{selectedExtra.extraXP}</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>XP EXTRA</p>
-              </div>
-            )}
+            ))}
           </div>
 
           {selectedExtra.pace && (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', textAlign: 'center' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', color: '#0EA5E9' }}>⏱️ {selectedExtra.pace}</p>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>PACE (MIN/KM)</p>
+            <div className="bjj-card text-center">
+              <p className="text-[1.5rem] font-black text-[#0EA5E9] font-['Barlow_Condensed']">⏱️ {selectedExtra.pace}</p>
+              <p className="text-[0.65rem] tracking-[0.1em] text-[#555] font-['Barlow_Condensed'] mt-1">PACE (MIN/KM)</p>
             </div>
           )}
 
           {selectedExtra.notes && (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', marginBottom: '0.5rem' }}>📝 OBSERVAÇÕES</p>
-              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#AAA', lineHeight: 1.6, fontStyle: 'italic' }}>"{selectedExtra.notes}"</p>
+            <div className="bjj-card">
+              <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-2">📝 OBSERVAÇÕES</p>
+              <p className="text-[0.875rem] text-[#AAA] italic font-['Barlow']">"{selectedExtra.notes}"</p>
             </div>
           )}
 
-          {/* Botão Compartilhar Atividade */}
           {onShare && (
-            <button
-              onClick={() => {
+            <button onClick={() => {
                 const shareData: ShareTrainingData = {
-                  trainingDate: selectedExtra.trainingDate,
-                  sessionType: 'outros_treinos',
-                  modality: selectedExtra.activity,
-                  duration: selectedExtra.duration,
-                  intensity: 3,
-                  satisfaction: 4,
-                  techniques: {},
-                  notes: selectedExtra.notes,
-                  academy: '',
-                  professor: '',
-                  xp: selectedExtra.extraXP,
-                  trainingPhotoUrl: selectedExtra.trainingPhoto,
+                  trainingDate: selectedExtra.trainingDate, sessionType: 'outros_treinos', modality: selectedExtra.activity,
+                  duration: selectedExtra.duration, intensity: 3, satisfaction: 4, techniques: {}, notes: selectedExtra.notes,
+                  academy: '', professor: '', xp: selectedExtra.extraXP, trainingPhotoUrl: selectedExtra.trainingPhoto,
                   extraData: { activity: selectedExtra.activity, distance: selectedExtra.distance || 0, calories: selectedExtra.calories || 0, pace: selectedExtra.pace || null },
                 };
                 onShare(shareData);
               }}
-              style={{ background: '#0EA5E9', border: 'none', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', cursor: 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-            >
-              📴 COMPARTILHAR CARD
-            </button>
+              className="bjj-btn-primary !bg-[#0EA5E9] !shadow-[0_4px_15px_rgba(14,165,233,0.3)] hover:!shadow-[0_6px_25px_rgba(14,165,233,0.45)]"
+            >📴 COMPARTILHAR CARD</button>
           )}
 
-          {/* Botão Editar Atividade */}
           {onEditExtra && (
-            <button
-              onClick={() => onEditExtra(selectedExtra as ExtraTrainingData)}
-              style={{ background: '#111', border: '2px solid #0EA5E9', color: '#0EA5E9', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', cursor: 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-            >
-              ✏️ EDITAR ATIVIDADE
-            </button>
+            <button onClick={() => onEditExtra(selectedExtra as ExtraTrainingData)}
+              className="bjj-btn-outline !border-[#0EA5E9] !text-[#0EA5E9]"
+            >✏️ EDITAR ATIVIDADE</button>
           )}
 
-          <button
-            onClick={() => handleDeleteExtra(selectedExtra.firestoreId || selectedExtra.id || '')}
-            style={{ background: 'transparent', border: '2px solid #440000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', cursor: 'pointer', width: '100%' }}
-          >
-            🗑 EXCLUIR ATIVIDADE
-          </button>
+          <button onClick={() => handleDeleteExtra(selectedExtra.firestoreId || selectedExtra.id || '')}
+            className="bjj-btn-outline !border-[#440000] !text-[#CC0000] !border-2"
+          >🗑 EXCLUIR ATIVIDADE</button>
         </div>
       </div>
     );
@@ -298,176 +268,195 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
     const techCount = countAllTechs(selected.techniques);
     const xpGained = calcXP([selected]);
     return (
-      <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '80px' }}>
-        <div style={{ padding: '1rem 1.25rem', borderBottom: '2px solid #CC0000', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#CC0000', cursor: 'pointer', padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
+      <div className="bg-background min-h-screen">
+        <div className="bjj-header">
+          <button onClick={() => setSelected(null)} className="text-[#CC0000] bg-none border-none cursor-pointer p-1 flex items-center">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>DETALHE DO TREINO</h1>
+          <h1 className="bjj-header-title">DETALHE DO TREINO</h1>
+          <div className="w-5" />
         </div>
-        <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-          {/* Foto do treino */}
+        <div className="bjj-content">
           {selected.trainingPhoto && (
-            <div style={{ width: '100%', background: '#0A0A0A', border: '2px solid #1E1E1E' }}>
-              <img
-                src={selected.trainingPhoto}
-                alt="Foto do treino"
-                style={{ width: '100%', height: 'auto', display: 'block' }}
-              />
+            <div className="w-full bg-background border border-[#1E1E1E] rounded-xl overflow-hidden">
+              <img src={selected.trainingPhoto} alt="Foto do treino" className="w-full h-auto block" />
             </div>
           )}
 
-          <div style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: `3px solid ${sess.color}`, padding: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div className="bjj-card" style={{ borderLeft: `3px solid ${sess.color}` }}>
+            <div className="flex justify-between items-start">
               <div>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', textTransform: 'uppercase', color: '#FFFFFF' }}>{sess.icon} {sess.label}</p>
-                {mod && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: mod.color, marginTop: '0.25rem' }}>{mod.label}</p>}
+                <p className="text-[1.25rem] font-black text-white uppercase font-['Barlow_Condensed']">{sess.icon} {sess.label}</p>
+                {mod && <p className="text-[0.75rem] font-bold font-['Barlow_Condensed'] mt-1" style={{ color: mod.color }}>{mod.label}</p>}
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', color: '#CC0000', lineHeight: 1 }}>+{xpGained} XP</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555', marginTop: '0.25rem' }}>{selected.trainingDate || '—'}</p>
+              <div className="text-right">
+                <p className="text-[1.5rem] font-black text-[#CC0000] leading-none font-['Barlow_Condensed']">+{xpGained} XP</p>
+                <p className="text-[0.7rem] text-[#555] font-['Barlow_Condensed'] mt-1">{selected.trainingDate || '—'}</p>
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+          <div className="grid grid-cols-3 gap-2">
             {[
               { label: 'DURAÇÃO', value: `${selected.duration || 0} min` },
               { label: 'INTENSIDADE', value: selected.intensity ? INTENSITY_LABELS[selected.intensity] : '—' },
               { label: 'SATISFAÇÃO', value: selected.satisfaction ? SATISFACTION_LABELS[selected.satisfaction] : '—' },
             ].map(s => (
-              <div key={s.label} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.75rem', textAlign: 'center' }}>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#FFFFFF' }}>{s.value}</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>{s.label}</p>
+              <div key={s.label} className="bjj-stat-card">
+                <p className="bjj-stat-number">{s.value}</p>
+                <p className="text-[0.55rem] tracking-[0.1em] text-[#555] font-['Barlow_Condensed'] mt-1">{s.label}</p>
               </div>
             ))}
           </div>
 
           {(selected.academy || selected.professor) && (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-              {selected.academy && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.875rem', color: '#CCC' }}>🏫 {selected.academy}</p>}
-              {selected.professor && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.875rem', color: '#888', marginTop: '0.375rem' }}>👤 Prof. {selected.professor}</p>}
+            <div className="bjj-card">
+              {selected.academy && <p className="text-[0.875rem] text-[#CCC] font-['Barlow_Condensed']">🏫 {selected.academy}</p>}
+              {selected.professor && <p className="text-[0.875rem] text-[#888] font-['Barlow_Condensed'] mt-1">👤 Prof. {selected.professor}</p>}
             </div>
           )}
 
           {techList.length > 0 && (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', marginBottom: '0.75rem' }}>🥋 TÉCNICAS ({techCount})</p>
-              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+            <div className="bjj-card">
+              <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-2">🥋 TÉCNICAS ({techCount})</p>
+              <div className="flex gap-1.5 flex-wrap">
                 {techList.map((tech, i) => (
-                  <span key={i} style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', border: '1px solid #CC0000', color: '#CC0000', background: '#1A0000' }}>{tech}</span>
+                  <span key={i} className="text-[0.65rem] font-bold uppercase px-2 py-1 border border-[#CC0000] text-[#CC0000] bg-[#1A0000] font-['Barlow_Condensed'] rounded">{tech}</span>
                 ))}
               </div>
             </div>
           )}
 
           {selected.notes && (
-            <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FFFFFF', marginBottom: '0.5rem' }}>📝 OBSERVAÇÕES</p>
-              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#AAA', lineHeight: 1.6, fontStyle: 'italic' }}>"{selected.notes}"</p>
+            <div className="bjj-card">
+              <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-2">📝 OBSERVAÇÕES</p>
+              <p className="text-[0.875rem] text-[#AAA] italic font-['Barlow']">"{selected.notes}"</p>
             </div>
           )}
 
-          {/* Botão Gerar Card */}
-          <button
-            onClick={() => handleOpenShare(selected)}
-            style={{ background: '#111', border: '2px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', cursor: 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-          >
-            📲 GERAR CARD PARA REDES SOCIAIS
-          </button>
+          {(selected.sessionType === 'competicao' && (selected as any).compData) && (() => {
+            const cd = (selected as any).compData;
+            return (
+              <div className="bjj-card" style={{ borderLeft: '3px solid #CC8800' }}>
+                <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-3">🏆 COMPETIÇÃO</p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[0.8rem]">
+                  {cd.tournament && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Torneio</span><p className="text-[#CCC] font-['Barlow']">{cd.tournament}</p></div>}
+                  {cd.league && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Liga</span><p className="text-[#CCC] font-['Barlow']">{cd.league}</p></div>}
+                  {cd.city && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Cidade</span><p className="text-[#CCC] font-['Barlow']">{cd.city}</p></div>}
+                  {cd.belt && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Faixa</span><p className="text-[#CCC] font-['Barlow']">{cd.belt}</p></div>}
+                  {cd.weightCategory && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Peso</span><p className="text-[#CCC] font-['Barlow']">{cd.weightCategory}</p></div>}
+                  {cd.ageCategory && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Idade</span><p className="text-[#CCC] font-['Barlow']">{cd.ageCategory}</p></div>}
+                  {cd.fights && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Lutas</span><p className="text-[#CCC] font-['Barlow']">{cd.fights}</p></div>}
+                  {cd.placement && <div><span className="text-[#666] font-['Barlow_Condensed'] uppercase text-[0.65rem]">Colocação</span><p className="text-[#CCC] font-['Barlow']">{cd.placement}</p></div>}
+                </div>
+              </div>
+            );
+          })()}
 
-          {/* Botão Editar Treino */}
+          <button onClick={() => handleOpenShare(selected)}
+            className="bjj-btn-outline !border-[#CC0000] !text-[#CC0000]"
+          >📲 GERAR CARD PARA REDES SOCIAIS</button>
+
           {onEdit && (
-            <button
-              onClick={() => onEdit(selected)}
-              style={{ background: '#111', border: '2px solid #1A6ECC', color: '#1A6ECC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', cursor: 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-            >
-              ✏️ EDITAR TREINO
-            </button>
+            <button onClick={() => onEdit(selected)}
+              className="bjj-btn-outline !border-[#1A6ECC] !text-[#1A6ECC]"
+            >✏️ EDITAR TREINO</button>
           )}
 
-          <button
-            onClick={() => handleDelete(selected.firestoreId || selected.id || '')}
-            style={{ background: 'transparent', border: '2px solid #440000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem', cursor: 'pointer', width: '100%' }}
-          >
-            🗑 EXCLUIR TREINO
-          </button>
+          <button onClick={() => handleDelete(selected.firestoreId || selected.id || '')}
+            className="bjj-btn-outline !border-[#440000] !text-[#CC0000] !border-2"
+          >🗑 EXCLUIR TREINO</button>
         </div>
       </div>
     );
   }
 
+  const ffadeUp = fadeUp as any;
+  const fcontainer = staggerContainer as any;
+
   return (
-    <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '80px' }}>
-      <div style={{ padding: '1rem 1.25rem 0.75rem', borderBottom: '2px solid #CC0000', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.05em' }}>MEUS TREINOS</h1>
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: '#555' }}>{trainings.length + extraTrainings.length} registros</p>
+    <div className="bg-background min-h-screen">
+      <div className="bjj-header">
+        <h1 className="text-[1.5rem] font-black text-white font-['Barlow_Condensed']">MEUS TREINOS</h1>
+        <p className="text-[0.75rem] font-bold text-[#555] font-['Barlow_Condensed']">{trainings.length + extraTrainings.length} registros</p>
       </div>
-      <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+      <div className="bjj-content">
+        <motion.div initial="hidden" animate="show" variants={ffadeUp} className="grid grid-cols-3 gap-2">
           {[
             { label: 'TREINOS', value: trainings.length + extraTrainings.length },
             { label: 'HORAS', value: `${hrs}h` },
             { label: 'XP TOTAL', value: `${totalXP}${totalExtraXP > 0 ? ` +${totalExtraXP}` : ''}` },
           ].map(s => (
-            <div key={s.label} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.75rem', textAlign: 'center' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', color: '#FFFFFF', lineHeight: 1 }}>{s.value}</p>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginTop: '0.25rem' }}>{s.label}</p>
+            <div key={s.label} className="bjj-stat-card">
+              <p className="bjj-stat-number">{s.value}</p>
+              <p className="text-[0.55rem] tracking-[0.1em] text-[#555] font-['Barlow_Condensed'] mt-1">{s.label}</p>
             </div>
           ))}
-        </div>
-        <button onClick={onNewTraining} style={{ background: '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', width: '100%', cursor: 'pointer' }}>
-          + REGISTRAR NOVO TREINO
-        </button>
-        <div style={{ display: 'flex', gap: '0.375rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+        </motion.div>
+        <motion.div initial="hidden" animate="show" variants={ffadeUp}>
+          <button onClick={onNewTraining} className="bjj-btn-primary mb-3">+ REGISTRAR NOVO TREINO</button>
+        </motion.div>
+
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {FILTERS.map(f => {
             const isExtra = f.id === 'outros_treinos';
             const activeColor = isExtra ? '#0EA5E9' : '#CC0000';
             return (
-              <button key={f.id} onClick={() => setFilter(f.id)} style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.375rem 0.75rem', border: `1px solid ${filter === f.id ? activeColor : '#2A2A2A'}`, background: filter === f.id ? activeColor : '#111', color: filter === f.id ? '#FFFFFF' : '#666', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                {f.label}
-              </button>
+              <button key={f.id} onClick={() => setFilter(f.id)}
+                className="text-[0.7rem] font-black uppercase tracking-[0.08em] px-3 py-1.5 rounded-lg whitespace-nowrap shrink-0 transition-all duration-200 font-['Barlow_Condensed']"
+                style={{
+                  border: `1px solid ${filter === f.id ? activeColor : '#2A2A2A'}`,
+                  background: filter === f.id ? activeColor : '#111',
+                  color: filter === f.id ? '#FFFFFF' : '#666',
+                }}
+              >{f.label}</button>
             );
           })}
         </div>
+
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
+          <div className="flex flex-col gap-3">
+            {[1,2,3,4,5].map(i => (
+              <div key={i} className="bjj-skeleton h-20 rounded-xl" />
+            ))}
+          </div>
         ) : combinedList.length === 0 ? (
-          <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM TREINO ENCONTRADO</p>
+          <div className="bjj-card text-center py-8">
+            <p className="text-[1rem] font-bold uppercase text-[#555] font-['Barlow_Condensed']">NENHUM TREINO ENCONTRADO</p>
+            <p className="text-[0.75rem] text-[#444] mt-2 font-['Barlow']">Registre seu primeiro treino!</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+          <motion.div variants={fcontainer} initial="hidden" animate="show" className="flex flex-col gap-2.5">
             {combinedList.map((item, i) => {
               if (item.type === 'extra') {
                 const t = item.data as ExtraTraining;
                 const act = EXTRA_ACTIVITIES.find(a => a.id === t.activity);
                 return (
-                  <div key={`extra-${t.firestoreId || i}`} onClick={() => setSelectedExtra(t)} style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: '3px solid #0EA5E9', cursor: 'pointer', display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}>
-                    {/* Miniatura da foto */}
+                  <motion.div key={`extra-${t.firestoreId || i}`} variants={ffadeUp}
+                    onClick={() => setSelectedExtra(t)}
+                    className="bjj-card cursor-pointer flex items-stretch overflow-hidden p-0"
+                    style={{ borderLeft: '3px solid #0EA5E9' }}
+                  >
                     {t.trainingPhoto ? (
-                      <div style={{ width: '80px', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
-                        <img src={t.trainingPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <div className="w-20 shrink-0 overflow-hidden">
+                        <img src={t.trainingPhoto} alt="" className="w-full h-full object-cover block" />
                       </div>
                     ) : (
-                      <div style={{ width: '80px', flexShrink: 0, background: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '1.5rem', opacity: 0.3 }}>{act?.icon || '🏃'}</span>
+                      <div className="w-20 shrink-0 bg-background flex items-center justify-center">
+                        <span className="text-[1.5rem] opacity-30">{act?.icon || '🏃'}</span>
                       </div>
                     )}
-                    {/* Conteúdo do item */}
-                    <div style={{ flex: 1, padding: '0.875rem', minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.375rem' }}>
-                        <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
-                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.15rem 0.4rem', border: '1px solid #0EA5E9', background: '#0EA5E920', color: '#0EA5E9', flexShrink: 0 }}>{act?.icon || '🏃'} {act?.label || 'Atividade'}</span>
-                        </div>
-                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#0EA5E9', flexShrink: 0, marginLeft: '0.5rem' }}>+{t.extraXP} XP</span>
+                    <div className="flex-1 p-3 min-w-0">
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-[0.65rem] font-black uppercase px-1.5 py-0.5 border border-[#0EA5E9] bg-[#0EA5E920] text-[#0EA5E9] shrink-0 rounded font-['Barlow_Condensed']">{act?.icon || '🏃'} {act?.label || 'Atividade'}</span>
+                        <span className="text-[0.875rem] font-black text-[#0EA5E9] shrink-0 ml-2 font-['Barlow_Condensed']">+{t.extraXP} XP</span>
                       </div>
-                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <p className="text-[0.75rem] text-[#666] truncate font-['Barlow']">
                         {t.trainingDate || '—'} · {t.duration || 0} min{t.distance ? ` · 📏 ${t.distance} km` : ''}{t.calories ? ` · 🔥 ${t.calories} kcal` : ''}{t.pace ? ` · ⏱️ ${t.pace}` : ''}
                       </p>
-                      {t.notes && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.25rem' }}>"{t.notes}"</p>}
+                      {t.notes && <p className="text-[0.75rem] text-[#555] italic truncate mt-1 font-['Barlow']">"{t.notes}"</p>}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               } else {
                 const t = item.data as Training;
@@ -476,36 +465,42 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
                 const techCount = countAllTechs(t.techniques);
                 const xpGained = calcXP([t]);
                 return (
-                  <div key={t.firestoreId || i} onClick={() => setSelected(t)} style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: `3px solid ${sess.color}`, cursor: 'pointer', display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}>
-                    {/* Miniatura da foto */}
+                  <motion.div key={t.firestoreId || i} variants={ffadeUp}
+                    onClick={() => setSelected(t)}
+                    className="bjj-card cursor-pointer flex items-stretch overflow-hidden p-0"
+                    style={{ borderLeft: `3px solid ${sess.color}` }}
+                  >
                     {t.trainingPhoto ? (
-                      <div style={{ width: '80px', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
-                        <img src={t.trainingPhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <div className="w-20 shrink-0 overflow-hidden">
+                        <img src={t.trainingPhoto} alt="" className="w-full h-full object-cover block" />
                       </div>
                     ) : (
-                      <div style={{ width: '80px', flexShrink: 0, background: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '1.5rem', opacity: 0.2 }}>🥋</span>
+                      <div className="w-20 shrink-0 bg-background flex items-center justify-center">
+                        <span className="text-[1.5rem] opacity-20">🥋</span>
                       </div>
                     )}
-                    {/* Conteúdo do item */}
-                    <div style={{ flex: 1, padding: '0.875rem', minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.375rem' }}>
-                        <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
-                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.15rem 0.4rem', border: `1px solid ${sess.color}`, background: sess.color + '20', color: sess.color, flexShrink: 0 }}>{sess.icon} {sess.label}</span>
-                          {mod && <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.15rem 0.4rem', border: `1px solid ${mod.color}`, background: mod.color + '20', color: mod.color, flexShrink: 0 }}>{mod.label}</span>}
+                    <div className="flex-1 p-3 min-w-0">
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex gap-1.5 flex-wrap flex-1 min-w-0">
+                          <span className="text-[0.65rem] font-black uppercase px-1.5 py-0.5 border shrink-0 rounded font-['Barlow_Condensed']"
+                            style={{ borderColor: sess.color, background: sess.color + '20', color: sess.color }}
+                          >{sess.icon} {sess.label}</span>
+                          {mod && <span className="text-[0.65rem] font-black uppercase px-1.5 py-0.5 border shrink-0 rounded font-['Barlow_Condensed']"
+                            style={{ borderColor: mod.color, background: mod.color + '20', color: mod.color }}
+                          >{mod.label}</span>}
                         </div>
-                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#CC0000', flexShrink: 0, marginLeft: '0.5rem' }}>+{xpGained} XP</span>
+                        <span className="text-[0.875rem] font-black text-[#CC0000] shrink-0 ml-2 font-['Barlow_Condensed']">+{xpGained} XP</span>
                       </div>
-                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <p className="text-[0.75rem] text-[#666] truncate font-['Barlow']">
                         {t.trainingDate || '—'} · {t.duration || 0} min{t.intensity ? ` · 🔥 ${INTENSITY_LABELS[t.intensity]}` : ''}{techCount > 0 ? ` · 🥋 ${techCount} técnicas` : ''}
                       </p>
-                      {t.notes && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.25rem' }}>"{t.notes}"</p>}
+                      {t.notes && <p className="text-[0.75rem] text-[#555] italic truncate mt-1 font-['Barlow']">"{t.notes}"</p>}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               }
             })}
-          </div>
+          </motion.div>
         )}
       </div>
     </div>

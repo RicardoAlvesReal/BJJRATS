@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { posts, comments } from '../db/schema.js';
@@ -44,7 +44,7 @@ function toClientComment(row: Record<string, any>) {
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   const { academyId, type } = req.query as Record<string, string>;
   let query = db.select().from(posts).$dynamic().orderBy(desc(posts.createdAt));
-  const conditions = [];
+  const conditions = [sql`NOT EXISTS (SELECT 1 FROM users WHERE uid = ${posts.authorUid} AND role = 'superadmin')`];
   if (type)      conditions.push(eq(posts.postType, type));
   if (academyId) conditions.push(eq(posts.academyId, academyId));
   const rows = conditions.length
@@ -90,7 +90,10 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 // GET /api/posts/:id/comments
 router.get('/:id/comments', requireAuth, async (req, res) => {
   const rows = await db.select().from(comments)
-    .where(eq(comments.postId, req.params.id))
+    .where(and(
+      eq(comments.postId, req.params.id),
+      sql`NOT EXISTS (SELECT 1 FROM users WHERE uid = ${comments.authorUid} AND role = 'superadmin')`
+    ))
     .orderBy(desc(comments.createdAt));
   res.json(rows.map(toClientComment));
 });
