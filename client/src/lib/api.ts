@@ -61,7 +61,13 @@ export interface UserProfile {
   academyCity?: string;
   academyState?: string;
   academyLogoUrl?: string;
+  academyCnpj?: string;
+  academyCep?: string;
+  academyNumber?: string;
+  academyNeighborhood?: string;
+  academyComplement?: string;
   professorPhotoUrl?: string;
+  subscriptionExempt?: boolean;
   createdAt?: string;
 }
 
@@ -242,6 +248,16 @@ export const admin = {
     name: string; email: string; password: string;
     role?: string; belt?: string; academyId?: string | null;
     phone?: string;
+    academy?: string;
+    academyName?: string;
+    academyAddress?: string;
+    academyCity?: string;
+    academyState?: string;
+    academyCnpj?: string;
+    academyCep?: string;
+    academyNumber?: string;
+    academyNeighborhood?: string;
+    academyComplement?: string;
   }) =>
     apiFetch<{ user: AdminUser }>('/api/admin/users', { method: 'POST', body: JSON.stringify(data) }),
 
@@ -250,7 +266,90 @@ export const admin = {
 
   deleteUser: (uid: string) =>
     apiFetch<{ success: boolean }>(`/api/admin/users/${uid}`, { method: 'DELETE' }),
+
+  getStats: (days?: number) => apiFetch<AdminStats>(`/api/admin/stats${days ? `?days=${days}` : ''}`),
+
+  getCrmData: () => apiFetch<CrmData>('/api/admin/crm'),
 };
+
+export interface CrmData {
+  revenue: {
+    totalBilled: number;
+    totalPaid: number;
+    totalPending: number;
+    totalOverdue: number;
+    projectedMonthly: number;
+    projectedAnnual: number;
+    activeEnrollments: number;
+  };
+  leads: { status: string; count: number }[];
+  revenueMonthly: { month: string; total: number; count: number }[];
+  recentPayments: {
+    id: string;
+    studentName?: string | null;
+    studentUid?: string | null;
+    amount: number;
+    status?: string | null;
+    dueDate?: string | null;
+    paidAt?: string | null;
+  }[];
+  leadsDetail?: {
+    id: string;
+    studentName?: string | null;
+    studentEmail?: string | null;
+    studentBelt?: string | null;
+    studentPhoto?: string | null;
+    studentUid?: string | null;
+    status?: string | null;
+    createdAt?: string | null;
+  }[];
+  studentStats?: {
+    active: number;
+    suspended: number;
+    cancelled: number;
+    total: number;
+  };
+  enrollmentEvolution?: {
+    month: string;
+    newEnrollments: number;
+  }[];
+  studentsByBelt?: {
+    belt: string | null;
+    count: number;
+  }[];
+  attendance?: {
+    checkInsLast30Days: number;
+    totalStudents: number;
+    rate: number;
+  };
+  inactiveStudents?: {
+    studentUid: string | null;
+    studentName: string | null;
+    daysSinceLastCheckIn: number;
+  }[];
+  defaultingStudents?: {
+    id: string;
+    studentUid: string | null;
+    studentName: string | null;
+    amount: number;
+    dueDate: Date | string | null;
+    status: string | null;
+  }[];
+}
+
+export interface AdminStats {
+  trainings: {
+    total: number;
+    totalXP: number;
+    totalHours: number;
+    today: number;
+    inRange: number;
+  };
+  checkInsToday: number;
+  userGrowth: { month: string; count: number }[];
+  beltDistribution: { belt: string; count: number }[];
+  academiesByState: { state: string; count: number }[];
+}
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -449,6 +548,45 @@ export const competitions = {
     apiFetch<{ success: boolean }>(`/api/competitions/${id}`, { method: 'DELETE' }),
 };
 
+// ─── Subscriptions ────────────────────────────────────────────────────────────
+
+export interface Plan {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  price: number;
+  roleAssigned: string;
+  features: string[];
+  isActive?: boolean | null;
+}
+
+export interface Subscription {
+  id: string;
+  userUid: string;
+  planId: string;
+  status: string;
+  asaasId?: string | null;
+  asaasCustomerId?: string | null;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  trialEndsAt?: string | null;
+  cancelledAt?: string | null;
+  createdAt?: string | null;
+  plan?: Plan | null;
+}
+
+export const subscriptions = {
+  listPlans: () => apiFetch<Plan[]>('/api/subscriptions/plans'),
+  getMy: () => apiFetch<{ subscription: Subscription | null }>('/api/subscriptions/my'),
+  create: (data: { planId: string; billingType?: string; cpfCnpj?: string; phone?: string }) =>
+    apiFetch<{ subscription: { id: string; asaasId: string } }>('/api/subscriptions', {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  cancel: () =>
+    apiFetch<{ success: boolean }>('/api/subscriptions/cancel', { method: 'POST' }),
+};
+
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
 export const upload = {
@@ -466,6 +604,17 @@ export const upload = {
 
 // ─── Export padrão agrupado ───────────────────────────────────────────────────
 
+// ─── Public (no auth required) ──────────────────────────────────────────────
+
+export const publicApi = {
+  searchProfessors: (search: string) => {
+    const q = search ? `?search=${encodeURIComponent(search)}` : '';
+    return apiFetch<any[]>(`/api/public/professors${q}`);
+  },
+  checkInviteCode: (code: string) =>
+    apiFetch<{ uid: string; name: string; academyName: string }>(`/api/public/invite/${code}`),
+};
+
 const api = {
   auth,
   users,
@@ -479,12 +628,14 @@ const api = {
   payments,
   enrollments,
   academyRequests,
+  subscriptions,
   classes,
   promotions,
   achievements,
   competitions,
   upload,
   admin,
+  public: publicApi,
 };
 
 export default api;

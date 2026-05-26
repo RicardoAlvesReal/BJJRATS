@@ -1,6 +1,6 @@
 // BJJRats — Admin Users Management
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import api, { type AdminUser } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_HIERARCHY } from '@/lib/roleHierarchy';
@@ -13,11 +13,23 @@ interface UserForm {
   role: string;
   belt: string;
   phone: string;
+  academy: string;
+  academyName: string;
+  academyAddress: string;
+  academyCity: string;
+  academyState: string;
+  academyCnpj: string;
+  academyCep: string;
+  academyNumber: string;
+  academyNeighborhood: string;
+  academyComplement: string;
 }
 
-const EMPTY_FORM: UserForm = { name: '', email: '', password: '', role: 'student', belt: 'Branca', phone: '' };
+const EMPTY_FORM: UserForm = { name: '', email: '', password: '', role: 'student', belt: 'Branca', phone: '', academy: '', academyName: '', academyAddress: '', academyCity: '', academyState: '', academyCnpj: '', academyCep: '', academyNumber: '', academyNeighborhood: '', academyComplement: '' };
 
 const BELTS = ['Branca', 'Cinza', 'Amarela', 'Laranja', 'Verde', 'Azul', 'Roxa', 'Marrom', 'Preta'];
+
+const UF_LIST = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
 export default function AdminUsers() {
   const { user: me } = useAuth();
@@ -33,6 +45,47 @@ export default function AdminUsers() {
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState('');
   const [confirmDel, setConfirmDel] = useState<AdminUser | null>(null);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cities, setCities] = useState<string[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+
+  const fetchCities = useCallback(async (uf: string) => {
+    if (!uf) { setCities([]); return; }
+    setCitiesLoading(true);
+    try {
+      const res = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`);
+      const data = await res.json();
+      setCities(data.map((m: any) => m.nome).sort());
+    } catch {
+      setCities([]);
+    } finally {
+      setCitiesLoading(false);
+    }
+  }, []);
+
+  const lookupCep = useCallback(async (cep: string) => {
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        setForm((f) => ({
+          ...f,
+          academyAddress: data.logradouro || f.academyAddress,
+          academyCity: data.localidade || f.academyCity,
+          academyState: data.uf || f.academyState,
+          academyNeighborhood: data.bairro || f.academyNeighborhood,
+        }));
+        if (data.uf) fetchCities(data.uf);
+      }
+    } catch {
+      // silencioso
+    } finally {
+      setCepLoading(false);
+    }
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -63,7 +116,7 @@ export default function AdminUsers() {
 
   const openEdit = (u: AdminUser) => {
     setEditTarget(u);
-    setForm({ name: u.name, email: u.email, password: '', role: u.role ?? 'student', belt: u.belt ?? 'Branca', phone: u.phone ?? '' });
+    setForm({ name: u.name, email: u.email, password: '', role: u.role ?? 'student', belt: u.belt ?? 'Branca', phone: u.phone ?? '', academy: u.academy ?? '', academyName: u.academyName ?? '', academyAddress: u.academyAddress ?? '', academyCity: u.academyCity ?? '', academyState: u.academyState ?? '', academyCnpj: u.academyCnpj ?? '', academyCep: u.academyCep ?? '', academyNumber: u.academyNumber ?? '', academyNeighborhood: u.academyNeighborhood ?? '', academyComplement: u.academyComplement ?? '' });
     setError('');
     setModalOpen(true);
   };
@@ -80,14 +133,22 @@ export default function AdminUsers() {
     }
     setSaving(true);
     try {
+      const academyFields = {
+        academyName: form.academyName, academyAddress: form.academyAddress,
+        academyCity: form.academyCity, academyState: form.academyState,
+        academyCnpj: form.academyCnpj, academyCep: form.academyCep, academyNumber: form.academyNumber,
+        academyNeighborhood: form.academyNeighborhood, academyComplement: form.academyComplement,
+        academy: form.academy,
+      };
       if (editTarget) {
-        const payload: Record<string, unknown> = { name: form.name, belt: form.belt, phone: form.phone, role: form.role };
+        const payload: Record<string, unknown> = { name: form.name, belt: form.belt, phone: form.phone, role: form.role, ...academyFields };
         if (form.password) payload.password = form.password;
         await api.admin.updateUser(editTarget.uid, payload);
       } else {
         await api.admin.createUser({
           name: form.name, email: form.email, password: form.password,
           role: form.role, belt: form.belt, phone: form.phone || undefined,
+          ...academyFields,
         });
       }
       setModalOpen(false);
@@ -136,7 +197,7 @@ export default function AdminUsers() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Barlow Condensed, sans-serif' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #CC0000' }}>
-                {['Nome', 'E-mail', 'Role', 'Faixa', 'Ações'].map((h) => (
+                {['Nome', 'E-mail', 'Role', 'Faixa', 'Academia', 'Ações'].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -148,6 +209,7 @@ export default function AdminUsers() {
                   <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>{u.email}</td>
                   <td style={tdStyle}><RoleBadge role={u.role} /></td>
                   <td style={{ ...tdStyle, color: '#AAA' }}>{u.belt ?? '—'}</td>
+                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>{u.academyName || u.academy || '—'}</td>
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button onClick={() => openEdit(u)} style={btnSmallStyle}>Editar</button>
@@ -193,14 +255,79 @@ export default function AdminUsers() {
                 )}
               </select>
             </Field>
-            <Field label="Faixa">
-              <select style={inputStyle} value={form.belt} onChange={(e) => setForm((f) => ({ ...f, belt: e.target.value }))}>
-                {BELTS.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </Field>
+            {form.role !== 'admin' && (
+              <Field label="Faixa">
+                <select style={inputStyle} value={form.belt} onChange={(e) => setForm((f) => ({ ...f, belt: e.target.value }))}>
+                  {BELTS.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Telefone">
               <input style={inputStyle} value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
             </Field>
+
+            {form.role === 'admin' || form.role === 'professor' ? (
+              <>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem', marginTop: '0.75rem', borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem' }}>DADOS DA ACADEMIA</p>
+                <Field label="Nome da Academia">
+                  <input style={inputStyle} value={form.academyName} onChange={(e) => setForm((f) => ({ ...f, academyName: e.target.value }))} />
+                </Field>
+                <Field label="CNPJ">
+                  <input style={inputStyle} value={form.academyCnpj} onChange={(e) => setForm((f) => ({ ...f, academyCnpj: e.target.value }))} placeholder="00.000.000/0000-00" />
+                </Field>
+                <Field label="CEP">
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input style={{ ...inputStyle, marginBottom: 0, flex: 1 }} value={form.academyCep}
+                      onChange={(e) => setForm((f) => ({ ...f, academyCep: e.target.value }))}
+                      onBlur={() => lookupCep(form.academyCep)}
+                      placeholder="00000-000" />
+                    {cepLoading && <span style={{ color: '#888', fontSize: '0.7rem' }}>buscando...</span>}
+                  </div>
+                </Field>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ flex: 2 }}>
+                    <Field label="Endereço">
+                      <input style={inputStyle} value={form.academyAddress} onChange={(e) => setForm((f) => ({ ...f, academyAddress: e.target.value }))} placeholder="Rua, Avenida..." />
+                    </Field>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <Field label="Número">
+                      <input style={inputStyle} value={form.academyNumber} onChange={(e) => setForm((f) => ({ ...f, academyNumber: e.target.value }))} placeholder="Nº" />
+                    </Field>
+                  </div>
+                </div>
+                <Field label="Bairro">
+                  <input style={inputStyle} value={form.academyNeighborhood} onChange={(e) => setForm((f) => ({ ...f, academyNeighborhood: e.target.value }))} />
+                </Field>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ flex: 2 }}>
+                    <Field label="Cidade">
+                      <select style={inputStyle} value={form.academyCity} onChange={(e) => setForm((f) => ({ ...f, academyCity: e.target.value }))}>
+                        <option value="">SELECIONE A CIDADE</option>
+                        {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      {citiesLoading && <span style={{ color: '#888', fontSize: '0.65rem', marginTop: '0.25rem', display: 'block' }}>carregando cidades...</span>}
+                    </Field>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <Field label="Estado">
+                      <select style={inputStyle} value={form.academyState}
+                        onChange={(e) => {
+                          setForm((f) => ({ ...f, academyState: e.target.value, academyCity: '' }));
+                          fetchCities(e.target.value);
+                        }}
+                      >
+                        <option value="">UF</option>
+                        {UF_LIST.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                </div>
+                <Field label="Complemento">
+                  <input style={inputStyle} value={form.academyComplement} onChange={(e) => setForm((f) => ({ ...f, academyComplement: e.target.value }))} placeholder="Sala, bloco..." />
+                </Field>
+              </>
+            ) : null}
 
             {error && <p style={{ color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.85rem', margin: '0.5rem 0' }}>{error}</p>}
 
@@ -263,7 +390,7 @@ function Field({ label, children, required }: { label: string; children: React.R
 
 const ROLE_LABEL: Record<string, string> = {
   superadmin: 'Super Admin',
-  admin:      'Admin',
+  admin:      'Academia',
   professor:  'Professor',
   student:    'Aluno',
 };

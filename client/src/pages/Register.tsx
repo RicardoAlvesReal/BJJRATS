@@ -19,17 +19,17 @@ const BELTS = [
   { value: 'Preta', label: 'Preta', color: '#111111' },
 ];
 
-type Role = 'student' | 'professor' | null;
+type Role = 'student' | 'professor' | 'admin' | null;
 
-// Aluno: passos 1,2,3 | Professor: passos 1,2,3,4,5
-const TOTAL_STEPS: Record<string, number> = { student: 3, professor: 5 };
+// Aluno: 1,2,3 | Professor/Academia: 1,2,3,4,5
+const TOTAL_STEPS: Record<string, number> = { student: 3, professor: 5, admin: 5 };
 
 const STEP_LABELS: Record<number, Record<string, string>> = {
-  1: { student: 'DADOS DE ACESSO', professor: 'DADOS DE ACESSO' },
-  2: { student: 'TIPO DE PERFIL', professor: 'TIPO DE PERFIL' },
-  3: { student: 'PERFIL DE LUTADOR', professor: 'PERFIL DE LUTADOR' },
-  4: { professor: 'DADOS DA ACADEMIA' },
-  5: { professor: 'IDENTIDADE VISUAL' },
+  1: { student: 'DADOS DE ACESSO', professor: 'DADOS DE ACESSO', admin: 'DADOS DE ACESSO' },
+  2: { student: 'TIPO DE PERFIL', professor: 'TIPO DE PERFIL', admin: 'TIPO DE PERFIL' },
+  3: { student: 'PERFIL DE LUTADOR', professor: 'PERFIL DE LUTADOR', admin: 'PERFIL DE LUTADOR' },
+  4: { professor: 'DADOS DA ACADEMIA', admin: 'DADOS DA ACADEMIA' },
+  5: { professor: 'IDENTIDADE VISUAL', admin: 'IDENTIDADE VISUAL' },
 };
 
 export default function Register() {
@@ -78,6 +78,10 @@ export default function Register() {
   const [academyResults, setAcademyResults] = useState<{ name: string; professor: string; uid: string }[]>([]);
   const [academyDropOpen, setAcademyDropOpen] = useState(false);
   const [searchingAcademy, setSearchingAcademy] = useState(false);
+  // Busca de professores no cadastro
+  const [professorResults, setProfessorResults] = useState<{ uid: string; name: string; academyName: string }[]>([]);
+  const [professorDropOpen, setProfessorDropOpen] = useState(false);
+  const [searchingProfessor, setSearchingProfessor] = useState(false);
 
   const handleCheckInviteCode = async (code: string) => {
     const trimmed = code.trim().toUpperCase();
@@ -85,13 +89,8 @@ export default function Register() {
     if (trimmed.length < 6) { setInviteProfessor(null); return; }
     setCheckingCode(true);
     try {
-      const users = await api.users.list() as any[];
-      const match = users.find((u: any) => u.uid && u.uid.substring(0, 6).toUpperCase() === trimmed);
-      if (match) {
-        setInviteProfessor({ uid: match.uid, name: match.name || '', academyName: match.academyName || match.academy || match.name || '' });
-      } else {
-        setInviteProfessor(null);
-      }
+      const match = await api.public.checkInviteCode(trimmed);
+      setInviteProfessor({ uid: match.uid, name: match.name, academyName: match.academyName || match.name });
     } catch { setInviteProfessor(null); }
     finally { setCheckingCode(false); }
   };
@@ -102,13 +101,27 @@ export default function Register() {
     setSearchingAcademy(true);
     setAcademyDropOpen(true);
     try {
-      const professors = await api.users.list({ role: 'professor' }) as any[];
-      const results = professors
-        .map((u: any) => ({ uid: u.uid, name: u.academyName || u.academy || '', professor: u.name || '', city: u.academyCity || '' }))
-        .filter(a => a.name && a.name.toLowerCase().includes(term.toLowerCase()));
+      const professors = await api.public.searchProfessors(term);
+      const results = professors.map((u: any) => ({
+        uid: u.uid,
+        name: u.academyName || u.name || '',
+        professor: u.name || '',
+      }));
       setAcademyResults(results);
     } catch { setAcademyResults([]); }
     finally { setSearchingAcademy(false); }
+  };
+
+  const searchProfessorsRegister = async (term: string) => {
+    update('professor', term);
+    if (!term.trim() || term.length < 2) { setProfessorResults([]); setProfessorDropOpen(false); return; }
+    setSearchingProfessor(true);
+    setProfessorDropOpen(true);
+    try {
+      const results = await api.public.searchProfessors(term);
+      setProfessorResults(results.map((u: any) => ({ uid: u.uid, name: u.name || '', academyName: u.academyName || '' })));
+    } catch { setProfessorResults([]); }
+    finally { setSearchingProfessor(false); }
   };
 
   const update = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }));
@@ -141,7 +154,7 @@ export default function Register() {
     e.preventDefault();
     if (!form.academy) return toast.error('Informe sua academia');
 
-    if (role === 'professor') {
+    if (role === 'professor' || role === 'admin') {
       setStep(4);
       return;
     }
@@ -207,7 +220,7 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      // 1. Criar conta (sem URLs de imagem ainda — usuário não está autenticado)
+      // 1. Criar conta
       await register({
         email: form.email,
         password: form.password,
@@ -220,7 +233,7 @@ export default function Register() {
         weightKg: form.weightKg,
         heightCm: form.heightCm,
         bjjSince: form.bjjSince,
-        role: 'professor',
+        role,
         academyName: form.academyName,
         academyAddress: form.academyAddress,
         academyCity: form.academyCity,
@@ -250,7 +263,8 @@ export default function Register() {
         });
       }
 
-      toast.success('Academia cadastrada! Bem-vindo, Professor! 🏫');
+      const msg = role === 'admin' ? 'Academia cadastrada! Bem-vindo! 🏛️' : 'Academia cadastrada! Bem-vindo, Professor! 🏫';
+      toast.success(msg);
       navigate('/app');
     } catch (err: any) {
       toast.error(err.code === 'auth/email-already-in-use' ? 'Este email já está cadastrado' : 'Erro ao criar conta');
@@ -318,7 +332,7 @@ export default function Register() {
         </div>
       )}
 
-      {/* ── PASSO 2: Seleção Aluno / Professor ── */}
+      {/* ── PASSO 2: Seleção Aluno / Professor / Academia ── */}
       {step === 2 && (
         <div className="flex-1 px-6 py-8 flex flex-col gap-6">
           <div>
@@ -334,11 +348,11 @@ export default function Register() {
               <div style={{ width: '56px', height: '56px', background: '#1A0000', border: '2px solid #CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🥋</div>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>ALUNO</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>PRATICANTE DE JIU-JITSU</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>R$ 19,90 / mês</p>
               </div>
             </div>
             <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-              {['Registrar treinos e evoluir XP', 'Acompanhar progresso até a próxima faixa', 'Compartilhar conquistas nas redes sociais'].map(item => (
+              {['Registrar treinos e evoluir XP', 'Histórico completo e streak', 'Comunidade, conquistas e desafios'].map(item => (
                 <p key={item} style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ color: '#CC0000', fontWeight: 700 }}>✓</span> {item}
                 </p>
@@ -347,18 +361,36 @@ export default function Register() {
           </button>
 
           {/* Card Professor */}
-          <button onClick={() => handleStep2('professor')} style={{ background: '#111', border: '2px solid #1A6ECC', padding: '1.5rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <button onClick={() => handleStep2('professor')} style={{ background: '#111', border: '2px solid #8B5CF6', padding: '1.5rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '56px', height: '56px', background: '#001A33', border: '2px solid #1A6ECC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🏫</div>
+              <div style={{ width: '56px', height: '56px', background: '#1A0033', border: '2px solid #8B5CF6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>👨‍🏫</div>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>PROFESSOR</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#1A6ECC', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>INSTRUTOR / DONO DE ACADEMIA</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>R$ 47,90 / mês</p>
               </div>
             </div>
             <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-              {['Todas as funções de atleta (treinos, XP, rankings)', 'Cadastrar sua academia com logomarca', 'Gerenciar alunos, eventos e desafios', 'Acesso ao Painel de Gestão da Academia'].map(item => (
+              {['Todas as funções de atleta', 'Alunos ilimitados', 'Matrículas, pagamentos e check-in', 'Promoções de faixa e agenda'].map(item => (
                 <p key={item} style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ color: '#1A6ECC', fontWeight: 700 }}>✓</span> {item}
+                  <span style={{ color: '#8B5CF6', fontWeight: 700 }}>✓</span> {item}
+                </p>
+              ))}
+            </div>
+          </button>
+
+          {/* Card Academia */}
+          <button onClick={() => handleStep2('admin')} style={{ background: '#111', border: '2px solid #CC0000', padding: '1.5rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ width: '56px', height: '56px', background: '#1A0000', border: '2px solid #CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🏛️</div>
+              <div>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>ACADEMIA</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>R$ 97,90 / mês</p>
+              </div>
+            </div>
+            <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+              {['Dashboard administrativo', 'Gestão de usuários e professores', 'CRM completo e relatórios', 'Múltiplos professores na equipe'].map(item => (
+                <p key={item} style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ color: '#CC0000', fontWeight: 700 }}>✓</span> {item}
                 </p>
               ))}
             </div>
@@ -402,7 +434,7 @@ export default function Register() {
             </div>
 
             <div style={{ position: 'relative' }}>
-              <label className="bjj-label">Academia {role === 'professor' ? '(onde você treina)' : ''}</label>
+              <label className="bjj-label">Academia {role === 'professor' || role === 'admin' ? '(onde você treina)' : ''}</label>
               <input
                 className="bjj-input"
                 placeholder={role === 'student' ? 'Buscar academia cadastrada...' : 'Nome da sua academia'}
@@ -423,7 +455,6 @@ export default function Register() {
                       type="button"
                       onMouseDown={() => {
                         update('academy', acad.name);
-                        update('professor', acad.professor);
                         setAcademyDropOpen(false);
                         setAcademyResults([]);
                       }}
@@ -441,9 +472,42 @@ export default function Register() {
             </div>
 
             {role === 'student' && (
-              <div>
+              <div style={{ position: 'relative' }}>
                 <label className="bjj-label">Professor (opcional)</label>
-                <input className="bjj-input" placeholder="Nome do seu professor" value={form.professor} onChange={e => update('professor', e.target.value)} />
+                <input
+                  className="bjj-input"
+                  placeholder="Buscar professor cadastrado..."
+                  value={form.professor}
+                  onChange={e => searchProfessorsRegister(e.target.value)}
+                  onFocus={() => form.professor.length >= 2 && setProfessorDropOpen(true)}
+                  onBlur={() => setTimeout(() => setProfessorDropOpen(false), 200)}
+                  autoComplete="off"
+                />
+                {searchingProfessor && (
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>Buscando professores...</p>
+                )}
+                {professorDropOpen && professorResults.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#111', border: '1px solid #333', zIndex: 50, maxHeight: '200px', overflowY: 'auto' }}>
+                    {professorResults.map((prof, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onMouseDown={() => {
+                          update('professor', prof.name);
+                          setProfessorDropOpen(false);
+                          setProfessorResults([]);
+                        }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid #1E1E1E', padding: '0.75rem 1rem', cursor: 'pointer', color: '#FFF' }}
+                      >
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#FFF', margin: 0 }}>{prof.name}</p>
+                        {prof.academyName && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#888', margin: 0 }}>{prof.academyName}</p>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {professorDropOpen && professorResults.length === 0 && form.professor.length >= 2 && !searchingProfessor && (
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>Nenhum professor encontrado.</p>
+                )}
               </div>
             )}
 
@@ -514,15 +578,15 @@ export default function Register() {
             </div>
 
             <button type="submit" disabled={loading}
-              style={{ background: role === 'professor' ? '#1A6ECC' : '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '0.5rem' }}>
-              {loading ? 'CRIANDO CONTA...' : role === 'professor' ? 'PRÓXIMO →' : 'ENTRAR NO TATAMI 🥋'}
+              style={{ background: role === 'professor' || role === 'admin' ? '#CC0000' : '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '0.5rem' }}>
+              {loading ? 'CRIANDO CONTA...' : role === 'professor' || role === 'admin' ? 'PRÓXIMO →' : 'ENTRAR NO TATAMI 🥋'}
             </button>
           </form>
         </div>
       )}
 
-      {/* ── PASSO 4: Dados da Academia (Professor) ── */}
-      {step === 4 && role === 'professor' && (
+      {/* ── PASSO 4: Dados da Academia ── */}
+      {step === 4 && (role === 'professor' || role === 'admin') && (
         <div className="flex-1 px-6 py-8">
           <form onSubmit={handleStep4} className="flex flex-col gap-5">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1.1rem', textTransform: 'uppercase', color: '#888', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
@@ -552,15 +616,15 @@ export default function Register() {
                 </select>
               </div>
             </div>
-            <button type="submit" style={{ background: '#1A6ECC', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: 'pointer', marginTop: '0.5rem' }}>
+            <button type="submit" style={{ background: '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: 'pointer', marginTop: '0.5rem' }}>
               PRÓXIMO →
             </button>
           </form>
         </div>
       )}
 
-      {/* ── PASSO 5: Logo + Foto (Professor) ── */}
-      {step === 5 && role === 'professor' && (
+      {/* ── PASSO 5: Logo + Foto ── */}
+      {step === 5 && (role === 'professor' || role === 'admin') && (
         <div className="flex-1 px-6 py-8">
           <form onSubmit={handleStep5} className="flex flex-col gap-6">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1.1rem', textTransform: 'uppercase', color: '#888', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
@@ -597,13 +661,13 @@ export default function Register() {
               {photoPreview && <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(null); }} style={{ background: 'none', border: 'none', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', textTransform: 'uppercase', cursor: 'pointer', marginTop: '0.375rem' }}>REMOVER</button>}
             </div>
 
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#444', lineHeight: 1.5, textAlign: 'center' }}>
-              Você pode adicionar ou alterar essas imagens depois no seu perfil.
-            </p>
+              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#444', lineHeight: 1.5, textAlign: 'center' }}>
+                Após criar sua conta, escolha um plano de assinatura para liberar todos os recursos.
+              </p>
 
             <button type="submit" disabled={loading}
-              style={{ background: '#1A6ECC', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'CRIANDO CONTA...' : 'CADASTRAR ACADEMIA 🏫'}
+              style={{ background: '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+              {loading ? 'CRIANDO CONTA...' : 'CADASTRAR 🏛️'}
             </button>
           </form>
         </div>

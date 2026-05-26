@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { academyRequests, notifications } from '../db/schema.js';
+import { academyRequests, enrollments } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -20,7 +20,28 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const id = nanoid();
-  const [row] = await db.insert(academyRequests).values({ id, studentUid: req.userId!, ...req.body }).returning();
+  const body = req.body as {
+    professorUid: string; professorName?: string; academyName?: string;
+    studentName?: string; studentEmail?: string; studentPhoto?: string; studentBelt?: string;
+  };
+
+  const [row] = await db.insert(academyRequests).values({
+    id, studentUid: req.userId!, status: 'accepted',
+    ...body,
+  }).returning();
+
+  // Cria matrícula automaticamente
+  const enrollmentId = nanoid();
+  await db.insert(enrollments).values({
+    id: enrollmentId,
+    professorUid: body.professorUid,
+    professorName: body.professorName ?? null,
+    academyName: body.academyName ?? null,
+    studentUid: req.userId!,
+    studentName: body.studentName ?? null,
+    status: 'active',
+  });
+
   res.status(201).json(row);
 });
 

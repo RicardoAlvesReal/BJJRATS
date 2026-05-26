@@ -33,6 +33,12 @@ const FEATURES_COMUNIDADE = [
   { num: '04', icon: '🔍', title: 'Busca de Academias', desc: 'Encontre academias cadastradas no BJJRats, veja avaliações de alunos e conecte-se com a equipe mais próxima.' },
 ];
 
+const LANDING_PLANS = [
+  { slug: 'aluno', icon: '🥋', name: 'Aluno', desc: 'Registre treinos, acompanhe sua evolução e participe da comunidade.', price: 19.90, color: '#3B82F6', popular: false, features: ['Registro de treinos', 'Histórico completo', 'Sequência (streak)', 'Comunidade', 'Conquistas', 'Competições', 'Metas e desafios'] },
+  { slug: 'professor', icon: '👨‍🏫', name: 'Professor Particular', desc: 'Gerencie seus alunos com exclusividade e acompanhe cada um.', price: 47.90, color: '#8B5CF6', popular: true, features: ['Painel do professor', 'Alunos ilimitados', 'Matrículas e pagamentos', 'Promoções de faixa', 'Chamada (check-in)', 'Agenda de aulas', 'Atendimento exclusivo'] },
+  { slug: 'academia', icon: '🏛️', name: 'Academia', desc: 'Gestão completa com múltiplos professores, CRM e relatórios.', price: 97.90, color: '#CC0000', popular: false, features: ['Dashboard administrativo', 'Gestão de usuários', 'CRM completo', 'Múltiplos professores', 'Relatórios', 'Analytics financeiro', 'Todos os recursos professores'] },
+];
+
 const AppleSVG = () => (
   <svg width="20" height="24" viewBox="0 0 814 1000" fill="#AAA" xmlns="http://www.w3.org/2000/svg">
     <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105.3-57.9-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.3 269-317.3 70.1 0 128.4 46.4 172.5 46.4 42.8 0 109.6-49 192.5-49 30.9 0 111.3 2.6 168.3 80.1zm-198.5-119.5c31.2-36.9 53.4-88.1 53.4-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.2-71.3z"/>
@@ -145,12 +151,12 @@ export default function Landing() {
         </div>
 
         <div className="hidden lg:flex items-center gap-2.5">
-          <button onClick={() => navigate('/login?perfil=professor')}
+          <button onClick={() => navigate('/login')}
             className="!text-[0.8rem] !py-2 !px-6 bg-[#1A1A1A] text-white hover:bg-[#252525] border border-[#333] rounded-lg font-black uppercase tracking-[0.1em] transition-all duration-200 font-['Barlow_Condensed'] whitespace-nowrap hover:-translate-y-0.5"
-          >SOU PROFESSOR</button>
-          <button onClick={() => navigate('/login?perfil=aluno')}
+          >ENTRAR</button>
+          <button onClick={() => navigate('/register')}
             className="bjj-btn-primary !text-[0.8rem] !py-2 !px-6 whitespace-nowrap"
-          >SOU ALUNO</button>
+          >CRIAR CONTA</button>
         </div>
 
         <div className="flex lg:hidden items-center gap-2">
@@ -172,8 +178,8 @@ export default function Landing() {
           <button onClick={() => scrollTo('academia')} className="lp-mob-item">ACADEMIA</button>
           <button onClick={() => scrollTo('comunidade')} className="lp-mob-item">COMUNIDADE</button>
           <hr className="lp-mob-hr" />
-          <button onClick={() => { navigate('/login?perfil=aluno'); setMenuOpen(false); }} className="lp-mob-item text-[#CC0000]">SOU ALUNO →</button>
-          <button onClick={() => { navigate('/login?perfil=professor'); setMenuOpen(false); }} className="lp-mob-item text-[#888]">SOU PROFESSOR →</button>
+          <button onClick={() => { navigate('/register'); setMenuOpen(false); }} className="lp-mob-item text-[#CC0000]">CRIAR CONTA →</button>
+          <button onClick={() => { navigate('/login'); setMenuOpen(false); }} className="lp-mob-item text-[#888]">ENTRAR →</button>
         </div>
       )}
 
@@ -219,16 +225,16 @@ export default function Landing() {
 
           <div className="flex flex-col gap-5">
             <div className="flex gap-3 flex-wrap">
-              <button onClick={() => navigate('/login?perfil=aluno')}
+              <button onClick={() => navigate('/register')}
                 className="bg-[#CC0000] text-white text-[0.95rem] font-black uppercase tracking-[0.1em] px-6 py-3.5 border-none inline-flex items-center gap-1.5 transition-all hover:bg-[#FF0000] hover:shadow-[0_0_25px_rgba(204,0,0,0.4)] font-['Barlow_Condensed'] rounded-xl"
               >
-                SOU ALUNO
+                CRIAR CONTA
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
-              <button onClick={() => navigate('/login?perfil=professor')}
+              <button onClick={() => navigate('/login')}
                 className="bg-transparent text-white text-[0.9rem] font-bold uppercase tracking-[0.08em] px-6 py-3.5 border border-white/30 inline-flex items-center gap-1.5 transition-all hover:border-white/60 hover:shadow-[0_0_20px_rgba(255,255,255,0.05)] font-['Barlow_Condensed'] rounded-xl"
               >
-                SOU PROFESSOR
+                JÁ TENHO CONTA
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
@@ -302,10 +308,10 @@ export default function Landing() {
             ))}
           </div>
           <div className="flex items-center gap-5 mt-6 flex-wrap">
-            <button onClick={() => navigate('/login?perfil=aluno')}
+            <button onClick={() => navigate('/register')}
               className="bg-none border-none text-[#CC0000] text-[0.72rem] font-bold uppercase tracking-[0.1em] inline-flex items-center gap-1.5 transition-all hover:gap-3 hover:opacity-80 p-0 font-['Barlow_Condensed']"
             >
-              ENTRAR COMO ALUNO
+              CRIAR CONTA
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
             <span className="text-[0.62rem] uppercase tracking-[0.08em] text-[#444] font-['Barlow_Condensed']">Cadastro gratuito · Acesso imediato</span>
@@ -336,13 +342,13 @@ export default function Landing() {
             ))}
           </div>
           <div className="flex items-center gap-5 mt-6 flex-wrap">
-            <button onClick={() => navigate('/login?perfil=professor')}
+            <button onClick={() => navigate('/register')}
               className="bg-none border-none text-[#0EA5E9] text-[0.72rem] font-bold uppercase tracking-[0.1em] inline-flex items-center gap-1.5 transition-all hover:gap-3 hover:opacity-80 p-0 font-['Barlow_Condensed']"
             >
-              ENTRAR COMO PROFESSOR
+              CRIAR CONTA
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
-            <span className="text-[0.62rem] uppercase tracking-[0.08em] text-[#444] font-['Barlow_Condensed']">Painel completo · Gestão da turma</span>
+            <span className="text-[0.62rem] uppercase tracking-[0.08em] text-[#444] font-['Barlow_Condensed']">Cadastro gratuito · Acesso imediato</span>
           </div>
 
           {/* COMUNIDADE */}
@@ -381,6 +387,63 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ===== PLANOS ===== */}
+      <section className="py-16 px-5 bg-[#0A0A0A] border-t border-[#1A1A1A]">
+        <div className="max-w-[1000px] mx-auto">
+          <motion.div {...fadeUp()} className="text-center mb-10">
+            <span className="lp-badge">ASSINATURAS</span>
+            <h2 className="lp-title">Escolha seu plano</h2>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {LANDING_PLANS.map((plan, i) => (
+              <motion.div
+                key={plan.slug}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1, duration: 0.4 }}
+                className="rounded-xl flex flex-col"
+                style={{
+                  background: plan.popular ? '#111' : '#0D0D0D',
+                  border: plan.popular ? '2px solid ' + plan.color : '1px solid #222',
+                  padding: '1.75rem 1.5rem',
+                  position: 'relative',
+                }}
+              >
+                {plan.popular && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[0.55rem] font-black uppercase tracking-[0.12em] px-3 py-1 rounded-full"
+                    style={{ background: plan.color, color: '#FFF' }}
+                  >MAIS POPULAR</span>
+                )}
+                <div className="text-[2rem] mb-1">{plan.icon}</div>
+                <h3 className="text-[1.1rem] font-black uppercase tracking-[0.1em] text-white font-['Barlow_Condensed'] m-0">{plan.name}</h3>
+                <p className="text-[0.75rem] text-[#666] font-['Barlow_Condensed'] mb-4" style={{ minHeight: '2.5rem' }}>{plan.desc}</p>
+                <div className="mb-5">
+                  <span className="text-[2rem] font-black font-['Barlow_Condensed']" style={{ color: plan.color }}>R$ {plan.price.toFixed(2)}</span>
+                  <span className="text-[0.7rem] text-[#666] font-['Barlow_Condensed']">/mês</span>
+                </div>
+                <ul className="list-none p-0 m-0 flex-1 flex flex-col gap-1.5 mb-6">
+                  {plan.features.map(f => (
+                    <li key={f} className="flex items-center gap-2 text-[0.8rem] text-[#BBB] font-['Barlow_Condensed']">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => navigate('/pricing')}
+                  className="w-full text-white text-[0.8rem] font-black uppercase tracking-[0.1em] py-3 border-none rounded-lg cursor-pointer transition-all font-['Barlow_Condensed']"
+                  style={{ background: plan.color }}
+                >
+                  ASSINAR
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ===== FASE BETA ===== */}
       <section className="py-16 px-5 bg-[#0D0D0D] border-t-2 border-[#CC0000]">
         <div className="max-w-[640px] mx-auto text-center">
@@ -398,22 +461,16 @@ export default function Landing() {
           </motion.p>
           <motion.div className="flex flex-col items-center gap-3.5" {...fadeUp(0.15)}>
             <div className="flex gap-3 flex-wrap justify-center">
-              <button onClick={() => navigate('/register?perfil=aluno')}
+              <button onClick={() => navigate('/register')}
                 className="bg-[#CC0000] text-white text-[0.95rem] font-black uppercase tracking-[0.1em] px-7 py-4 inline-flex items-center gap-2 transition-all hover:bg-[#FF0000] hover:shadow-[0_0_25px_rgba(204,0,0,0.4)] font-['Barlow_Condensed'] rounded-xl"
               >
-                SOU ALUNO — CRIAR CONTA
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-              <button onClick={() => navigate('/register?perfil=professor')}
-                className="bg-transparent text-white text-[0.9rem] font-bold uppercase tracking-[0.08em] px-7 py-4 border border-white/20 inline-flex items-center gap-2 transition-all hover:border-white/40 font-['Barlow_Condensed'] rounded-xl"
-              >
-                SOU PROFESSOR — CRIAR CONTA
+                CRIAR CONTA
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
             <button onClick={() => navigate('/login')}
               className="bg-none border-none text-[0.75rem] font-bold uppercase tracking-[0.08em] text-[#555] cursor-pointer font-['Barlow_Condensed']"
-            >JÁ TENHO CONTA → ACESSAR O APP</button>
+            >JÁ TENHO CONTA → ENTRAR</button>
           </motion.div>
 
           <div className="flex items-center justify-center gap-3.5 mt-8 flex-wrap">

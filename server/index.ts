@@ -24,6 +24,8 @@ import achievementsRouter  from "./routes/achievements.js";
 import competitionsRouter  from "./routes/competitions.js";
 import uploadRouter        from "./routes/upload.js";
 import adminRouter         from "./routes/admin.js";
+import subscriptionsRouter from "./routes/subscriptions.js";
+import publicRouter        from "./routes/public.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,6 +60,8 @@ async function startServer() {
   app.use("/api/competitions",     competitionsRouter);
   app.use("/api/upload",           uploadRouter);
   app.use("/api/admin",            adminRouter);
+  app.use("/api/subscriptions",    subscriptionsRouter);
+  app.use("/api/public",           publicRouter);
 
   // SPA static files — only in production (dev uses Vite dev server)
   if (process.env.NODE_ENV === "production") {

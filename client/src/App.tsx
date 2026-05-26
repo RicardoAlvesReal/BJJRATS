@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, Redirect } from "wouter";
@@ -16,10 +17,35 @@ import PublicPost from "./pages/public/PublicPost";
 import PublicEvent from "./pages/public/PublicEvent";
 import PublicChallenge from './pages/public/PublicChallenge';
 import PublicTrial from './pages/public/PublicTrial';
+import Pricing from './pages/Pricing';
+import SubscriptionManager from './pages/SubscriptionManager';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
-  if (loading) {
+  const [checkingSub, setCheckingSub] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
+
+  useEffect(() => {
+    if (loading || !user) { setCheckingSub(false); return; }
+    const check = async () => {
+      try {
+        if (user.role === 'superadmin' || user.subscriptionExempt) {
+          setHasAccess(true);
+          setCheckingSub(false);
+          return;
+        }
+        const { subscription } = await api.subscriptions.getMy();
+        setHasAccess(!!subscription);
+      } catch {
+        setHasAccess(false);
+      } finally {
+        setCheckingSub(false);
+      }
+    };
+    check();
+  }, [user, loading]);
+
+  if (loading || checkingSub) {
     return (
       <div style={{ minHeight: '100vh', background: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
@@ -37,6 +63,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
   if (!user) return <Redirect to="/login" />;
   if (['superadmin', 'admin'].includes(user.role ?? '')) return <Redirect to="/admin" />;
+  if (!hasAccess) return <Redirect to="/pricing" />;
   return <Component />;
 }
 
@@ -70,6 +97,8 @@ function Router() {
       <Route path="/evento/:eventId" component={PublicEvent} />
       <Route path="/desafio/:challengeId" component={PublicChallenge} />
       <Route path="/trial/:academyId" component={PublicTrial} />
+      <Route path="/pricing" component={Pricing} />
+      <Route path="/app/subscription" component={() => <ProtectedRoute component={SubscriptionManager} />} />
       <Route component={() => <Redirect to="/" />} />
     </Switch>
   );

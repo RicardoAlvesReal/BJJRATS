@@ -1,5 +1,5 @@
 import {
-  pgTable, text, integer, boolean, timestamp, real, jsonb, serial
+  pgTable, text, integer, boolean, timestamp, real, jsonb,
 } from 'drizzle-orm/pg-core';
 
 // ─── users ──────────────────────────────────────────────────────────────────
@@ -8,6 +8,7 @@ export const users = pgTable('users', {
   name:             text('name').notNull(),
   email:            text('email').notNull().unique(),
   passwordHash:     text('password_hash').notNull(),
+  subscriptionExempt: boolean('subscription_exempt').default(false),
   photo:            text('photo'),
   belt:             text('belt').notNull().default('Branca'),
   stripes:          integer('stripes').default(0),
@@ -34,11 +35,44 @@ export const users = pgTable('users', {
   academyCity:      text('academy_city'),
   academyState:     text('academy_state'),
   academyLogoUrl:   text('academy_logo_url'),
+  academyCnpj:      text('academy_cnpj'),
+  academyCep:       text('academy_cep'),
+  academyNumber:    text('academy_number'),
+  academyNeighborhood:text('academy_neighborhood'),
+  academyComplement:text('academy_complement'),
   professorPhotoUrl:text('professor_photo_url'),
   savedAcademies:   jsonb('saved_academies').default([]),
   savedProfessors:  jsonb('saved_professors').default([]),
   inviteCode:       text('invite_code'),               // 6 chars = primeiros 6 do uid
-  createdAt:        timestamp('created_at').defaultNow(),
+  createdAt:   timestamp('created_at').defaultNow(),
+});
+
+// ─── plans ─────────────────────────────────────────────────────────────────
+export const plans = pgTable('plans', {
+  id:           text('id').primaryKey(),
+  name:         text('name').notNull(),
+  slug:         text('slug').notNull().unique(),
+  description:  text('description'),
+  price:        real('price').notNull(),
+  roleAssigned: text('role_assigned').notNull(),       // admin|professor|student
+  features:     jsonb('features').default([]),
+  isActive:     boolean('is_active').default(true),
+  createdAt:    timestamp('created_at').defaultNow(),
+});
+
+// ─── subscriptions ─────────────────────────────────────────────────────────
+export const subscriptions = pgTable('subscriptions', {
+  id:                 text('id').primaryKey(),
+  userUid:            text('user_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  planId:             text('plan_id').notNull().references(() => plans.id, { onDelete: 'restrict' }),
+  status:             text('status').default('active'),  // active|trial|cancelled|past_due|expired
+  asaasId:            text('asaas_id'),
+  asaasCustomerId:    text('asaas_customer_id'),
+  currentPeriodStart: timestamp('current_period_start'),
+  currentPeriodEnd:   timestamp('current_period_end'),
+  trialEndsAt:        timestamp('trial_ends_at'),
+  cancelledAt:        timestamp('cancelled_at'),
+  createdAt:          timestamp('created_at').defaultNow(),
 });
 
 // ─── trainings ──────────────────────────────────────────────────────────────
