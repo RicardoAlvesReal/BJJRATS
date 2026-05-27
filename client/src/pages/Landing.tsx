@@ -4,7 +4,7 @@ import { motion, useScroll, useTransform } from 'framer-motion';
 import { fadeUpReveal as fadeUp } from '@/lib/animations';
 
 const HERO_BG = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-hero-bg-EvuzUMvwhPb4GgYFs4uUr2.webp';
-const LOGO = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp';
+const LOGO = '/favicon.png';
 
 const FEATURES_ALUNO = [
   { num: '01', icon: '📋', title: 'Diário de Treinos', desc: 'Registre cada sessão com data, duração e técnicas treinadas. Construa um histórico completo da sua jornada no tatame.' },

@@ -1196,6 +1196,15 @@ export default function ProfessorPanel({ onBack }: Props) {
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             PAINEL DE GESTÃO
           </p>
+          {(profile as any)?.inviteCode && (
+            <p
+              onClick={() => { navigator.clipboard.writeText((profile as any).inviteCode); toast.success('Código copiado!'); }}
+              style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#888', letterSpacing: '0.15em', marginTop: '0.125rem', cursor: 'pointer' }}
+              title="Clique para copiar"
+            >
+              🔑 CÓDIGO: <span style={{ color: accentColor, fontWeight: 700 }}>{(profile as any).inviteCode}</span>
+            </p>
+          )}
         </div>
         {/* Botão de notificações */}
         <button
@@ -1386,6 +1395,26 @@ export default function ProfessorPanel({ onBack }: Props) {
                   {(profile as any)?.academyInstagram && (
                     <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>📸 @{(profile as any)?.academyInstagram}</span>
                   )}
+                </div>
+              )}
+              {/* Código de Convite */}
+              {!showAcademyForm && (profile as any)?.inviteCode && (
+                <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#001A33', border: `1px solid ${accentColor}44`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🔑 CÓDIGO DE CONVITE</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: accentColor, letterSpacing: '0.2em', marginTop: '0.125rem' }}>
+                      {(profile as any).inviteCode}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText((profile as any).inviteCode);
+                      toast.success('Código copiado!');
+                    }}
+                    style={{ background: accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0.75rem', cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    COPIAR
+                  </button>
                 </div>
               )}
 

@@ -31,12 +31,21 @@ router.get('/professors', async (req, res) => {
   res.json(result);
 });
 
-// GET /api/public/invite/:code
+// GET /api/public/invite/:code?role=professor|admin
 router.get('/invite/:code', async (req, res) => {
   const code = req.params.code.toUpperCase();
+  const { role } = req.query as Record<string, string>;
   if (code.length !== 6) {
     res.status(400).json({ error: 'Código deve ter 6 caracteres' });
     return;
+  }
+  const conditions = [eq(users.inviteCode, code)];
+  if (role === 'professor') {
+    conditions.push(eq(users.role, 'professor'));
+  } else if (role === 'admin') {
+    conditions.push(eq(users.role, 'admin'));
+  } else {
+    conditions.push(ne(users.role, 'student'), ne(users.role, 'superadmin'));
   }
   const [user] = await db
     .select({
@@ -45,7 +54,7 @@ router.get('/invite/:code', async (req, res) => {
       academyName: users.academyName,
     })
     .from(users)
-    .where(and(ne(users.role, 'student'), ne(users.role, 'superadmin'), ilike(users.uid, `${code}%`)))
+    .where(and(...conditions))
     .limit(1);
   if (!user) {
     res.status(404).json({ error: 'Código inválido' });

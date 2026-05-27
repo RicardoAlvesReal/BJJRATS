@@ -7,7 +7,7 @@ export default function PrivacyPolicy() {
       {/* Header */}
       <div style={{ borderBottom: '1px solid #1A1A1A', padding: '1.5rem 2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <img
-          src="https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp"
+          src="/favicon.png"
           alt="BJJRats"
           style={{ width: '40px', height: '40px', objectFit: 'contain' }}
         />

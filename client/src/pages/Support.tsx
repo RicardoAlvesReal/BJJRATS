@@ -9,7 +9,7 @@ export default function Support() {
           <Link href="/">
             <a className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <img
-                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp"
+                src="/favicon.png"
                 alt="BJJRats"
                 className="w-10 h-10 object-contain drop-shadow-[0_0_10px_rgba(204,0,0,0.5)]"
               />

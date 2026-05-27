@@ -33,7 +33,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<string>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -69,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { token, user: u } = await api.auth.register(data as Record<string, unknown>);
     localStorage.setItem(TOKEN_KEY, token);
     setUser(u);
+    return u.uid;
   };
 
   const logout = async () => {

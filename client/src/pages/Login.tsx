@@ -7,7 +7,7 @@ import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 
 const HERO_BG = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-hero-bg-EvuzUMvwhPb4GgYFs4uUr2.webp';
-const LOGO = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp';
+const LOGO = '/favicon.png';
 
 export default function Login() {
   const { login, resetPassword } = useAuth();

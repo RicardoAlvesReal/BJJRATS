@@ -50,7 +50,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       <div style={{ minHeight: '100vh', background: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp"
+            src="/favicon.png"
             alt="BJJRats"
             style={{ width: '64px', height: '64px', objectFit: 'contain', marginBottom: '1rem', filter: 'drop-shadow(0 0 20px rgba(204,0,0,0.5))' }}
           />

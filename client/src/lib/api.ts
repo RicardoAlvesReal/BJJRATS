@@ -68,6 +68,7 @@ export interface UserProfile {
   academyComplement?: string;
   professorPhotoUrl?: string;
   subscriptionExempt?: boolean;
+  inviteCode?: string;
   createdAt?: string;
 }
 
@@ -611,8 +612,8 @@ export const publicApi = {
     const q = search ? `?search=${encodeURIComponent(search)}` : '';
     return apiFetch<any[]>(`/api/public/professors${q}`);
   },
-  checkInviteCode: (code: string) =>
-    apiFetch<{ uid: string; name: string; academyName: string }>(`/api/public/invite/${code}`),
+  checkInviteCode: (code: string, role?: string) =>
+    apiFetch<{ uid: string; name: string; academyName: string }>(`/api/public/invite/${code}${role ? `?role=${role}` : ''}`),
 };
 
 const api = {

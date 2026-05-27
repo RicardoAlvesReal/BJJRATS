@@ -9,7 +9,7 @@ import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 
-const LOGO = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-logo-hero-mmgzpqY4ZnMgeAjjykaT4c.webp';
+const LOGO = '/favicon.png';
 
 const BELTS = [
   { value: 'Branca', label: 'Branca', color: '#FFFFFF' },
@@ -64,6 +64,9 @@ export default function Register() {
     heightCm: '',
     bjjSince: '',
     inviteCode: '',
+    inviteProfCode: '',
+    inviteAcademyCode: '',
+    selectedAcademyUid: '',
     // Passo 4 — academia (professor)
     academyName: '',
     academyAddress: '',
@@ -71,9 +74,11 @@ export default function Register() {
     academyState: '',
   });
 
-  // Estado para o professor encontrado pelo código de convite
+  // Estado para os códigos de convite
   const [inviteProfessor, setInviteProfessor] = useState<{ uid: string; name: string; academyName: string } | null>(null);
-  const [checkingCode, setCheckingCode] = useState(false);
+  const [inviteAcademy, setInviteAcademy] = useState<{ uid: string; name: string; academyName: string } | null>(null);
+  const [checkingProfCode, setCheckingProfCode] = useState(false);
+  const [checkingAcadCode, setCheckingAcadCode] = useState(false);
   // Busca de academias no cadastro
   const [academyResults, setAcademyResults] = useState<{ name: string; professor: string; uid: string }[]>([]);
   const [academyDropOpen, setAcademyDropOpen] = useState(false);
@@ -83,16 +88,28 @@ export default function Register() {
   const [professorDropOpen, setProfessorDropOpen] = useState(false);
   const [searchingProfessor, setSearchingProfessor] = useState(false);
 
-  const handleCheckInviteCode = async (code: string) => {
+  const handleCheckProfCode = async (code: string) => {
     const trimmed = code.trim().toUpperCase();
-    update('inviteCode', trimmed);
+    update('inviteProfCode', trimmed);
     if (trimmed.length < 6) { setInviteProfessor(null); return; }
-    setCheckingCode(true);
+    setCheckingProfCode(true);
     try {
-      const match = await api.public.checkInviteCode(trimmed);
+      const match = await api.public.checkInviteCode(trimmed, 'professor');
       setInviteProfessor({ uid: match.uid, name: match.name, academyName: match.academyName || match.name });
     } catch { setInviteProfessor(null); }
-    finally { setCheckingCode(false); }
+    finally { setCheckingProfCode(false); }
+  };
+
+  const handleCheckAcadCode = async (code: string) => {
+    const trimmed = code.trim().toUpperCase();
+    update('inviteAcademyCode', trimmed);
+    if (trimmed.length < 6) { setInviteAcademy(null); return; }
+    setCheckingAcadCode(true);
+    try {
+      const match = await api.public.checkInviteCode(trimmed, 'admin');
+      setInviteAcademy({ uid: match.uid, name: match.name, academyName: match.academyName || match.name });
+    } catch { setInviteAcademy(null); }
+    finally { setCheckingAcadCode(false); }
   };
 
   const searchAcademiesRegister = async (term: string) => {
@@ -162,12 +179,11 @@ export default function Register() {
     // Aluno — finaliza cadastro
     setLoading(true);
     try {
-      // Se há código de convite válido, usa os dados da academia do professor
-      const academyName = inviteProfessor ? inviteProfessor.academyName : form.academy;
+      const academyName = inviteAcademy ? inviteAcademy.academyName : inviteProfessor ? inviteProfessor.academyName : form.academy;
       const professorName = inviteProfessor ? inviteProfessor.name : form.professor;
-      const academyId = inviteProfessor ? inviteProfessor.uid : null;
+      const academyId = inviteAcademy ? inviteAcademy.uid : inviteProfessor ? inviteProfessor.uid : null;
 
-      await register({
+      const registeredUid = await register({
         email: form.email,
         password: form.password,
         name: form.name,
@@ -183,18 +199,61 @@ export default function Register() {
         academyId: academyId || undefined,
       });
 
-      // Se vinculou via código, cria notificação para o professor
+      // Código do professor → matrícula automática
       if (inviteProfessor) {
         try {
+          await api.enrollments.create({
+            professorUid: inviteProfessor.uid,
+            professorName: inviteProfessor.name,
+            academyName: inviteProfessor.academyName,
+            studentUid: registeredUid,
+            studentName: form.name,
+            status: 'active',
+          });
           await api.notifications.create({
             toUid: inviteProfessor.uid,
             type: 'new_member',
             title: 'Novo membro',
-            message: `${form.name} (${form.belt}) se vinculou à ${inviteProfessor.academyName}`,
+            message: `${form.name} (${form.belt}) se vinculou ao prof ${inviteProfessor.name}`,
             read: false,
           });
         } catch { /* silencioso */ }
-        toast.success(`Vinculado à ${inviteProfessor.academyName}! Bem-vindo ao tatami, Rata! 🥋`);
+      }
+
+      // Código da academia → matrícula automática
+      if (inviteAcademy) {
+        try {
+          await api.enrollments.create({
+            professorUid: inviteAcademy.uid,
+            professorName: inviteAcademy.name,
+            academyName: inviteAcademy.academyName,
+            studentUid: registeredUid,
+            studentName: form.name,
+            status: 'active',
+          });
+          await api.notifications.create({
+            toUid: inviteAcademy.uid,
+            type: 'new_member',
+            title: 'Novo membro',
+            message: `${form.name} (${form.belt}) se vinculou à ${inviteAcademy.academyName}`,
+            read: false,
+          });
+        } catch { /* silencioso */ }
+      }
+
+      if (inviteProfessor || inviteAcademy) {
+        toast.success(`Matriculado com sucesso! Bem-vindo ao tatami, Rata! 🥋`);
+      } else if (form.selectedAcademyUid) {
+        // Busca normal → cria pedido de matrícula pendente
+        try {
+          await api.academyRequests.create({
+            professorUid: form.selectedAcademyUid,
+            academyName: form.academy,
+            studentName: form.name,
+            studentBelt: form.belt,
+          });
+          toast.success(`Pedido enviado para ${form.academy}!`);
+        } catch { /* silencioso */ }
       } else {
         toast.success('Bem-vindo ao tatami, Rata! 🥋');
       }
@@ -455,6 +514,7 @@ export default function Register() {
                       type="button"
                       onMouseDown={() => {
                         update('academy', acad.name);
+                        update('selectedAcademyUid', acad.uid);
                         setAcademyDropOpen(false);
                         setAcademyResults([]);
                       }}
@@ -511,38 +571,69 @@ export default function Register() {
               </div>
             )}
 
-            {/* Código de convite — apenas para alunos */}
+            {/* Códigos de convite — apenas para alunos */}
             {role === 'student' && (
-              <div style={{ background: '#001A33', border: '1px solid #1A6ECC22', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-                <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A6ECC' }}>
-                  🔑 CÓDIGO DE CONVITE (OPCIONAL)
-                </label>
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', lineHeight: 1.5 }}>
-                  Se seu professor te passou um código, insira aqui para se vincular automaticamente à academia.
+              <div style={{ background: '#001A33', border: '1px solid #1A6ECC22', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A6ECC' }}>
+                  🔑 CÓDIGOS DE CONVITE (OPCIONAL)
                 </p>
-                <input
-                  className="bjj-input"
-                  placeholder="Ex: A1B2C3"
-                  value={form.inviteCode}
-                  onChange={e => handleCheckInviteCode(e.target.value)}
-                  maxLength={6}
-                  style={{ textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 700, fontSize: '1.1rem' }}
-                />
-                {checkingCode && (
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555' }}>Verificando código...</p>
-                )}
-                {!checkingCode && form.inviteCode.length === 6 && inviteProfessor && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem', background: '#001A33', border: '1px solid #1A6ECC' }}>
-                    <span style={{ color: '#1A6ECC', fontSize: '1rem' }}>✓</span>
-                    <div>
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#FFF' }}>{inviteProfessor.academyName}</p>
-                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888' }}>Prof. {inviteProfessor.name}</p>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', lineHeight: 1.5 }}>
+                  Insira os códigos passados pelo seu professor e/ou academia para se vincular automaticamente.
+                </p>
+
+                {/* Código do Professor */}
+                <div>
+                  <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', display: 'block' }}>
+                    CÓDIGO DO PROFESSOR
+                  </label>
+                  <input
+                    className="bjj-input"
+                    placeholder="Ex: A1B2C3"
+                    value={form.inviteProfCode}
+                    onChange={e => handleCheckProfCode(e.target.value)}
+                    maxLength={6}
+                    style={{ textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 700, fontSize: '1.1rem' }}
+                  />
+                  {checkingProfCode && (
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>Verificando código...</p>
+                  )}
+                  {!checkingProfCode && form.inviteProfCode.length === 6 && inviteProfessor && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#0A2A1A', border: '1px solid #22C55E', marginTop: '0.25rem' }}>
+                      <span style={{ color: '#22C55E', fontSize: '0.875rem' }}>✓</span>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color: '#FFF' }}>Prof. {inviteProfessor.name} — {inviteProfessor.academyName}</p>
                     </div>
-                  </div>
-                )}
-                {!checkingCode && form.inviteCode.length === 6 && !inviteProfessor && (
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#CC0000' }}>Código inválido. Verifique com seu professor.</p>
-                )}
+                  )}
+                  {!checkingProfCode && form.inviteProfCode.length === 6 && !inviteProfessor && (
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#CC0000', marginTop: '0.25rem' }}>Código inválido</p>
+                  )}
+                </div>
+
+                {/* Código da Academia */}
+                <div>
+                  <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', display: 'block' }}>
+                    CÓDIGO DA ACADEMIA
+                  </label>
+                  <input
+                    className="bjj-input"
+                    placeholder="Ex: XYZ789"
+                    value={form.inviteAcademyCode}
+                    onChange={e => handleCheckAcadCode(e.target.value)}
+                    maxLength={6}
+                    style={{ textTransform: 'uppercase', letterSpacing: '0.2em', fontWeight: 700, fontSize: '1.1rem' }}
+                  />
+                  {checkingAcadCode && (
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>Verificando código...</p>
+                  )}
+                  {!checkingAcadCode && form.inviteAcademyCode.length === 6 && inviteAcademy && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: '#0A2A1A', border: '1px solid #22C55E', marginTop: '0.25rem' }}>
+                      <span style={{ color: '#22C55E', fontSize: '0.875rem' }}>✓</span>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color: '#FFF' }}>{inviteAcademy.academyName}</p>
+                    </div>
+                  )}
+                  {!checkingAcadCode && form.inviteAcademyCode.length === 6 && !inviteAcademy && (
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#CC0000', marginTop: '0.25rem' }}>Código inválido</p>
+                  )}
+                </div>
               </div>
             )}
 
