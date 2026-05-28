@@ -37,8 +37,8 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
     setLoading(true);
     setSearched(true);
     try {
-      const professors = await api.users.list({ role: 'professor' }) as any[];
-      const all: AcademyResult[] = professors
+      const admins = await api.users.list({ role: 'admin' }) as any[];
+      const all: AcademyResult[] = admins
         .map(data => ({
           professorUid: data.uid,
           academyName: data.academyName || data.academy || '',

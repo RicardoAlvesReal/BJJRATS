@@ -21,7 +21,6 @@ router.post('/register', async (req, res) => {
     return;
   }
   const uid = nanoid();
-  const inviteCode = uid.substring(0, 6).toUpperCase();
   const passwordHash = await bcrypt.hash(password, 10);
   await db.insert(users).values({
     uid,
@@ -30,7 +29,6 @@ router.post('/register', async (req, res) => {
     passwordHash,
     belt,
     role,
-    inviteCode,
     academy:       rest.academy        || '',
     academyId:     rest.academyId      || null,
     professor:     rest.professor      || '',

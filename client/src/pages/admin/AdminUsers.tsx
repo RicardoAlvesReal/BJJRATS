@@ -102,9 +102,13 @@ export default function AdminUsers() {
     .filter(([, lvl]) => lvl < myLevel)
     .map(([r]) => r);
 
+  const q = search.toLowerCase();
   const filtered = users.filter((u) =>
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
+    u.name.toLowerCase().includes(q) ||
+    u.email.toLowerCase().includes(q) ||
+    (u.academy || '').toLowerCase().includes(q) ||
+    (u.academyName || '').toLowerCase().includes(q) ||
+    (u.academyCity || '').toLowerCase().includes(q)
   );
 
   const openCreate = () => {

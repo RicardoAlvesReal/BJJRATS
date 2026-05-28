@@ -43,7 +43,6 @@ export const users = pgTable('users', {
   professorPhotoUrl:text('professor_photo_url'),
   savedAcademies:   jsonb('saved_academies').default([]),
   savedProfessors:  jsonb('saved_professors').default([]),
-  inviteCode:       text('invite_code'),               // 6 chars = primeiros 6 do uid
   createdAt:   timestamp('created_at').defaultNow(),
 });
 

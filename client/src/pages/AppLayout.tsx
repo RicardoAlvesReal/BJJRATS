@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, CalendarCheck, School, Users, Target, User } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, School, GraduationCap, Users, Target, User } from 'lucide-react';
 import { pageVariant as pageVariants, pageTransition, overlayVariant as overlayVariants, modalVariant as modalVariants } from '@/lib/animations';
 import { COLORS } from '@/lib/design';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
@@ -12,12 +12,13 @@ import Community from './app/Community';
 import Profile from './app/Profile';
 import NewTraining from './app/NewTraining';
 import Academy from './app/Academy';
+import Professores from './app/Professores';
 import Goals from './app/Goals';
 import TrainingShareModal, { type TrainingData as ShareTrainingData, type ShareUserData } from './app/TrainingShareModal';
 import ProfessorPanel from './app/ProfessorPanel';
 import { useAuth } from '@/contexts/AuthContext';
 
-type Tab = 'dashboard' | 'history' | 'academy' | 'community' | 'goals' | 'profile';
+type Tab = 'dashboard' | 'history' | 'academy' | 'professores' | 'community' | 'goals' | 'profile';
 
 const TABS: { id: Tab; label: string; icon: (active: boolean) => ReactNode }[] = [
   {
@@ -34,6 +35,11 @@ const TABS: { id: Tab; label: string; icon: (active: boolean) => ReactNode }[] =
     id: 'academy',
     label: 'ACADEMIA',
     icon: (active) => <School size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
+  },
+  {
+    id: 'professores',
+    label: 'PROFESSORES',
+    icon: (active) => <GraduationCap size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'community',
@@ -462,6 +468,7 @@ export default function AppLayout() {
             {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} />}
             {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
             {activeTab === 'academy' && <Academy />}
+            {activeTab === 'professores' && <Professores />}
             {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
             {activeTab === 'goals' && <Goals />}
             {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onEdit={(t) => setEditTraining(t)} />}
@@ -483,7 +490,7 @@ export default function AppLayout() {
       </div>
 
       {/* Tab Bar — Mobile only */}
-      <nav className="bjj-tab-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)' }}>
+      <nav className="bjj-tab-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
         {TABS.map(tab => (
           <button
             key={tab.id}

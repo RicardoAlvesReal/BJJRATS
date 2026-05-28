@@ -5,14 +5,18 @@ import { users } from '../db/schema.js';
 
 const router = Router();
 
-// GET /api/public/professors?search=term
+// GET /api/public/professors?search=term&role=professor
 router.get('/professors', async (req, res) => {
-  const { search } = req.query as Record<string, string>;
-  const conditions = [ne(users.role, 'superadmin'), or(eq(users.role, 'professor'), eq(users.role, 'admin'))];
+  const { search, role } = req.query as Record<string, string>;
+  const roleFilter = role === 'admin' ? eq(users.role, 'admin')
+    : role === 'professor' ? eq(users.role, 'professor')
+    : or(eq(users.role, 'professor'), eq(users.role, 'admin'));
+  const conditions = [ne(users.role, 'superadmin'), roleFilter];
   if (search) {
     conditions.push(
       or(
         ilike(users.academyName, `%${search}%`),
+        ilike(users.academy, `%${search}%`),
         ilike(users.name, `%${search}%`),
         ilike(users.academyCity, `%${search}%`),
       )
@@ -22,45 +26,14 @@ router.get('/professors', async (req, res) => {
     .select({
       uid: users.uid,
       name: users.name,
+      academy: users.academy,
       academyName: users.academyName,
       academyCity: users.academyCity,
     })
     .from(users)
     .where(and(...conditions))
-    .limit(20);
+    .limit(50);
   res.json(result);
-});
-
-// GET /api/public/invite/:code?role=professor|admin
-router.get('/invite/:code', async (req, res) => {
-  const code = req.params.code.toUpperCase();
-  const { role } = req.query as Record<string, string>;
-  if (code.length !== 6) {
-    res.status(400).json({ error: 'Código deve ter 6 caracteres' });
-    return;
-  }
-  const conditions = [eq(users.inviteCode, code)];
-  if (role === 'professor') {
-    conditions.push(eq(users.role, 'professor'));
-  } else if (role === 'admin') {
-    conditions.push(eq(users.role, 'admin'));
-  } else {
-    conditions.push(ne(users.role, 'student'), ne(users.role, 'superadmin'));
-  }
-  const [user] = await db
-    .select({
-      uid: users.uid,
-      name: users.name,
-      academyName: users.academyName,
-    })
-    .from(users)
-    .where(and(...conditions))
-    .limit(1);
-  if (!user) {
-    res.status(404).json({ error: 'Código inválido' });
-    return;
-  }
-  res.json(user);
 });
 
 export default router;

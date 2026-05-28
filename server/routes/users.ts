@@ -17,7 +17,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
     streak: users.streak, academyName: users.academyName, academyCity: users.academyCity,
     academyState: users.academyState, academyAddress: users.academyAddress,
     academyLogoUrl: users.academyLogoUrl, professorPhotoUrl: users.professorPhotoUrl,
-    inviteCode: users.inviteCode, isAcademyAdmin: users.isAcademyAdmin,
+    isAcademyAdmin: users.isAcademyAdmin,
     athleteType: users.athleteType, bjjSince: users.bjjSince,
   }).from(users).$dynamic();
 

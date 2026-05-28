@@ -148,7 +148,7 @@ function AcademySearchByCity() {
     if (!term) { toast.error('Digite a cidade ou nome da academia'); return; }
     setLoading(true); setSearched(true);
     try {
-      const profs = await api.users.list({ role: 'professor' });
+      const profs = await api.users.list({ role: 'admin' });
       const all = profs.map(data => ({
         professorUid: data.uid,
         academyName: (data as any).academyName || (data as any).academy || '',
@@ -375,7 +375,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
     finally { setEventsLoading(false); }
   }, [profile?.academyId]);
 
-  // Carregar posts da comunidade (feedTarget='community')
+  // Carregar posts da comunidade
   useEffect(() => {
     if (!user) { setCommunityRawPosts([]); setPostsLoading(false); return; }
     const load = async () => {
@@ -694,7 +694,6 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
     { id: 'ranking', label: 'RANKING', icon: '🏆' },
     { id: 'conquistas', label: 'CONQUISTAS', icon: '🏅' },
     { id: 'challenges', label: 'DESAFIOS', icon: '⚔️' },
-    { id: 'localize', label: 'ACADEMIAS', icon: '📍' },
   ];
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -1470,7 +1469,7 @@ function LocalizarAcademiaTab() {
     const load = async () => {
       setLoading(true);
       try {
-        const profs = await api.users.list({ role: 'professor' });
+        const profs = await api.users.list({ role: 'admin' });
         const list: AcademyListing[] = profs
           .filter(p => (p as any).academyName || (p as any).academy)
           .map(p => ({
@@ -2122,3 +2121,5 @@ function LocalizarAcademiaTab() {
     </div>
   );
 }
+
+

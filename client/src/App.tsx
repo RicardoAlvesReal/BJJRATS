@@ -5,6 +5,7 @@ import { Route, Switch, Redirect } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import api from '@/lib/api';
 import Landing from "./pages/Landing";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Support from "./pages/Support";
@@ -62,7 +63,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     );
   }
   if (!user) return <Redirect to="/login" />;
-  if (['superadmin', 'admin'].includes(user.role ?? '')) return <Redirect to="/admin" />;
+  if (user.role === 'superadmin' || user.role === 'admin') return <Redirect to="/admin" />;
   if (!hasAccess) return <Redirect to="/pricing" />;
   return <Component />;
 }
@@ -71,14 +72,14 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Redirect to="/admin/login" />;
-  if (!['superadmin', 'admin'].includes(user.role ?? '')) return <Redirect to="/app" />;
+  if (user.role !== 'superadmin' && user.role !== 'admin') return <Redirect to="/app" />;
   return <Component />;
 }
 
 function PublicRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user) return <Redirect to={['superadmin', 'admin'].includes(user.role ?? '') ? '/admin' : '/app'} />;
+  if (user) return <Redirect to={user.role === 'superadmin' || user.role === 'admin' ? '/admin' : '/app'} />;
   return <Component />;
 }
 

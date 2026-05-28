@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
-import { eq, sql, and, or, gte, lt, desc, isNotNull } from 'drizzle-orm';
+import { eq, sql, and, or, gte, lt, desc, isNotNull, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, trainings, classCheckIns, payments, enrollments, academyRequests } from '../db/schema.js';
 import {
@@ -27,6 +27,7 @@ router.get(
   async (req: AuthRequest, res) => {
     const actorRole = req.userRole!;
     const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
+    const { search } = req.query as Record<string, string>;
 
     let query = db
       .select({
@@ -38,18 +39,35 @@ router.get(
         stripes:     users.stripes,
         academyId:   users.academyId,
         academyName: users.academyName,
+        academy:     users.academy,
+        academyCity: users.academyCity,
         phone:       users.phone,
         createdAt:   users.createdAt,
       })
       .from(users);
 
+    const conditions: any[] = [];
     if (academyUid) {
-      query = query.where(
+      conditions.push(
         or(
           eq(users.academyId, academyUid),
           eq(users.uid, academyUid),
         )
       );
+    }
+    if (search) {
+      conditions.push(
+        or(
+          ilike(users.name, `%${search}%`),
+          ilike(users.email, `%${search}%`),
+          ilike(users.academy, `%${search}%`),
+          ilike(users.academyName, `%${search}%`),
+          ilike(users.academyCity, `%${search}%`),
+        )
+      );
+    }
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
     }
 
     const all = await query;
@@ -95,7 +113,6 @@ router.post(
     }
 
     const uid          = nanoid();
-    const inviteCode   = uid.substring(0, 6).toUpperCase();
     const passwordHash = await bcrypt.hash(password, 10);
 
     await db.insert(users).values({
@@ -105,7 +122,6 @@ router.post(
       passwordHash,
       belt,
       role,
-      inviteCode,
       academy:        rest.academy        || '',
       academyId:      rest.academyId || (actorRole !== 'superadmin' ? req.userId! : null),
       professor:      rest.professor      || '',

@@ -42,6 +42,7 @@ const PERIODS = [
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'superadmin';
   const [stats, setStats] = useState<Stats | null>(null);
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
   const [recent, setRecent] = useState<AdminUser[]>([]);
@@ -124,7 +125,7 @@ export default function AdminDashboard() {
             Bem-vindo, {user?.name}
           </h1>
           <p style={{ color: '#666', fontSize: '0.85rem', fontFamily: FONTS.condensed, letterSpacing: '0.05em', marginTop: '0.125rem' }}>
-            Visão geral da plataforma
+            {isSuperAdmin ? 'Visão geral da plataforma' : 'Visão geral da sua academia'}
           </p>
         </div>
         <button
@@ -140,13 +141,21 @@ export default function AdminDashboard() {
       {/* Cards de usuários */}
       <motion.div variants={fadeUp}>
         <p className="bjj-label">Usuários</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
-          <StatCard label="Total" value={stats?.total ?? 0} color="#FFF" />
-          <StatCard label="Admins" value={stats?.admin ?? 0} color="#E87722" />
-          <StatCard label="Academias" value={academias} color="#E87722" />
-          <StatCard label="Professores" value={stats?.professor ?? 0} color="#3B82F6" />
-          <StatCard label="Alunos" value={stats?.student ?? 0} color="#22C55E" />
-        </div>
+        {isSuperAdmin ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
+            <StatCard label="Total" value={stats?.total ?? 0} color="#FFF" />
+            <StatCard label="Admins" value={stats?.admin ?? 0} color="#E87722" />
+            <StatCard label="Academias" value={academias} color="#E87722" />
+            <StatCard label="Professores" value={stats?.professor ?? 0} color="#3B82F6" />
+            <StatCard label="Alunos" value={stats?.student ?? 0} color="#22C55E" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <StatCard label="Total" value={stats?.total ?? 0} color="#FFF" />
+            <StatCard label="Professores" value={stats?.professor ?? 0} color="#3B82F6" />
+            <StatCard label="Alunos" value={stats?.student ?? 0} color="#22C55E" />
+          </div>
+        )}
       </motion.div>
 
       {/* Treinos + Filtro de período */}
@@ -247,8 +256,8 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Academias por estado */}
-          {adminStats.academiesByState.length > 0 && (
+          {/* Academias por estado — só superadmin */}
+          {isSuperAdmin && adminStats.academiesByState.length > 0 && (
             <div className="bjj-card" style={{ padding: '1.25rem' }}>
               <p className="bjj-label">Academias por estado</p>
               {adminStats.academiesByState.map((s) => {

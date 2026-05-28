@@ -938,16 +938,7 @@ export default function ProfessorPanel({ onBack }: Props) {
     if (!user) return;
     setProcessingRequest(req.id);
     try {
-      await api.academyRequests.update(req.id, { status: 'approved' });
-      await api.users.update(req.studentUid, { academyId: user.uid, academy: req.academyName });
-      await api.notifications.create({
-        uid: req.studentUid,
-        type: 'request_approved',
-        title: '✅ SOLICITAÇÃO APROVADA!',
-        message: `Seu pedido de ingresso em ${req.academyName} foi aprovado!`,
-        academyName: req.academyName,
-        read: false,
-      });
+      await api.academyRequests.update(req.id, { status: 'accepted' });
       setJoinRequests(prev => prev.filter(r => r.id !== req.id));
       loadMembers();
       toast.success(`${req.studentName} aprovado!`);
@@ -959,14 +950,6 @@ export default function ProfessorPanel({ onBack }: Props) {
     setProcessingRequest(req.id);
     try {
       await api.academyRequests.update(req.id, { status: 'rejected' });
-      await api.notifications.create({
-        uid: req.studentUid,
-        type: 'request_rejected',
-        title: '❌ SOLICITAÇÃO RECUSADA',
-        message: `Seu pedido de ingresso em ${req.academyName} foi recusado.`,
-        academyName: req.academyName,
-        read: false,
-      });
       setJoinRequests(prev => prev.filter(r => r.id !== req.id));
       toast.success(`Solicitação de ${req.studentName} recusada.`);
     } catch { toast.error('Erro ao recusar solicitação'); }
@@ -1196,15 +1179,6 @@ export default function ProfessorPanel({ onBack }: Props) {
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             PAINEL DE GESTÃO
           </p>
-          {(profile as any)?.inviteCode && (
-            <p
-              onClick={() => { navigator.clipboard.writeText((profile as any).inviteCode); toast.success('Código copiado!'); }}
-              style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#888', letterSpacing: '0.15em', marginTop: '0.125rem', cursor: 'pointer' }}
-              title="Clique para copiar"
-            >
-              🔑 CÓDIGO: <span style={{ color: accentColor, fontWeight: 700 }}>{(profile as any).inviteCode}</span>
-            </p>
-          )}
         </div>
         {/* Botão de notificações */}
         <button
@@ -1397,27 +1371,6 @@ export default function ProfessorPanel({ onBack }: Props) {
                   )}
                 </div>
               )}
-              {/* Código de Convite */}
-              {!showAcademyForm && (profile as any)?.inviteCode && (
-                <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#001A33', border: `1px solid ${accentColor}44`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-                  <div>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🔑 CÓDIGO DE CONVITE</p>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: accentColor, letterSpacing: '0.2em', marginTop: '0.125rem' }}>
-                      {(profile as any).inviteCode}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText((profile as any).inviteCode);
-                      toast.success('Código copiado!');
-                    }}
-                    style={{ background: accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0.75rem', cursor: 'pointer', flexShrink: 0 }}
-                  >
-                    COPIAR
-                  </button>
-                </div>
-              )}
-
               {/* Formulário de edição */}
               {showAcademyForm && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>

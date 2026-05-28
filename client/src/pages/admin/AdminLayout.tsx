@@ -9,8 +9,9 @@ import { tabVariant, tabTransition } from '@/lib/animations';
 import AdminDashboard from './AdminDashboard';
 import AdminUsers from './AdminUsers';
 import AdminCrm from './AdminCrm';
+import Community from '../app/Community';
 
-type AdminTab = 'dashboard' | 'users' | 'crm';
+type AdminTab = 'dashboard' | 'users' | 'crm' | 'community';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -36,16 +37,6 @@ export default function AdminLayout() {
             <span className="font-bold text-[0.5rem] tracking-[0.25em] text-[#444] uppercase">GESTÃO</span>
           </div>
           <span style={{ background: roleBadgeColor }} className="text-white font-extrabold text-[0.6rem] tracking-[0.1em] px-1.5 py-0.5 uppercase">{roleBadge}</span>
-          {(user as any)?.inviteCode && (
-            <span
-              onClick={() => { navigator.clipboard.writeText((user as any).inviteCode); toast.success('Código copiado!'); }}
-              className="text-[0.55rem] tracking-[0.15em] font-bold uppercase px-1.5 py-0.5 cursor-pointer"
-              style={{ background: '#001A33', color: '#1A6ECC', border: '1px solid #1A6ECC44' }}
-              title="Clique para copiar"
-            >
-              🔑 {(user as any).inviteCode}
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -94,6 +85,7 @@ export default function AdminLayout() {
             {tab === 'dashboard' && <AdminDashboard />}
             {tab === 'users'     && <AdminUsers />}
             {tab === 'crm'       && <AdminCrm />}
+            {tab === 'community' && <Community />}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -105,4 +97,5 @@ const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'users',     label: 'Usuários'  },
   { id: 'crm',       label: 'CRM'       },
+  { id: 'community', label: 'Comunidade' },
 ];

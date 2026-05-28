@@ -22,9 +22,15 @@ async function apiFetch<T>(urlPath: string, options: RequestInit = {}): Promise<
     delete headers['Content-Type'];
   }
 
-  const res = await fetch(`${BASE}${urlPath}`, { ...options, headers });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const res = await fetch(`${BASE}${urlPath}`, { ...options, headers, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    const err = new Error(body.error || res.statusText) as any;
+    err.status = res.status;
+    err.code = body.error;
+    err.body = body;
     throw err;
   }
   return res.json() as Promise<T>;
@@ -68,7 +74,6 @@ export interface UserProfile {
   academyComplement?: string;
   professorPhotoUrl?: string;
   subscriptionExempt?: boolean;
-  inviteCode?: string;
   createdAt?: string;
 }
 
@@ -355,7 +360,7 @@ export interface AdminStats {
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export const users = {
-  list: (params: { role?: string; search?: string; academyId?: string; inviteCode?: string } = {}) => {
+  list: (params: { role?: string; search?: string; academyId?: string } = {}) => {
     const q = new URLSearchParams(params as Record<string, string>).toString();
     return apiFetch<UserProfile[]>(`/api/users${q ? `?${q}` : ''}`);
   },
@@ -609,11 +614,13 @@ export const upload = {
 
 export const publicApi = {
   searchProfessors: (search: string) => {
-    const q = search ? `?search=${encodeURIComponent(search)}` : '';
+    const q = search ? `?search=${encodeURIComponent(search)}&role=professor` : '?role=professor';
     return apiFetch<any[]>(`/api/public/professors${q}`);
   },
-  checkInviteCode: (code: string, role?: string) =>
-    apiFetch<{ uid: string; name: string; academyName: string }>(`/api/public/invite/${code}${role ? `?role=${role}` : ''}`),
+  searchAcademies: (search: string) => {
+    const q = search ? `?search=${encodeURIComponent(search)}&role=admin` : '?role=admin';
+    return apiFetch<any[]>(`/api/public/professors${q}`);
+  },
 };
 
 const api = {

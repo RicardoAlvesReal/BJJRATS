@@ -11,7 +11,7 @@ import { FONTS } from '@/lib/design';
 type BillingType = 'PIX' | 'BOLETO' | 'CREDIT_CARD';
 
 export default function PricingPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [, navigate] = useLocation();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +26,7 @@ export default function PricingPage() {
   }, []);
 
   const handleSubscribe = async (planId: string) => {
-    if (!user) { navigate('/login'); return; }
+    if (!user) { navigate('/register'); return; }
     setSelectedPlan(planId);
     setCreating(true);
     try {
@@ -53,6 +53,11 @@ export default function PricingPage() {
     academia: '#CC0000',
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
@@ -63,6 +68,15 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center px-4 py-12">
+      {user && (
+        <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#666' }}>{user.name || user.email}</span>
+          <button onClick={handleLogout}
+            style={{ background: 'transparent', border: '1px solid #CC000044', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.35rem 0.75rem', borderRadius: '6px', cursor: 'pointer' }}>
+            SAIR
+          </button>
+        </div>
+      )}
       <motion.div initial="hidden" animate="show" variants={staggerContainer} className="w-full" style={{ maxWidth: '1000px' }}>
         <motion.div variants={fadeUp} className="text-center mb-10">
           <h1 style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '2.5rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>

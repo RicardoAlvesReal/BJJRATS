@@ -1,5 +1,7 @@
 // Asaas payment gateway service
 
+const DEV_MODE = process.env.NODE_ENV === 'development' && !process.env.ASAAS_API_KEY;
+
 const ASAAS_BASE = process.env.ASAAS_SANDBOX === 'true'
   ? 'https://sandbox.asaas.com/api/v3'
   : 'https://www.asaas.com/api/v3';
@@ -11,6 +13,9 @@ async function request<T = unknown>(
   path: string,
   body?: Record<string, unknown>,
 ): Promise<T> {
+  if (DEV_MODE) {
+    throw new Error('Asaas request attempted in dev mode without ASAAS_API_KEY');
+  }
   const res = await fetch(`${ASAAS_BASE}${path}`, {
     method,
     headers: {
@@ -61,6 +66,9 @@ export interface AsaasPayment {
 export async function createCustomer(data: {
   name: string; email: string; cpfCnpj?: string; phone?: string;
 }): Promise<AsaasCustomer> {
+  if (DEV_MODE) {
+    return { id: `dev-cus-${Date.now()}`, name: data.name, email: data.email, cpfCnpj: data.cpfCnpj };
+  }
   return request<AsaasCustomer>('POST', '/customers', {
     name: data.name,
     email: data.email,
@@ -70,6 +78,7 @@ export async function createCustomer(data: {
 }
 
 export async function findCustomer(email: string): Promise<AsaasCustomer | null> {
+  if (DEV_MODE) return null;
   const result = await request<{ data: AsaasCustomer[] }>('GET', `/customers?email=${encodeURIComponent(email)}`);
   return result.data?.[0] ?? null;
 }
@@ -86,6 +95,18 @@ export async function createSubscription(data: {
   maxPayments?: number;
   externalReference?: string;
 }): Promise<AsaasSubscription> {
+  if (DEV_MODE) {
+    return {
+      id: `dev-sub-${Date.now()}`,
+      customer: data.customer,
+      billingType: data.billingType,
+      value: data.value,
+      nextDueDate: data.nextDueDate,
+      status: 'ACTIVE',
+      cycle: data.cycle,
+      deleted: false,
+    };
+  }
   return request<AsaasSubscription>('POST', '/subscriptions', {
     customer: data.customer,
     value: data.value,
@@ -103,6 +124,9 @@ export async function getSubscription(id: string): Promise<AsaasSubscription> {
 }
 
 export async function cancelSubscription(id: string): Promise<AsaasSubscription> {
+  if (DEV_MODE) {
+    return { id, customer: '', billingType: 'PIX', value: 0, nextDueDate: '', status: 'CANCELLED', cycle: 'MONTHLY', deleted: true };
+  }
   return request<AsaasSubscription>('DELETE', `/subscriptions/${id}`);
 }
 

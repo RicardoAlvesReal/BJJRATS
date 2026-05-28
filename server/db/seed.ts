@@ -21,7 +21,6 @@ async function seed() {
     console.log(`✓ Superadmin já existe: ${EMAIL}`);
   } else {
     const uid          = nanoid();
-    const inviteCode   = uid.substring(0, 6).toUpperCase();
     const passwordHash = await bcrypt.hash(PASSWORD, 10);
 
     await db.insert(users).values({
@@ -31,7 +30,6 @@ async function seed() {
       passwordHash,
       belt:              'Preta',
       role:              'superadmin',
-      inviteCode,
       isAcademyAdmin:    true,
       subscriptionExempt: true,
     });
