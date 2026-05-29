@@ -44,7 +44,7 @@ router.post('/register', async (req, res) => {
     academyState:  rest.academyState   || null,
   });
   const [user] = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
-  const token = signToken(uid, user.role ?? 'student');
+  const token = signToken(uid, user.role ?? 'student', user.communityModerator ?? false);
   res.status(201).json({ token, user: sanitize(user) });
 });
 
@@ -65,7 +65,7 @@ router.post('/login', async (req, res) => {
     res.status(401).json({ error: 'Credenciais inválidas' });
     return;
   }
-  const token = signToken(user.uid, user.role ?? 'student');
+  const token = signToken(user.uid, user.role ?? 'student', user.communityModerator ?? false);
   res.json({ token, user: sanitize(user) });
 });
 

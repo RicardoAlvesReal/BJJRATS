@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
 import { eq, sql, and, or, gte, lt, desc, isNotNull, ilike } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users, trainings, classCheckIns, payments, enrollments, academyRequests } from '../db/schema.js';
+import { users, trainings, classCheckIns, payments, enrollments, academyRequests, posts, comments, events, challenges, plans, subscriptions, settings } from '../db/schema.js';
 import {
   requireAuth,
   requireRole,
@@ -43,6 +43,8 @@ router.get(
         academyCity: users.academyCity,
         phone:       users.phone,
         createdAt:   users.createdAt,
+        communityModerator: users.communityModerator,
+        trialEndsAt: users.trialEndsAt,
       })
       .from(users);
 
@@ -172,7 +174,7 @@ router.patch(
       return;
     }
 
-    const { password, role: newRole, ...fields } = req.body as Record<string, unknown>;
+    const { password, role: newRole, communityModerator: _ignored, ...fields } = req.body as Record<string, unknown>;
     const updates: Record<string, unknown> = { ...fields };
 
     if (password) {
@@ -712,6 +714,229 @@ router.get(
         status: p.status,
       })),
     });
+  }
+);
+
+// ─── Community Moderation ─────────────────────────────────────────────────────
+// GET /api/admin/community/stats — estatísticas da comunidade
+router.get(
+  '/community/stats',
+  requireAuth,
+  requireRole('superadmin', 'admin'),
+  async (req: AuthRequest, res) => {
+    const [postCount, eventCount, challengeCount, commentCount, topPosters] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(posts),
+      db.select({ count: sql<number>`count(*)` }).from(events),
+      db.select({ count: sql<number>`count(*)` }).from(challenges),
+      db.select({ count: sql<number>`count(*)` }).from(comments),
+      db
+        .select({
+          uid: posts.authorUid,
+          count: sql<number>`count(*)`,
+        })
+        .from(posts)
+        .groupBy(posts.authorUid)
+        .orderBy(desc(sql`count(*)`))
+        .limit(10),
+    ]);
+
+    res.json({
+      totalPosts: Number(postCount[0]?.count ?? 0),
+      totalEvents: Number(eventCount[0]?.count ?? 0),
+      totalChallenges: Number(challengeCount[0]?.count ?? 0),
+      totalComments: Number(commentCount[0]?.count ?? 0),
+      topPosters: topPosters.map(p => ({ uid: p.uid, count: Number(p.count) })),
+    });
+  }
+);
+
+// DELETE /api/admin/community/posts/:id — deletar qualquer post (moderação)
+router.delete(
+  '/community/posts/:id',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const [existing] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, req.params.id)).limit(1);
+    if (!existing) { res.status(404).json({ error: 'Post não encontrado' }); return; }
+    await db.delete(posts).where(eq(posts.id, req.params.id));
+    res.json({ success: true });
+  }
+);
+
+// DELETE /api/admin/community/events/:id — deletar qualquer evento
+router.delete(
+  '/community/events/:id',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const [existing] = await db.select({ id: events.id }).from(events).where(eq(events.id, req.params.id)).limit(1);
+    if (!existing) { res.status(404).json({ error: 'Evento não encontrado' }); return; }
+    await db.delete(events).where(eq(events.id, req.params.id));
+    res.json({ success: true });
+  }
+);
+
+// DELETE /api/admin/community/challenges/:id — deletar qualquer desafio
+router.delete(
+  '/community/challenges/:id',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const [existing] = await db.select({ id: challenges.id }).from(challenges).where(eq(challenges.id, req.params.id)).limit(1);
+    if (!existing) { res.status(404).json({ error: 'Desafio não encontrado' }); return; }
+    await db.delete(challenges).where(eq(challenges.id, req.params.id));
+    res.json({ success: true });
+  }
+);
+
+// PATCH /api/admin/users/:uid/toggle-moderator — ativar/desativar moderador
+router.patch(
+  '/users/:uid/toggle-moderator',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const { uid } = req.params;
+    const [target] = await db.select({ uid: users.uid, communityModerator: users.communityModerator }).from(users).where(eq(users.uid, uid)).limit(1);
+    if (!target) { res.status(404).json({ error: 'Usuário não encontrado' }); return; }
+    const newValue = !target.communityModerator;
+    await db.update(users).set({ communityModerator: newValue }).where(eq(users.uid, uid));
+    res.json({ uid, communityModerator: newValue });
+  }
+);
+
+// ─── GET /api/admin/plans ────────────────────────────────────────────────────
+// Lista todos os planos (superadmin)
+router.get(
+  '/plans',
+  requireAuth,
+  requireRole('superadmin'),
+  async (_req: AuthRequest, res) => {
+    const rows = await db.select().from(plans).orderBy(plans.price);
+    res.json(rows);
+  }
+);
+
+// ─── POST /api/admin/plans ───────────────────────────────────────────────────
+// Cria novo plano (superadmin)
+router.post(
+  '/plans',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const { name, slug, description, price, roleAssigned, features, trialDays } = req.body as {
+      name: string; slug: string; description?: string; price: number;
+      roleAssigned: string; features?: string[]; trialDays?: number;
+    };
+    if (!name || !slug || price == null || !roleAssigned) {
+      res.status(400).json({ error: 'name, slug, price e roleAssigned são obrigatórios' });
+      return;
+    }
+    const id = nanoid();
+    await db.insert(plans).values({ id, name, slug, description, price, roleAssigned, features: features || [], trialDays: trialDays ?? 0 });
+    const [plan] = await db.select().from(plans).where(eq(plans.id, id)).limit(1);
+    res.status(201).json(plan);
+  }
+);
+
+// ─── PUT /api/admin/plans/:id ─────────────────────────────────────────────────
+// Atualiza plano (superadmin)
+router.put(
+  '/plans/:id',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const [existing] = await db.select().from(plans).where(eq(plans.id, req.params.id)).limit(1);
+    if (!existing) { res.status(404).json({ error: 'Plano não encontrado' }); return; }
+    const { name, slug, description, price, roleAssigned, features, trialDays, isActive } = req.body as {
+      name?: string; slug?: string; description?: string; price?: number;
+      roleAssigned?: string; features?: string[]; trialDays?: number; isActive?: boolean;
+    };
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) updates.name = name;
+    if (slug !== undefined) updates.slug = slug;
+    if (description !== undefined) updates.description = description;
+    if (price !== undefined) updates.price = price;
+    if (roleAssigned !== undefined) updates.roleAssigned = roleAssigned;
+    if (features !== undefined) updates.features = features;
+    if (trialDays !== undefined) updates.trialDays = trialDays;
+    if (isActive !== undefined) updates.isActive = isActive;
+    await db.update(plans).set(updates).where(eq(plans.id, req.params.id));
+    const [updated] = await db.select().from(plans).where(eq(plans.id, req.params.id)).limit(1);
+    res.json(updated);
+  }
+);
+
+// ─── DELETE /api/admin/plans/:id ──────────────────────────────────────────────
+// Exclui plano (superadmin, bloqueia se houver assinaturas ativas)
+router.delete(
+  '/plans/:id',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const [existing] = await db.select().from(plans).where(eq(plans.id, req.params.id)).limit(1);
+    if (!existing) { res.status(404).json({ error: 'Plano não encontrado' }); return; }
+    const [activeCount] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.planId, req.params.id), eq(subscriptions.status, 'active')));
+    if (activeCount.count > 0) {
+      res.status(400).json({ error: 'Há assinaturas ativas neste plano. Desative-o em vez de excluir.' });
+      return;
+    }
+    await db.delete(plans).where(eq(plans.id, req.params.id));
+    res.json({ success: true });
+  }
+);
+
+// ─── POST /api/admin/users/:uid/give-trial ───────────────────────────────────
+// Concede 30 dias grátis para um usuário (superadmin)
+router.post(
+  '/users/:uid/give-trial',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const { uid } = req.params;
+    const [target] = await db.select({ uid: users.uid, trialEndsAt: users.trialEndsAt }).from(users).where(eq(users.uid, uid)).limit(1);
+    if (!target) { res.status(404).json({ error: 'Usuário não encontrado' }); return; }
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 30);
+    await db.update(users).set({ trialEndsAt }).where(eq(users.uid, uid));
+    res.json({ uid, trialEndsAt: trialEndsAt.toISOString() });
+  }
+);
+
+// ─── GET /api/admin/settings ────────────────────────────────────────────────
+// Retorna todas as configurações (superadmin)
+router.get(
+  '/settings',
+  requireAuth,
+  requireRole('superadmin'),
+  async (_req: AuthRequest, res) => {
+    const rows = await db.select().from(settings);
+    const map: Record<string, string> = {};
+    for (const row of rows) map[row.key] = row.value;
+    res.json(map);
+  }
+);
+
+// ─── PUT /api/admin/settings ────────────────────────────────────────────────
+// Atualiza configurações (superadmin)
+router.put(
+  '/settings',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const data = req.body as Record<string, string>;
+    for (const [key, value] of Object.entries(data)) {
+      await db
+        .insert(settings)
+        .values({ key, value })
+        .onConflictDoUpdate({ target: settings.key, set: { value } });
+    }
+    const rows = await db.select().from(settings);
+    const map: Record<string, string> = {};
+    for (const row of rows) map[row.key] = row.value;
+    res.json(map);
   }
 );
 

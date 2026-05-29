@@ -72,16 +72,26 @@ const GooglePlaySVG = () => (
   </svg>
 );
 
-function StoreBadge({ type }: { type: 'apple' | 'google' }) {
-  return (
-    <div className="lp-store-btn" title={type === 'apple' ? 'Em breve na App Store' : 'Em breve no Google Play'}>
-      <span className="lp-store-soon">Em breve</span>
-      <span className="lp-store-icon">{type === 'apple' ? <AppleSVG /> : <GooglePlaySVG />}</span>
+function StoreBadge({ type, url }: { type: 'apple' | 'google'; url?: string }) {
+  const isApple = type === 'apple';
+  const hasLink = !!url;
+  const content = (
+    <>
+      {!hasLink && <span className="lp-store-soon">Em breve</span>}
+      <span className="lp-store-icon">{isApple ? <AppleSVG /> : <GooglePlaySVG />}</span>
       <div className="lp-store-text">
-        <span className="lp-store-sub">{type === 'apple' ? 'Baixe na' : 'Disponível no'}</span>
-        <span className="lp-store-name">{type === 'apple' ? 'App Store' : 'Google Play'}</span>
+        <span className="lp-store-sub">{isApple ? 'Baixe na' : 'Disponível no'}</span>
+        <span className="lp-store-name">{isApple ? 'App Store' : 'Google Play'}</span>
       </div>
-    </div>
+    </>
+  );
+  const linkStyle: React.CSSProperties = hasLink ? { cursor: 'pointer', opacity: 1, textDecoration: 'none' } : {};
+  const Tag = hasLink ? 'a' : 'div';
+  const extraProps = hasLink ? { href: url, target: '_blank', rel: 'noopener noreferrer' as const } : {};
+  return (
+    <Tag {...extraProps} className="lp-store-btn" style={linkStyle} title={`${hasLink ? 'Baixar na' : 'Em breve na'} ${isApple ? 'App Store' : 'Google Play'}`}>
+      {content}
+    </Tag>
   );
 }
 
@@ -112,6 +122,8 @@ function CounterNumber({ target, suffix = '' }: { target: number; suffix?: strin
 export default function Landing() {
   const [, navigate] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [appStoreUrl, setAppStoreUrl] = useState('');
+  const [playStoreUrl, setPlayStoreUrl] = useState('');
   const { scrollY } = useScroll();
   const heroParallax = useTransform(scrollY, [0, 500], [0, 120]);
   const heroOpacity = useTransform(scrollY, [0, 400], [1, 0.6]);
@@ -130,6 +142,16 @@ export default function Landing() {
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [menuOpen]);
+
+  useEffect(() => {
+    fetch('/api/settings/public')
+      .then(r => r.json())
+      .then(data => {
+        if (data.app_store_url) setAppStoreUrl(data.app_store_url);
+        if (data.play_store_url) setPlayStoreUrl(data.play_store_url);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="bg-[#0A0A0A] text-white min-h-screen overflow-x-hidden w-full">
@@ -242,8 +264,8 @@ export default function Landing() {
             <div className="flex items-center gap-3.5 flex-wrap">
               <span className="text-[0.58rem] font-bold uppercase tracking-[0.14em] text-[#444] font-['Barlow_Condensed']">Baixe o app:</span>
               <div className="flex gap-2.5 flex-wrap">
-                <StoreBadge type="apple" />
-                <StoreBadge type="google" />
+                <StoreBadge type="apple" url={appStoreUrl} />
+                <StoreBadge type="google" url={playStoreUrl} />
               </div>
             </div>
           </div>
@@ -476,8 +498,8 @@ export default function Landing() {
           <div className="flex items-center justify-center gap-3.5 mt-8 flex-wrap">
             <span className="text-[0.58rem] font-bold uppercase tracking-[0.14em] text-[#444] font-['Barlow_Condensed']">Baixe o app:</span>
             <div className="flex gap-2.5 flex-wrap">
-              <StoreBadge type="apple" />
-              <StoreBadge type="google" />
+              <StoreBadge type="apple" url={appStoreUrl} />
+              <StoreBadge type="google" url={playStoreUrl} />
             </div>
           </div>
 
@@ -510,8 +532,8 @@ export default function Landing() {
           <div>
             <div className="text-[0.58rem] font-bold uppercase tracking-[0.15em] text-[#444] mb-3 font-['Barlow_Condensed']">BAIXE O APP</div>
             <div className="flex gap-2.5 flex-wrap">
-              <StoreBadge type="apple" />
-              <StoreBadge type="google" />
+              <StoreBadge type="apple" url={appStoreUrl} />
+              <StoreBadge type="google" url={playStoreUrl} />
             </div>
           </div>
 
@@ -660,3 +682,4 @@ export default function Landing() {
     </div>
   );
 }
+

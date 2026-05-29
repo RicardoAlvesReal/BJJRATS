@@ -146,6 +146,16 @@ export default function PricingPage() {
                 <div style={{ marginBottom: '1.25rem' }}>
                   <span style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '2.25rem', color }}>R$ {plan.price.toFixed(2)}</span>
                   <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>/mês</span>
+                  {plan.trialDays && plan.trialDays > 0 && (
+                    <div style={{ marginTop: '0.25rem' }}>
+                      <span style={{
+                        background: '#3B82F6', color: '#FFF', fontFamily: FONTS.condensed, fontWeight: 800,
+                        fontSize: '0.65rem', letterSpacing: '0.08em', padding: '0.15rem 0.5rem', textTransform: 'uppercase',
+                      }}>
+                        {plan.trialDays} DIAS GRÁTIS
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1.5rem', flex: 1 }}>

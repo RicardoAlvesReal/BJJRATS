@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { posts, comments } from '../db/schema.js';
@@ -44,7 +44,7 @@ function toClientComment(row: Record<string, any>) {
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   const { academyId, type } = req.query as Record<string, string>;
   let query = db.select().from(posts).$dynamic().orderBy(desc(posts.createdAt));
-  const conditions = [sql`NOT EXISTS (SELECT 1 FROM users WHERE uid = ${posts.authorUid} AND role = 'superadmin')`];
+  const conditions: any[] = [];
   if (type)      conditions.push(eq(posts.postType, type));
   if (academyId) conditions.push(eq(posts.academyId, academyId));
   const rows = conditions.length
@@ -71,7 +71,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 // PATCH /api/posts/:id
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ authorUid: posts.authorUid }).from(posts).where(eq(posts.id, req.params.id)).limit(1);
-  if (!existing || existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (!existing) { res.status(404).json({ error: 'Post não encontrado' }); return; }
+  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
+  if (!isModOrSuper && existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const { id: _id, authorUid: _au, ...rest } = req.body;
   const data = fromClientPost(rest);
   const [row] = await db.update(posts).set(data).where(eq(posts.id, req.params.id)).returning();
@@ -81,7 +83,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 // DELETE /api/posts/:id
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ authorUid: posts.authorUid }).from(posts).where(eq(posts.id, req.params.id)).limit(1);
-  if (!existing || existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (!existing) { res.status(404).json({ error: 'Post não encontrado' }); return; }
+  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
+  if (!isModOrSuper && existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   await db.delete(posts).where(eq(posts.id, req.params.id));
   res.json({ success: true });
 });
@@ -90,10 +94,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
 // GET /api/posts/:id/comments
 router.get('/:id/comments', requireAuth, async (req, res) => {
   const rows = await db.select().from(comments)
-    .where(and(
-      eq(comments.postId, req.params.id),
-      sql`NOT EXISTS (SELECT 1 FROM users WHERE uid = ${comments.authorUid} AND role = 'superadmin')`
-    ))
+    .where(eq(comments.postId, req.params.id))
     .orderBy(desc(comments.createdAt));
   res.json(rows.map(toClientComment));
 });
@@ -116,7 +117,9 @@ router.post('/:id/comments', requireAuth, async (req: AuthRequest, res) => {
 // DELETE /api/posts/:postId/comments/:commentId
 router.delete('/:postId/comments/:commentId', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ authorUid: comments.authorUid }).from(comments).where(eq(comments.id, req.params.commentId)).limit(1);
-  if (!existing || existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (!existing) { res.status(404).json({ error: 'Comentário não encontrado' }); return; }
+  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
+  if (!isModOrSuper && existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   await db.delete(comments).where(eq(comments.id, req.params.commentId));
   res.json({ success: true });
 });

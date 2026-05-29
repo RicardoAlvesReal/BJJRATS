@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { events } from '../db/schema.js';
@@ -29,7 +29,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ creatorUid: events.creatorUid }).from(events).where(eq(events.id, req.params.id)).limit(1);
-  if (!existing || existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (!existing) { res.status(404).json({ error: 'Evento não encontrado' }); return; }
+  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
+  if (!isModOrSuper && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const { id: _id, creatorUid: _cu, ...data } = req.body;
   const [row] = await db.update(events).set(data).where(eq(events.id, req.params.id)).returning();
   res.json(row);
@@ -37,7 +39,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ creatorUid: events.creatorUid }).from(events).where(eq(events.id, req.params.id)).limit(1);
-  if (!existing || existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (!existing) { res.status(404).json({ error: 'Evento não encontrado' }); return; }
+  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
+  if (!isModOrSuper && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   await db.delete(events).where(eq(events.id, req.params.id));
   res.json({ success: true });
 });

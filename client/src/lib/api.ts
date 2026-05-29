@@ -244,6 +244,8 @@ export const auth = {
 
 export interface AdminUser extends UserProfile {
   role: string;
+  communityModerator?: boolean;
+  trialEndsAt?: string | null;
 }
 
 export const admin = {
@@ -273,9 +275,48 @@ export const admin = {
   deleteUser: (uid: string) =>
     apiFetch<{ success: boolean }>(`/api/admin/users/${uid}`, { method: 'DELETE' }),
 
+  toggleModerator: (uid: string) =>
+    apiFetch<{ uid: string; communityModerator: boolean }>(`/api/admin/users/${uid}/toggle-moderator`, { method: 'PATCH' }),
+
+  giveTrial: (uid: string) =>
+    apiFetch<{ uid: string; trialEndsAt: string }>(`/api/admin/users/${uid}/give-trial`, { method: 'POST' }),
+
+  plans: {
+    list: () => apiFetch<Plan[]>('/api/admin/plans'),
+    create: (data: { name: string; slug: string; description?: string; price: number; roleAssigned: string; features?: string[] }) =>
+      apiFetch<Plan>('/api/admin/plans', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Plan>) =>
+      apiFetch<Plan>(`/api/admin/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      apiFetch<{ success: boolean }>(`/api/admin/plans/${id}`, { method: 'DELETE' }),
+  },
+
+  getSettings: () => apiFetch<Record<string, string>>('/api/admin/settings'),
+
+  updateSettings: (data: Record<string, string>) =>
+    apiFetch<Record<string, string>>('/api/admin/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
   getStats: (days?: number) => apiFetch<AdminStats>(`/api/admin/stats${days ? `?days=${days}` : ''}`),
 
   getCrmData: () => apiFetch<CrmData>('/api/admin/crm'),
+
+  // Community moderation (superadmin)
+  community: {
+    stats: () => apiFetch<CommunityStats>('/api/admin/community/stats'),
+    deletePost: (id: string) => apiFetch<{ success: boolean }>(`/api/admin/community/posts/${id}`, { method: 'DELETE' }),
+    deleteEvent: (id: string) => apiFetch<{ success: boolean }>(`/api/admin/community/events/${id}`, { method: 'DELETE' }),
+    deleteChallenge: (id: string) => apiFetch<{ success: boolean }>(`/api/admin/community/challenges/${id}`, { method: 'DELETE' }),
+  },
+
+  announcements: {
+    list: (all?: boolean) => apiFetch<Announcement[]>(`/api/announcements${all ? '?all=true' : ''}`),
+    create: (data: { title: string; content: string; imageUrl?: string; linkUrl?: string; linkText?: string }) =>
+      apiFetch<Announcement>('/api/announcements', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Announcement>) =>
+      apiFetch<Announcement>(`/api/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      apiFetch<{ success: boolean }>(`/api/announcements/${id}`, { method: 'DELETE' }),
+  },
 };
 
 export interface CrmData {
@@ -355,6 +396,14 @@ export interface AdminStats {
   userGrowth: { month: string; count: number }[];
   beltDistribution: { belt: string; count: number }[];
   academiesByState: { state: string; count: number }[];
+}
+
+export interface CommunityStats {
+  totalPosts: number;
+  totalEvents: number;
+  totalChallenges: number;
+  totalComments: number;
+  topPosters: { uid: string; count: number }[];
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -556,6 +605,18 @@ export const competitions = {
 
 // ─── Subscriptions ────────────────────────────────────────────────────────────
 
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  imageUrl?: string | null;
+  linkUrl?: string | null;
+  linkText?: string | null;
+  isActive?: boolean | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface Plan {
   id: string;
   name: string;
@@ -564,7 +625,9 @@ export interface Plan {
   price: number;
   roleAssigned: string;
   features: string[];
+  trialDays?: number | null;
   isActive?: boolean | null;
+  createdAt?: string | null;
 }
 
 export interface Subscription {
@@ -610,6 +673,14 @@ export const upload = {
 
 // ─── Export padrão agrupado ───────────────────────────────────────────────────
 
+// ─── Announcements (user-facing) ──────────────────────────────────────────────
+
+export const announcementsApi = {
+  list: () => apiFetch<Announcement[]>('/api/announcements'),
+  dismiss: (id: string) =>
+    apiFetch<{ success: boolean }>(`/api/announcements/${id}/dismiss`, { method: 'POST' }),
+};
+
 // ─── Public (no auth required) ──────────────────────────────────────────────
 
 export const publicApi = {
@@ -643,6 +714,7 @@ const api = {
   competitions,
   upload,
   admin,
+  announcements: announcementsApi,
   public: publicApi,
 };
 

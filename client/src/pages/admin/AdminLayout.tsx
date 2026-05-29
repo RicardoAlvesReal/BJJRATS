@@ -9,9 +9,12 @@ import { tabVariant, tabTransition } from '@/lib/animations';
 import AdminDashboard from './AdminDashboard';
 import AdminUsers from './AdminUsers';
 import AdminCrm from './AdminCrm';
+import AdminPlans from './AdminPlans';
+import AdminAppLinks from './AdminAppLinks';
+import AdminAnnouncements from './AdminAnnouncements';
 import Community from '../app/Community';
 
-type AdminTab = 'dashboard' | 'users' | 'crm' | 'community';
+type AdminTab = 'dashboard' | 'users' | 'crm' | 'plans' | 'app' | 'avisos' | 'community';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -63,7 +66,7 @@ export default function AdminLayout() {
 
       {/* Nav Tabs */}
       <nav className="bg-[#111] border-b border-[#222] flex px-5">
-        {NAV_ITEMS.map(item => (
+        {NAV_ITEMS.filter(item => !item.superOnly || isSuperAdmin).map(item => (
           <button
             key={item.id}
             onClick={() => setTab(item.id as AdminTab)}
@@ -85,6 +88,9 @@ export default function AdminLayout() {
             {tab === 'dashboard' && <AdminDashboard />}
             {tab === 'users'     && <AdminUsers />}
             {tab === 'crm'       && <AdminCrm />}
+            {tab === 'plans'     && isSuperAdmin && <AdminPlans />}
+            {tab === 'app'       && isSuperAdmin && <AdminAppLinks />}
+            {tab === 'avisos'    && isSuperAdmin && <AdminAnnouncements />}
             {tab === 'community' && <Community />}
           </motion.div>
         </AnimatePresence>
@@ -93,9 +99,12 @@ export default function AdminLayout() {
   );
 }
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { id: string; label: string; superOnly?: boolean }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'users',     label: 'Usuários'  },
   { id: 'crm',       label: 'CRM'       },
+  { id: 'plans',     label: 'Planos', superOnly: true },
+  { id: 'app',       label: 'App',    superOnly: true },
+  { id: 'avisos',    label: 'Avisos', superOnly: true },
   { id: 'community', label: 'Comunidade' },
 ];

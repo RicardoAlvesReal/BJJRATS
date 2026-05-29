@@ -27,14 +27,19 @@ export async function requireSubscription(
       return next();
     }
 
-    // Verifica se é exempt
+    // Verifica se é exempt ou está em trial
     const [user] = await db
-      .select({ subscriptionExempt: users.subscriptionExempt })
+      .select({ subscriptionExempt: users.subscriptionExempt, trialEndsAt: users.trialEndsAt })
       .from(users)
       .where(eq(users.uid, req.userId!))
       .limit(1);
 
     if (user?.subscriptionExempt) {
+      req.isExempt = true;
+      return next();
+    }
+
+    if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
       req.isExempt = true;
       return next();
     }

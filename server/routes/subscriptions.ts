@@ -92,16 +92,19 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     });
   }
 
-  // Próximo vencimento: 7 dias a partir de hoje (tempo pro checkout)
+  const trialDays = plan.trialDays ?? 0;
+  const now = new Date();
+
+  // Próximo vencimento: trialDays + 7 dias a partir de hoje
   const nextDue = new Date();
-  nextDue.setDate(nextDue.getDate() + 7);
+  nextDue.setDate(nextDue.getDate() + trialDays + 7);
   const nextDueStr = nextDue.toISOString().split('T')[0];
 
   const bt = (billingType === 'credit_card' ? 'CREDIT_CARD'
     : billingType === 'boleto' ? 'BOLETO'
     : 'PIX') as 'PIX' | 'BOLETO' | 'CREDIT_CARD';
 
-  // Cria subscription no Asaas
+  // Cria subscription no Asaas (com vencimento após trial se houver)
   const asaasSub = await asaasCreateSub({
     customer: customer.id,
     value: plan.price,
@@ -114,19 +117,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
   // Salva no banco
   const subId = nanoid();
-  const now = new Date();
-  const periodEnd = new Date(now);
+  const isTrial = trialDays > 0;
+  const trialEndsAt = isTrial ? new Date(now.getTime() + trialDays * 86400000) : null;
+  const periodEnd = new Date(trialEndsAt ?? now);
   periodEnd.setMonth(periodEnd.getMonth() + 1);
 
   await db.insert(subscriptions).values({
     id: subId,
     userUid: req.userId!,
     planId,
-    status: 'active',
+    status: isTrial ? 'trial' : 'active',
     asaasId: asaasSub.id,
     asaasCustomerId: customer.id,
     currentPeriodStart: now,
     currentPeriodEnd: periodEnd,
+    trialEndsAt,
   });
 
   res.status(201).json({ subscription: { id: subId, asaasId: asaasSub.id } });

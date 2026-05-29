@@ -201,7 +201,7 @@ export default function AdminUsers() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Barlow Condensed, sans-serif' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #CC0000' }}>
-                {['Nome', 'E-mail', 'Role', 'Faixa', 'Academia', 'Ações'].map((h) => (
+                {['Nome', 'E-mail', 'Role', 'Mod', 'Trial', 'Faixa', 'Academia', 'Ações'].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -212,10 +212,64 @@ export default function AdminUsers() {
                   <td style={tdStyle}>{u.name}</td>
                   <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>{u.email}</td>
                   <td style={tdStyle}><RoleBadge role={u.role} /></td>
+                  <td style={tdStyle}>
+                    {u.communityModerator ? (
+                      <span style={{ color: '#00CC00', fontSize: '0.75rem', fontWeight: 700 }}>✓</span>
+                    ) : (
+                      <span style={{ color: '#555', fontSize: '0.75rem' }}>—</span>
+                    )}
+                  </td>
+                  <td style={tdStyle}>
+                    {u.trialEndsAt && new Date(u.trialEndsAt) > new Date() ? (
+                      <span style={{ color: '#3B82F6', fontSize: '0.7rem', fontWeight: 700 }}>
+                        {Math.ceil((new Date(u.trialEndsAt).getTime() - Date.now()) / 86400000)}d
+                      </span>
+                    ) : (
+                      <span style={{ color: '#555', fontSize: '0.75rem' }}>—</span>
+                    )}
+                  </td>
                   <td style={{ ...tdStyle, color: '#AAA' }}>{u.belt ?? '—'}</td>
                   <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>{u.academyName || u.academy || '—'}</td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {me?.role === 'superadmin' && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.admin.toggleModerator(u.uid);
+                                load();
+                              } catch (e: any) {
+                                alert(e?.message ?? 'Erro ao alternar moderador.');
+                              }
+                            }}
+                            style={{
+                              ...btnSmallStyle,
+                              color: u.communityModerator ? '#CC0000' : '#00CC00',
+                              borderColor: u.communityModerator ? '#CC000066' : '#00CC0066',
+                            }}
+                          >
+                            {u.communityModerator ? 'Remover Mod' : 'Tornar Mod'}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.admin.giveTrial(u.uid);
+                                load();
+                              } catch (e: any) {
+                                alert(e?.message ?? 'Erro ao conceder trial.');
+                              }
+                            }}
+                            style={{
+                              ...btnSmallStyle,
+                              color: '#3B82F6',
+                              borderColor: '#3B82F666',
+                            }}
+                          >
+                            {u.trialEndsAt && new Date(u.trialEndsAt) > new Date() ? 'Renovar Trial' : '30 dias grátis'}
+                          </button>
+                        </>
+                      )}
                       <button onClick={() => openEdit(u)} style={btnSmallStyle}>Editar</button>
                       <button onClick={() => setConfirmDel(u)} style={{ ...btnSmallStyle, color: '#CC0000', borderColor: '#CC000066' }}>
                         Excluir

@@ -16,6 +16,7 @@ import Professores from './app/Professores';
 import Goals from './app/Goals';
 import TrainingShareModal, { type TrainingData as ShareTrainingData, type ShareUserData } from './app/TrainingShareModal';
 import ProfessorPanel from './app/ProfessorPanel';
+import AnnouncementBanner from '@/components/AnnouncementBanner';
 import { useAuth } from '@/contexts/AuthContext';
 
 type Tab = 'dashboard' | 'history' | 'academy' | 'professores' | 'community' | 'goals' | 'profile';
@@ -452,6 +453,9 @@ export default function AppLayout() {
           </button>
         </div>
       </aside>
+
+      {/* Announcement Banner */}
+      <AnnouncementBanner />
 
       {/* Main Content */}
       <div className="bjj-main-content">

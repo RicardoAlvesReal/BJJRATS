@@ -1,5 +1,5 @@
 import {
-  pgTable, text, integer, boolean, timestamp, real, jsonb,
+  pgTable, text, integer, boolean, timestamp, real, jsonb, uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 // ─── users ──────────────────────────────────────────────────────────────────
@@ -30,6 +30,8 @@ export const users = pgTable('users', {
   athleteType:      text('athlete_type'),
   isAcademyAdmin:   boolean('is_academy_admin').default(false),
   role:             text('role').default('student'),   // 'superadmin' | 'admin' | 'professor' | 'student'
+  communityModerator: boolean('community_moderator').default(false),
+  trialEndsAt: timestamp('trial_ends_at'),
   academyName:      text('academy_name'),
   academyAddress:   text('academy_address'),
   academyCity:      text('academy_city'),
@@ -55,6 +57,7 @@ export const plans = pgTable('plans', {
   price:        real('price').notNull(),
   roleAssigned: text('role_assigned').notNull(),       // admin|professor|student
   features:     jsonb('features').default([]),
+  trialDays:    integer('trial_days').default(0),
   isActive:     boolean('is_active').default(true),
   createdAt:    timestamp('created_at').defaultNow(),
 });
@@ -71,7 +74,13 @@ export const subscriptions = pgTable('subscriptions', {
   currentPeriodEnd:   timestamp('current_period_end'),
   trialEndsAt:        timestamp('trial_ends_at'),
   cancelledAt:        timestamp('cancelled_at'),
-  createdAt:          timestamp('created_at').defaultNow(),
+  createdAt:   timestamp('created_at').defaultNow(),
+});
+
+// ─── settings ───────────────────────────────────────────────────────────────
+export const settings = pgTable('settings', {
+  key:   text('key').primaryKey(),
+  value: text('value').notNull(),
 });
 
 // ─── trainings ──────────────────────────────────────────────────────────────
@@ -295,3 +304,26 @@ export const competitions = pgTable('competitions', {
   notes:       text('notes'),
   createdAt:   timestamp('created_at').defaultNow(),
 });
+
+// ─── announcements ────────────────────────────────────────────────────────────
+export const announcements = pgTable('announcements', {
+  id:        text('id').primaryKey(),
+  title:     text('title').notNull(),
+  content:   text('content').notNull(),       // texto simples (pode conter HTML)
+  imageUrl:  text('image_url'),
+  linkUrl:   text('link_url'),
+  linkText:  text('link_text'),
+  isActive:  boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// ─── announcement_dismissals ──────────────────────────────────────────────────
+export const announcementDismissals = pgTable('announcement_dismissals', {
+  id:             text('id').primaryKey(),
+  announcementId: text('announcement_id').notNull().references(() => announcements.id, { onDelete: 'cascade' }),
+  userUid:        text('user_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  dismissedAt:    timestamp('dismissed_at').defaultNow(),
+}, (table) => [
+  uniqueIndex('idx_announcement_dismissal').on(table.announcementId, table.userUid),
+]);

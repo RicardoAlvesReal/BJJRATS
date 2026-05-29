@@ -24,9 +24,10 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
   const token = header.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { uid: string; role?: string };
+    const payload = jwt.verify(token, JWT_SECRET) as { uid: string; role?: string; communityModerator?: boolean };
     req.userId   = payload.uid;
     req.userRole = payload.role ?? 'student';
+    (req as any).isCommunityModerator = payload.communityModerator ?? false;
     next();
   } catch {
     res.status(401).json({ error: 'Token inválido' });
@@ -44,6 +45,6 @@ export function requireRole(...roles: string[]) {
   };
 }
 
-export function signToken(uid: string, role: string): string {
-  return jwt.sign({ uid, role }, JWT_SECRET, { expiresIn: '30d' });
+export function signToken(uid: string, role: string, communityModerator?: boolean): string {
+  return jwt.sign({ uid, role, communityModerator }, JWT_SECRET, { expiresIn: '30d' });
 }

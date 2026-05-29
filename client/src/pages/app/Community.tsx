@@ -250,6 +250,8 @@ interface CommunityProps {
 
 export default function Community({ onClearBadge, onNewPosts }: CommunityProps = {}) {
   const { user, profile } = useAuth();
+  const isSuperAdmin = user?.role === 'superadmin';
+  const canModerate = isSuperAdmin || (profile as any)?.communityModerator === true;
   const [activeTab, setActiveTab] = useState<Tab>('feed');
   const feedTopRef = useRef<HTMLDivElement>(null);
 
@@ -571,6 +573,44 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
     } catch { toast.error('Erro ao excluir'); }
   };
 
+  const handleModDeletePost = async (postId: string) => {
+    if (!confirm('Excluir este post (moderação)?' )) return;
+    try {
+      await api.admin.community.deletePost(postId);
+      setCommunityRawPosts(prev => prev ? prev.filter(p => p.id !== postId) : prev);
+      toast.success('Post removido pela moderação');
+    } catch { toast.error('Erro ao excluir'); }
+  };
+
+  const handlePinPost = async (post: CommunityPost) => {
+    try {
+      const newPinned = !post.pinned;
+      const postData: any = { pinned: newPinned };
+      if (newPinned) postData.pinnedAt = new Date();
+      await api.posts.update(post.id, postData as any);
+      setCommunityRawPosts(prev => prev ? prev.map(p => p.id === post.id ? { ...p, pinned: newPinned, pinnedAt: newPinned ? new Date() : undefined } : p) : prev);
+      toast.success(newPinned ? 'Post fixado no topo' : 'Post desafixado');
+    } catch { toast.error('Erro ao fixar/desafixar'); }
+  };
+
+  const handleModDeleteEvent = async (eventId: string) => {
+    if (!confirm('Excluir este evento (moderação)?')) return;
+    try {
+      await api.admin.community.deleteEvent(eventId);
+      setEvents(prev => prev.filter(e => e.id !== eventId));
+      toast.success('Evento removido pela moderação');
+    } catch { toast.error('Erro ao excluir evento'); }
+  };
+
+  const handleModDeleteChallenge = async (challengeId: string) => {
+    if (!confirm('Excluir este desafio (moderação)?')) return;
+    try {
+      await api.admin.community.deleteChallenge(challengeId);
+      setChallenges(prev => prev.filter(c => c.id !== challengeId));
+      toast.success('Desafio removido pela moderação');
+    } catch { toast.error('Erro ao excluir desafio'); }
+  };
+
   const handleNewPost = async () => {
     if (!user || (!newPostText.trim() && !newPostPhoto)) return;
     setPostingPost(true);
@@ -678,6 +718,9 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
 
   // Posts da comunidade (feedTarget='community') — independente da academia
   const communityPosts = (communityRawPosts ?? []).sort((a, b) => {
+    // Pinned posts first
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
     const getTime = (p: CommunityPost) => {
       const s = (p.createdAt as any)?.seconds;
       return s ? s * 1000 : ((p as any)._localMillis || 0);
@@ -909,19 +952,40 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                           )}
                         </div>
                         <div>
-                          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#FFFFFF' }}>{post.authorName}</p>
+                          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#FFFFFF' }}>
+                            {post.authorName}
+                            {post.pinned && (
+                              <span style={{ color: '#CC8800', fontSize: '0.65rem', marginLeft: '0.375rem', fontWeight: 700 }}>📌 FIXADO</span>
+                            )}
+                          </p>
                           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: beltColor }}>
                             {`Faixa ${post.authorBelt}`}
                           </p>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#444' }}>{formatTimeAgo(post.createdAt)}</p>
+                        {isSuperAdmin && (
+                          <button onClick={() => handlePinPost(post)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#CC8800'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#333'; }}
+                            title={post.pinned ? 'Desafixar' : 'Fixar no topo'}>
+                            📌
+                          </button>
+                        )}
                         {isOwn && (
                           <button onClick={() => handleDeletePost(post.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', padding: '0.25rem' }}
                             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#CC0000'; }}
                             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#333'; }}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                          </button>
+                        )}
+                        {canModerate && !isOwn && (
+                          <button onClick={() => handleModDeletePost(post.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#CC0000'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#333'; }}
+                            title='Excluir (moderação)'>
+                            🚫
                           </button>
                         )}
                       </div>
@@ -1054,7 +1118,17 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFFFFF' }}>{ch.title}</p>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', marginTop: '0.2rem' }}>{ch.startDate} → {ch.endDate} · {daysLeft > 0 ? `${daysLeft} dias restantes` : 'Encerrado'}</p>
                       </div>
-                      <span style={{ background: '#FFD70022', border: '1px solid #FFD700', color: '#FFD700', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', flexShrink: 0 }}>+{ch.xpReward} XP</span>
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexShrink: 0 }}>
+                        {canModerate && (
+                          <button onClick={() => handleModDeleteChallenge(ch.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.85rem', padding: '0.1rem' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#CC0000'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#333'; }}
+                            title='Excluir desafio (moderação)'>
+                            🚫
+                          </button>
+                        )}
+                        <span style={{ background: '#FFD70022', border: '1px solid #FFD700', color: '#FFD700', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', flexShrink: 0 }}>+{ch.xpReward} XP</span>
+                      </div>
                     </div>
 
                     {ch.description && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', lineHeight: 1.5, marginBottom: '0.75rem' }}>{ch.description}</p>}
@@ -1124,9 +1198,19 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                           {ev.location ? ` · 📍 ${ev.location}` : ''}
                         </p>
                       </div>
-                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.2rem 0.5rem', border: `1px solid ${color}`, color, background: color + '20', flexShrink: 0 }}>
-                        {label}
-                      </span>
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexShrink: 0 }}>
+                        {canModerate && (
+                          <button onClick={() => handleModDeleteEvent(ev.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.85rem', padding: '0.1rem' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#CC0000'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#333'; }}
+                            title='Excluir evento (moderação)'>
+                            🚫
+                          </button>
+                        )}
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.2rem 0.5rem', border: `1px solid ${color}`, color, background: color + '20', flexShrink: 0 }}>
+                          {label}
+                        </span>
+                      </div>
                     </div>
 
                     {ev.description && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', lineHeight: 1.5, marginBottom: '0.625rem' }}>{ev.description}</p>}
