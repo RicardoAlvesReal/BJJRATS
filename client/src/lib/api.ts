@@ -74,6 +74,7 @@ export interface UserProfile {
   academyComplement?: string;
   professorPhotoUrl?: string;
   subscriptionExempt?: boolean;
+  communityModerator?: boolean;
   createdAt?: string;
 }
 
@@ -487,7 +488,10 @@ export const events = {
 // ─── Challenges ───────────────────────────────────────────────────────────────
 
 export const challenges = {
-  list: () => apiFetch<Challenge[]>('/api/challenges'),
+  list: (params?: { academyId?: string }) => {
+    const qs = params?.academyId ? `?academyId=${encodeURIComponent(params.academyId)}` : '';
+    return apiFetch<Challenge[]>(`/api/challenges${qs}`);
+  },
   get: (id: string) => apiFetch<Challenge>(`/api/challenges/${id}`),
   create: (data: Omit<Challenge, 'id' | 'createdAt'>) =>
     apiFetch<Challenge>('/api/challenges', { method: 'POST', body: JSON.stringify(data) }),

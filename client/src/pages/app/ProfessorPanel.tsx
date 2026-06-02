@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import { tabVariant, tabTransition } from '@/lib/animations';
-import { BELT_COLORS } from '@/lib/bjjrats-constants';
+import { BELT_COLORS, getLevelInfo, ACHIEVEMENTS, topTecnicas, calcStreak, LEVEL_COLORS, Training } from '@/lib/bjjrats-constants';
 import api from '@/lib/api';
 import { sendOverdueWhatsApp, sendSuspendWhatsApp, sendLowFrequencyWhatsApp } from '@/lib/whatsappService';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,7 +35,7 @@ interface AcademyEvent {
   location?: string;
   slots?: number;
   price?: string;
-  registrations: string[];
+  registrations?: string[];
   createdAtStr?: string;
 }
 
@@ -49,6 +49,7 @@ interface Challenge {
   endDate: string;
   xpReward: number;
   createdAtStr?: string;
+  creatorUid?: string;
 }
 
 interface TrialRequest {
@@ -103,6 +104,7 @@ interface Payment {
 
 interface Props {
   onBack: () => void;
+  onLogout?: () => void;
 }
 
 interface Member {
@@ -171,7 +173,7 @@ const PANEL_TABS: { id: PanelTab; label: string; icon: string }[] = [
   { id: 'leads', label: 'LEADS', icon: '🎯' },
 ];
 
-export default function ProfessorPanel({ onBack }: Props) {
+export default function ProfessorPanel({ onBack, onLogout }: Props) {
   const { user, profile } = useAuth();
   const [activeTab, setActiveTab] = useState<PanelTab>('overview');
   const [members, setMembers] = useState<Member[]>([]);
@@ -335,13 +337,7 @@ export default function ProfessorPanel({ onBack }: Props) {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (activeTab === 'members' && members.length === 0 && !membersLoading) {
-      loadMembers();
-    }
-  }, [activeTab, loadMembers, members.length, membersLoading]);
-
-  // Carregar contagem ao montar
+  // Carregar membros ao montar — único ponto de carga
   useEffect(() => {
     loadMembers();
   }, [loadMembers]);
@@ -597,6 +593,10 @@ export default function ProfessorPanel({ onBack }: Props) {
       toast.success('Matrícula reativada!');
     } catch { toast.error('Erro ao reativar'); }
   }, []);
+
+  // Carregar dados financeiros ao montar (para exibir resumo na visão geral)
+  useEffect(() => { loadEnrollments(); }, [loadEnrollments]);
+  useEffect(() => { loadPayments(paymentMonthFilter); }, [loadPayments, paymentMonthFilter]);
 
   useEffect(() => {
     if (activeTab === 'financial') {
@@ -930,9 +930,7 @@ export default function ProfessorPanel({ onBack }: Props) {
       setJoinRequests([]);
     } finally { setRequestsLoading(false); }
   }, [user]);
-  useEffect(() => {
-    if (activeTab === 'members') loadJoinRequests();
-  }, [activeTab, loadJoinRequests]);
+  useEffect(() => { loadJoinRequests(); }, [loadJoinRequests]);
 
   const handleApproveRequest = async (req: JoinRequest) => {
     if (!user) return;
@@ -1067,7 +1065,7 @@ export default function ProfessorPanel({ onBack }: Props) {
     if (!user) return;
     setChallengesLoading(true);
     try {
-      const all = await api.challenges.list({ authorUid: user.uid });
+      const all = await api.challenges.list({ academyId: user.uid });
       const sorted = (all as Challenge[]).sort((a, b) => (b.startDate > a.startDate ? 1 : b.startDate < a.startDate ? -1 : 0));
       setChallenges(sorted);
     } catch (err) {
@@ -1162,11 +1160,21 @@ export default function ProfessorPanel({ onBack }: Props) {
 
       {/* Header */}
       <div style={{ background: '#0D0D0D', borderBottom: `2px solid ${accentColor}`, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: accentColor, padding: '0.25rem', cursor: 'pointer' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
-          </svg>
-        </button>
+        {onLogout ? (
+          <button onClick={onLogout} title="Sair da conta" style={{ background: 'none', border: 'none', color: '#CC3333', padding: '0.25rem', cursor: 'pointer' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        ) : (
+          <button onClick={onBack} style={{ background: 'none', border: 'none', color: accentColor, padding: '0.25rem', cursor: 'pointer' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+          </button>
+        )}
         {(profile?.academyLogoUrl || (profile as any)?.academyLogo) ? (
           <img src={profile?.academyLogoUrl || (profile as any)?.academyLogo} alt="Logo" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
         ) : (
@@ -1174,7 +1182,7 @@ export default function ProfessorPanel({ onBack }: Props) {
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFFFFF', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {profile?.academyName || 'MINHA ACADEMIA'}
+            {profile?.academyName || 'PROFESSOR PARTICULAR'}
           </h1>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             PAINEL DE GESTÃO
@@ -1296,7 +1304,7 @@ export default function ProfessorPanel({ onBack }: Props) {
                 <div>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>{profile?.name}</p>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.2rem' }}>
-                    FAIXA {profile?.belt?.toUpperCase() ?? ''} · PROFESSOR
+                    PROFESSOR
                   </p>
                 </div>
               </div>
@@ -1322,6 +1330,81 @@ export default function ProfessorPanel({ onBack }: Props) {
                 </div>
               ))}
             </div>
+
+            {/* Resumo financeiro do mês */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                💰 FINANCEIRO · {new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                <div style={{ background: '#0D1A0D', border: '1px solid #0D9E6E33', padding: '0.875rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  <span style={{ fontSize: '1.1rem' }}>✅</span>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: '#0D9E6E', lineHeight: 1 }}>
+                    {paymentsLoading ? '...' : `R$\u00a0${payments.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>RECEBIDO</p>
+                </div>
+                <div
+                  onClick={() => setActiveTab('financial')}
+                  style={{ background: payments.filter(p => p.status === 'overdue').length > 0 ? '#1A0D0D' : '#111', border: `1px solid ${payments.filter(p => p.status === 'overdue').length > 0 ? '#CC000044' : '#1E1E1E'}`, padding: '0.875rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', cursor: 'pointer' }}
+                >
+                  <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: payments.filter(p => p.status === 'overdue').length > 0 ? '#CC0000' : '#444', lineHeight: 1 }}>
+                    {paymentsLoading ? '...' : payments.filter(p => p.status === 'overdue').length}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>VENCIDOS</p>
+                </div>
+                <div
+                  onClick={() => setActiveTab('financial')}
+                  style={{ background: '#111', border: '1px solid #1E1E1E', padding: '0.875rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', cursor: 'pointer' }}
+                >
+                  <span style={{ fontSize: '1.1rem' }}>📋</span>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: '#FFF', lineHeight: 1 }}>
+                    {enrollmentsLoading ? '...' : enrollments.filter(e => e.status === 'active').length}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ATIVOS</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Alertas */}
+            {(joinRequests.filter(r => r.status === 'pending').length > 0 ||
+              enrollments.filter(e => e.status === 'suspended').length > 0 ||
+              payments.filter(p => p.status === 'overdue').length > 0) && (
+              <div style={{ background: '#140E00', border: '1px solid #CC660033', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#CC7700', textTransform: 'uppercase', letterSpacing: '0.06em' }}>🔔 REQUER ATENÇÃO</p>
+                {joinRequests.filter(r => r.status === 'pending').length > 0 && (
+                  <button
+                    onClick={() => { setActiveTab('members'); setMembersSubTab('requests'); }}
+                    style={{ background: 'none', border: '1px solid #CC660022', padding: '0.5rem 0.75rem', color: '#DDD', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem', width: '100%' }}
+                  >
+                    <span>🙋</span>
+                    <span>{joinRequests.filter(r => r.status === 'pending').length} solicitação(ões) de entrada pendente(s)</span>
+                    <svg style={{ marginLeft: 'auto', flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CC7700" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                )}
+                {payments.filter(p => p.status === 'overdue').length > 0 && (
+                  <button
+                    onClick={() => setActiveTab('financial')}
+                    style={{ background: 'none', border: '1px solid #CC000022', padding: '0.5rem 0.75rem', color: '#DDD', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem', width: '100%' }}
+                  >
+                    <span>💳</span>
+                    <span>{payments.filter(p => p.status === 'overdue').length} pagamento(s) vencido(s)</span>
+                    <svg style={{ marginLeft: 'auto', flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CC0000" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                )}
+                {enrollments.filter(e => e.status === 'suspended').length > 0 && (
+                  <button
+                    onClick={() => setActiveTab('financial')}
+                    style={{ background: 'none', border: '1px solid #33330022', padding: '0.5rem 0.75rem', color: '#DDD', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem', width: '100%' }}
+                  >
+                    <span>⏸️</span>
+                    <span>{enrollments.filter(e => e.status === 'suspended').length} aluno(s) suspenso(s)</span>
+                    <svg style={{ marginLeft: 'auto', flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Dados da Academia no Diretório */}
             <div style={{ background: '#111', border: `1px solid ${accentColor}22`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
@@ -1562,18 +1645,22 @@ export default function ProfessorPanel({ onBack }: Props) {
             {/* Quick actions */}
             <div>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>AÇÕES RÁPIDAS</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 {[
-                  { label: 'Ver Membros', tab: 'members' as PanelTab, icon: '👥' },
-                  { label: 'Publicar no Feed', tab: 'feed' as PanelTab, icon: '📡' },
-                  { label: 'Criar Evento', tab: 'events' as PanelTab, icon: '📅' },
-                  { label: 'Criar Desafio', tab: 'challenges' as PanelTab, icon: '⭐' },
+                  { label: 'Membros', tab: 'members' as PanelTab, icon: '👥' },
+                  { label: 'Financeiro', tab: 'financial' as PanelTab, icon: '💰' },
+                  { label: 'Feed', tab: 'feed' as PanelTab, icon: '📡' },
+                  { label: 'Eventos', tab: 'events' as PanelTab, icon: '📅' },
+                  { label: 'Desafios', tab: 'challenges' as PanelTab, icon: '⭐' },
+                  { label: 'Promoções', tab: 'promocao' as PanelTab, icon: '🥋' },
+                  { label: 'Frequência', tab: 'frequencia' as PanelTab, icon: '📆' },
+                  { label: 'Leads', tab: 'leads' as PanelTab, icon: '🎯' },
                 ].map(action => (
                   <button key={action.label} onClick={() => setActiveTab(action.tab)}
-                    style={{ background: '#111', border: `1px solid ${accentColor}33`, padding: '0.875rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', textAlign: 'left' }}>
+                    style={{ background: '#111', border: `1px solid ${accentColor}22`, padding: '0.875rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', textAlign: 'left' }}>
                     <span style={{ fontSize: '1.1rem' }}>{action.icon}</span>
-                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', textTransform: 'uppercase', color: '#CCC', letterSpacing: '0.05em' }}>{action.label}</span>
-                    <svg style={{ marginLeft: 'auto' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
+                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', color: '#CCC', letterSpacing: '0.05em' }}>{action.label}</span>
+                    <svg style={{ marginLeft: 'auto' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
                       <path d="M9 18l6-6-6-6"/>
                     </svg>
                   </button>
@@ -1871,10 +1958,12 @@ export default function ProfessorPanel({ onBack }: Props) {
                     style={{ background: '#1A1A1A', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer' }}>
                     🔗 LINK
                   </button>
-                  <button onClick={async () => { await api.challenges.delete(ch.id); setChallenges(prev => prev.filter(c => c.id !== ch.id)); toast.success('Desafio removido'); }}
-                    style={{ background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer' }}>
-                    🗑️
-                  </button>
+                  {(profile?.role === 'superadmin' || profile?.communityModerator || user?.uid === ch.creatorUid) && (
+                    <button onClick={async () => { await api.challenges.delete(ch.id); setChallenges(prev => prev.filter(c => c.id !== ch.id)); toast.success('Desafio removido'); }}
+                      style={{ background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer' }}>
+                      🗑️
+                    </button>
+                  )}
                 </div>
                 {/* Ranking expandido */}
                 {challengeRanking?.challengeId === ch.id && (
@@ -3044,9 +3133,9 @@ function EventCard({ ev, accentColor, professorProfile, onDelete }: {
       {ev.location && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888' }}>📍 {ev.location}</p>}
       {ev.description && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#666', lineHeight: 1.4 }}>{ev.description}</p>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555' }}>{ev.registrations.length} INSCRITO{ev.registrations.length !== 1 ? 'S' : ''}{ev.slots ? ` / ${ev.slots} VAGAS` : ''}</span>
+        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555' }}>{(ev.registrations ?? []).length} INSCRITO{(ev.registrations ?? []).length !== 1 ? 'S' : ''}{ev.slots ? ` / ${ev.slots} VAGAS` : ''}</span>
         <div style={{ display: 'flex', gap: '0.375rem' }}>
-          {!isClosed && ev.registrations.length > 0 && (
+          {!isClosed && (ev.registrations ?? []).length > 0 && (
             <button
               onClick={handleCloseRegistrations}
               disabled={closing}
@@ -3079,10 +3168,11 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
   const [showPromotion, setShowPromotion] = useState(false);
   const [newBelt, setNewBelt] = useState(member.belt);
   const [newStripes, setNewStripes] = useState(member.stripes ?? 0);
-  const [detailTab, setDetailTab] = useState<'frequencia' | 'financeiro'>('frequencia');
+  const [detailTab, setDetailTab] = useState<'frequencia' | 'financeiro' | 'perfil'>('frequencia');
 
   // Frequência
   const [attendance, setAttendance] = useState<Array<{ id: string; trainingDate: string; sessionType?: string; modality?: string; duration?: number }>>([]);
+  const [fullTrainings, setFullTrainings] = useState<Training[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceMonth, setAttendanceMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
@@ -3161,6 +3251,7 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
       try {
         // Buscar treinos do aluno via API
         const trainings = await api.trainings.list(member.uid);
+        if (!cancelled) setFullTrainings(trainings as Training[]);
         const trainDocs = (trainings as any[])
           .map(t => ({
             id: 'train_' + t.id,
@@ -3399,16 +3490,117 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
         {/* Tabs FREQUÊNCIA / FINANCEIRO */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid #1E1E1E' }}>
-            {(['frequencia', 'financeiro'] as const).map(t => (
+            {(['perfil', 'frequencia', 'financeiro'] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setDetailTab(t)}
-                style={{ flex: 1, background: 'none', border: 'none', borderBottom: detailTab === t ? `2px solid ${accentColor}` : '2px solid transparent', color: detailTab === t ? accentColor : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.5rem', cursor: 'pointer', marginBottom: '-1px' }}
+                style={{ flex: 1, background: 'none', border: 'none', borderBottom: detailTab === t ? `2px solid ${accentColor}` : '2px solid transparent', color: detailTab === t ? accentColor : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem', cursor: 'pointer', marginBottom: '-1px' }}
               >
-                {t === 'frequencia' ? '📅 FREQUÊNCIA' : '💳 FINANCEIRO'}
+                {t === 'perfil' ? '👤 PERFIL' : t === 'frequencia' ? '📅 FREQ.' : '💳 FINANCEIRO'}
               </button>
             ))}
           </div>
+
+          {/* Aba PERFIL DO ALUNO */}
+          {detailTab === 'perfil' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {/* XP / NÍVEL */}
+              {(() => {
+                const { currentLevel, xpProgress, xpToNext } = getLevelInfo(member.xp || 0);
+                const levelColor = LEVEL_COLORS[currentLevel.name] || accentColor;
+                return (
+                  <div style={{ background: '#0D0D0D', border: `1px solid ${levelColor}44`, padding: '0.875rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#555', letterSpacing: '0.05em' }}>⚡ NÍVEL</span>
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: levelColor }}>{currentLevel.name}</span>
+                    </div>
+                    <div style={{ background: '#1A1A1A', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${xpProgress}%`, background: levelColor, transition: 'width 0.8s ease' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#555' }}>{(member.xp || 0).toLocaleString('pt-BR')} XP</span>
+                      {xpToNext > 0 && <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#444' }}>{xpToNext.toLocaleString('pt-BR')} XP p/ próximo nível</span>}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* PROGRESSÃO DE FAIXA */}
+              <div style={{ background: '#0D0D0D', border: '1px solid #1A1A1A', padding: '0.875rem' }}>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#555', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>🥋 PROGRESSÃO DE FAIXA</p>
+                <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
+                  {BELTS_ORDER.map(b => {
+                    const bIdx = BELTS_ORDER.indexOf(b);
+                    const curIdx = BELTS_ORDER.indexOf(member.belt || 'Branca');
+                    const active = bIdx <= curIdx;
+                    const isCurrent = b === member.belt;
+                    return (
+                      <div key={b} style={{ flex: 1, height: isCurrent ? '10px' : '6px', borderRadius: '2px', background: active ? (BELT_COLORS[b] || '#555') : '#1A1A1A', border: isCurrent ? `1px solid ${BELT_COLORS[b] || accentColor}` : 'none', transition: 'height 0.3s ease' }} />
+                    );
+                  })}
+                </div>
+                {(member.stripes ?? 0) > 0 && (
+                  <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
+                    {Array.from({ length: member.stripes ?? 0 }, (_, i) => (
+                      <div key={i} style={{ width: '14px', height: '5px', background: '#EEE', opacity: 0.8 }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* CONQUISTAS */}
+              {attendanceLoading ? (
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', textAlign: 'center', padding: '0.5rem' }}>CARREGANDO...</p>
+              ) : (() => {
+                const unlocked = ACHIEVEMENTS.filter(a => a.check(fullTrainings));
+                const streak = calcStreak(fullTrainings);
+                return (
+                  <div style={{ background: '#0D0D0D', border: '1px solid #1A1A1A', padding: '0.875rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#555', letterSpacing: '0.05em' }}>🏅 CONQUISTAS</p>
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: accentColor }}>{unlocked.length}/{ACHIEVEMENTS.length}</span>
+                    </div>
+                    {unlocked.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginBottom: '0.5rem' }}>
+                        {unlocked.slice(0, 8).map(ach => (
+                          <div key={ach.id} style={{ background: '#1A1A1A', border: `1px solid ${accentColor}33`, padding: '0.3rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <span style={{ fontSize: '0.8rem' }}>{ach.icon}</span>
+                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.58rem', color: '#CCC', textTransform: 'uppercase' }}>{ach.title}</span>
+                          </div>
+                        ))}
+                        {unlocked.length > 8 && <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#555', alignSelf: 'center' }}>+{unlocked.length - 8} mais</span>}
+                      </div>
+                    )}
+                    {streak > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', textTransform: 'uppercase' }}>🔥 Streak atual:</span>
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: accentColor }}>{streak} dia{streak !== 1 ? 's' : ''}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* TOP TÉCNICAS */}
+              {!attendanceLoading && (() => {
+                const tecnicas = topTecnicas(fullTrainings);
+                if (!tecnicas.length) return null;
+                return (
+                  <div style={{ background: '#0D0D0D', border: '1px solid #1A1A1A', padding: '0.875rem' }}>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#555', letterSpacing: '0.05em', marginBottom: '0.625rem' }}>🎯 TOP TÉCNICAS</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      {tecnicas.map(tec => (
+                        <div key={tec.nome} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '0.375rem 0.625rem' }}>
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#CCC' }}>{tec.nome}</span>
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: accentColor }}>{tec.qtd}×</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Aba FREQUÊNCIA */}
           {detailTab === 'frequencia' && (

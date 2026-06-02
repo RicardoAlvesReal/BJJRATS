@@ -76,6 +76,17 @@ export default function AppLayout() {
 
   const isProfessor = profile?.role === 'professor';
 
+  // Professor vai direto para o painel de gestão
+  useEffect(() => {
+    if (isProfessor && profile) {
+      setShowProfessorPanel(true);
+    }
+  }, [isProfessor, profile]);
+
+  const visibleTabs = isProfessor
+    ? TABS.filter(tab => tab.id !== 'professores' && tab.id !== 'goals')
+    : TABS;
+
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -191,7 +202,7 @@ export default function AppLayout() {
   }, [user, isProfessor]);
 
   if (showProfessorPanel) {
-    return <ProfessorPanel onBack={() => setShowProfessorPanel(false)} />;
+    return <ProfessorPanel onBack={() => setShowProfessorPanel(false)} onLogout={isProfessor ? handleLogout : undefined} />;
   }
 
   if (showNewTraining || editTraining || editExtraTraining) {
@@ -415,13 +426,13 @@ export default function AppLayout() {
             </div>
             <div>
               <p className="bjj-sidebar-name">{profile.name || 'Atleta'}</p>
-              <p className="bjj-sidebar-belt">{(profile as any).belt || 'Faixa Branca'}</p>
+              {!isProfessor && <p className="bjj-sidebar-belt">{(profile as any).belt || 'Faixa Branca'}</p>}
             </div>
           </div>
         )}
 
         <nav className="bjj-sidebar-nav">
-          {TABS.map(tab => (
+          {visibleTabs.map(tab => (
             <button
               key={tab.id}
               className={`bjj-sidebar-item ${activeTab === tab.id ? 'active' : ''}`}
@@ -469,7 +480,7 @@ export default function AppLayout() {
             exit="exit"
             transition={pageTransition}
           >
-            {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} />}
+            {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} />}
             {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
             {activeTab === 'academy' && <Academy />}
             {activeTab === 'professores' && <Professores />}
@@ -494,8 +505,8 @@ export default function AppLayout() {
       </div>
 
       {/* Tab Bar — Mobile only */}
-      <nav className="bjj-tab-bar" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
-        {TABS.map(tab => (
+      <nav className="bjj-tab-bar" style={{ display: 'grid', gridTemplateColumns: `repeat(${visibleTabs.length}, 1fr)` }}>
+        {visibleTabs.map(tab => (
           <button
             key={tab.id}
             className={`bjj-tab-item ${activeTab === tab.id ? 'active' : ''}`}

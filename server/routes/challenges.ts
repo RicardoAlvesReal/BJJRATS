@@ -8,7 +8,17 @@ import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 const router = Router();
 
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
+  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
   const { academyId } = req.query as Record<string, string>;
+
+  // Professor: só vê desafios da própria academia
+  if (!isModOrSuper) {
+    const scopeId = academyId || req.userId!;
+    const rows = await db.select().from(challenges).where(eq(challenges.academyId, scopeId)).orderBy(desc(challenges.createdAt));
+    res.json(rows); return;
+  }
+
+  // Superadmin/moderador: com filtro opcional
   const rows = academyId
     ? await db.select().from(challenges).where(eq(challenges.academyId, academyId)).orderBy(desc(challenges.createdAt))
     : await db.select().from(challenges).orderBy(desc(challenges.createdAt));
@@ -22,8 +32,17 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
+  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
+
+  // Apenas professor, superadmin e moderadores podem criar desafios
+  if (!isModOrSuper && req.userRole !== 'professor' && req.userRole !== 'admin') {
+    res.status(403).json({ error: 'Apenas professores podem criar desafios' }); return;
+  }
+
+  // Professor: academyId é sempre o próprio uid — impede desafios globais
+  const bodyAcademyId = isModOrSuper ? req.body.academyId : req.userId;
   const id = nanoid();
-  const [row] = await db.insert(challenges).values({ id, creatorUid: req.userId!, ...req.body }).returning();
+  const [row] = await db.insert(challenges).values({ id, creatorUid: req.userId!, ...req.body, academyId: bodyAcademyId }).returning();
   res.status(201).json(row);
 });
 
