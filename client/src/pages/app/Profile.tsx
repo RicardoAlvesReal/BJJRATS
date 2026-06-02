@@ -388,6 +388,20 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   };
 
   const handleEditOpen = () => {
+    if (profile?.role === 'professor') {
+      setEditForm({
+        name: profile?.name || '',
+        belt: profile?.belt || 'Preta',
+        stripes: profile?.stripes || 0,
+        bjjSince: profile?.bjjSince || '',
+        academyName: (profile as any)?.academyName || '',
+        academyCity: (profile as any)?.academyCity || '',
+        academyState: (profile as any)?.academyState || '',
+        phone: (profile as any)?.phone || '',
+      });
+      setEditing(true);
+      return;
+    }
     setEditForm({
       name: profile?.name || '',
       belt: profile?.belt || 'Branca',
@@ -445,17 +459,34 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             </div>
           </div>
 
-          {[
-            { key: 'name', label: 'NOME', placeholder: 'Seu nome' },
-          ].map(f => (
+          {[{ key: 'name', label: 'NOME', placeholder: 'Seu nome' }].map(f => (
             <div key={f.key}>
               <label className="bjj-label">{f.label}</label>
               <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} className="bjj-input" />
             </div>
           ))}
 
-          {/* Academia — busca academias reais cadastradas por professores */}
-          <div style={{ position: 'relative' }}>
+          {/* Campos exclusivos do professor */}
+          {profile?.role === 'professor' && (
+            <>
+              {[
+                { key: 'academyName', label: 'NOME DA ACADEMIA', placeholder: 'Nome da sua academia' },
+                { key: 'academyCity', label: 'CIDADE', placeholder: 'Cidade' },
+                { key: 'academyState', label: 'ESTADO', placeholder: 'Ex: SP' },
+                { key: 'phone', label: 'WHATSAPP / TELEFONE', placeholder: 'Ex: (11) 99999-9999' },
+                { key: 'bjjSince', label: 'BJJ DESDE', placeholder: 'Ex: 2010' },
+              ].map(f => (
+                <div key={f.key}>
+                  <label className="bjj-label">{f.label}</label>
+                  <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} className="bjj-input" />
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Academia — busca academias reais cadastradas por professores (apenas alunos) */}
+          {profile?.role !== 'professor' && (
+            <div style={{ position: 'relative' }}>
             <label className="bjj-label">ACADEMIA</label>
             <input
               type="text"
@@ -491,13 +522,18 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.375rem' }}>Nenhuma academia encontrada. Verifique se o professor já cadastrou a academia.</p>
             )}
           </div>
+          )}
 
           {/* Professor — preenchido automaticamente ao selecionar academia */}
+          {profile?.role !== 'professor' && (
           <div>
             <label className="bjj-label">PROFESSOR</label>
             <input type="text" value={editForm.professor || ''} onChange={e => setEditForm((p: any) => ({ ...p, professor: e.target.value }))} placeholder="Nome do professor" className="bjj-input" />
           </div>
+          )}
 
+          {profile?.role !== 'professor' && (
+          <>
           {[
             { key: 'bjjSince', label: 'BJJ DESDE', placeholder: 'Ex: 2020' },
             { key: 'weightKg', label: 'PESO (KG)', placeholder: 'Ex: 75' },
@@ -508,6 +544,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} className="bjj-input" />
             </div>
           ))}
+          </>
+          )}
           <div>
             <label className="bjj-label">FAIXA</label>
             <div style={{ display: 'flex', gap: '0.375rem' }}>
@@ -518,6 +556,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               ))}
             </div>
           </div>
+          {profile?.role !== 'professor' && (
           <div>
             <label className="bjj-label">TIPO DE ATLETA</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
@@ -532,6 +571,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               ))}
             </div>
           </div>
+          )}
           <button onClick={handleSave} disabled={saving} className="bjj-btn-primary">
             {saving ? 'SALVANDO...' : 'SALVAR PERFIL'}
           </button>
@@ -594,15 +634,20 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           <div className="flex-1 min-w-0">
             <p className="text-[1.25rem] font-black text-white uppercase tracking-[0.05em] truncate font-['Barlow_Condensed']">{profile?.name || 'ATLETA'}</p>
             <p className="text-[0.875rem] font-bold font-['Barlow_Condensed'] mt-0.5" style={{ color: beltColor }}>Faixa {profile?.belt || 'Branca'}</p>
-            {profile?.academy && <p className="text-[0.75rem] text-[#555] truncate mt-1 font-['Barlow']">🏫 {profile.academy}</p>}
+            {profile?.role === 'professor'
+              ? (profile as any)?.academyName && <p className="text-[0.75rem] text-[#555] truncate mt-1 font-['Barlow']">🏫 {(profile as any).academyName}{(profile as any)?.academyCity ? ` · ${(profile as any).academyCity}` : ''}</p>
+              : profile?.academy && <p className="text-[0.75rem] text-[#555] truncate mt-1 font-['Barlow']">🏫 {profile.academy}</p>}
+            {profile?.role !== 'professor' && (
             <div className="flex items-center gap-2 mt-2">
               <span className="text-base">{athleteType.icon}</span>
               <span className="text-[0.75rem] text-[#888] font-['Barlow_Condensed']">{athleteType.label}</span>
             </div>
+            )}
           </div>
         </motion.div>
 
         {/* XP / Level */}
+        {profile?.role !== 'professor' && (
         <motion.div variants={fadeUpVariant} className="bjj-card">
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed']">NÍVEL {currentLevel.level} — {currentLevel.name.toUpperCase()}</p>
@@ -612,8 +657,10 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             <div className="bjj-xp-bar-fill" style={{ width: `${xpProgress}%` }} />
           </div>
         </motion.div>
+        )}
 
         {/* Stats */}
+        {profile?.role !== 'professor' && (
         <motion.div variants={fadeUpVariant} className="grid grid-cols-2 gap-2">
           {[
             { label: 'TREINOS', value: trainings.length, icon: '🥋' },
@@ -628,8 +675,10 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             </div>
           ))}
         </motion.div>
+        )}
 
         {/* Belt progress */}
+        {profile?.role !== 'professor' && (
         <motion.div variants={fadeUpVariant} className="bjj-card">
           <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-3">🥋 PROGRESSÃO DE FAIXA</p>
           <div className="flex gap-1 mb-1.5">
@@ -645,9 +694,10 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             ))}
           </div>
         </motion.div>
+        )}
 
         {/* Top techniques */}
-        {tecnicas.length > 0 && (
+        {tecnicas.length > 0 && profile?.role !== 'professor' && (
           <motion.div variants={fadeUpVariant} className="bjj-card">
             <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-3">🥋 TÉCNICAS FAVORITAS</p>
             <div className="flex flex-col gap-2">
@@ -671,6 +721,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
         )}
 
         {/* Achievements */}
+        {profile?.role !== 'professor' && (
         <motion.div variants={fadeUpVariant} className="bjj-card">
           <div className="flex justify-between items-center mb-3">
             <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed']">🏆 CONQUISTAS</p>
@@ -689,6 +740,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
             })}
           </div>
         </motion.div>
+        )}
 
         {/* ── ESTATÍSTICAS DETALHADAS (apenas alunos) ── */}
         {profile?.role !== 'professor' && trainings.length > 0 && (

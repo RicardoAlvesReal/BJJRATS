@@ -620,7 +620,7 @@ export default function Academy() {
               const postText = post.text || post.content || '';
               const authorPhoto = post.authorPhotoURL || postAny.authorPhoto || null;
               return (
-                <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} className="bjj-card" style={{ borderLeft: `3px solid ${isTrainingPost ? '#CC0000' : typeColor}` }}>
+                <div key={post.id} className="bjj-card" style={{ borderLeft: `3px solid ${isTrainingPost ? '#CC0000' : typeColor}` }}>
                   {/* Header: avatar + nome + badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                     <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>

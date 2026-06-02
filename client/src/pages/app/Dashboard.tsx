@@ -21,9 +21,10 @@ const BELTS_ORDER = ['Branca', 'Azul', 'Roxa', 'Marrom', 'Preta'];
 
 interface Props {
   onNewTraining: () => void;
+  onOpenProfessorPanel?: () => void;
 }
 
-export default function Dashboard({ onNewTraining }: Props) {
+export default function Dashboard({ onNewTraining, onOpenProfessorPanel }: Props) {
   const { user, profile } = useAuth();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +81,60 @@ export default function Dashboard({ onNewTraining }: Props) {
   const fadeUp = fadeUpVariant as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const container = staggerContainer as any;
+
+  if (profile?.role === 'professor') {
+    return (
+      <div className="bg-background min-h-screen">
+        <div className="bjj-header">
+          <div>
+            <p className="text-[0.65rem] font-bold tracking-[0.15em] text-[#555] uppercase font-['Barlow_Condensed'] mb-0.5">
+              PAINEL DO PROFESSOR
+            </p>
+            <h1 className="text-[1.5rem] font-black text-white tracking-[0.05em] uppercase font-['Barlow_Condensed']">
+              {profile?.name || 'PROFESSOR'}
+            </h1>
+          </div>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden shrink-0" style={{ border: '3px solid #1A6ECC', background: '#001A33' }}>
+            {profile?.photo ? (
+              <img src={profile.photo} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-xl font-black text-[#1A6ECC] font-['Barlow_Condensed']">{(profile?.name || 'P')[0].toUpperCase()}</span>
+            )}
+          </div>
+        </div>
+        <motion.div variants={container} initial="hidden" animate="show" className="bjj-content">
+          {(profile as any)?.academyName && (
+            <motion.div variants={fadeUp} className="bjj-card" style={{ background: '#001A33', border: '1px solid #1A6ECC' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-[#0A1A2A] border border-[#1A6ECC] flex items-center justify-center text-2xl shrink-0 overflow-hidden">
+                  {(profile as any)?.academyLogoUrl ? (
+                    <img src={(profile as any).academyLogoUrl} alt="logo" className="w-full h-full object-contain" />
+                  ) : '🏫'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[1rem] font-black text-white uppercase tracking-[0.05em] truncate font-['Barlow_Condensed']">{(profile as any).academyName}</p>
+                  {(profile as any)?.academyCity && (
+                    <p className="text-[0.75rem] text-[#555] font-['Barlow']">
+                      {(profile as any).academyCity}{(profile as any)?.academyState ? ` · ${(profile as any).academyState}` : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+          <motion.div variants={fadeUp} className="bjj-card">
+            <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] mb-1">🏠 GERENCIAR ACADEMIA</p>
+            <p className="text-[0.8rem] text-[#555] font-['Barlow'] mb-4">Acesse o painel completo para gerenciar alunos, mensalidades, horários, eventos e muito mais.</p>
+            {onOpenProfessorPanel && (
+              <button onClick={onOpenProfessorPanel} className="bjj-btn-primary" style={{ background: '#1A6ECC', borderColor: '#1A6ECC' }}>
+                🏫 ABRIR PAINEL DO PROFESSOR
+              </button>
+            )}
+          </motion.div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background min-h-screen">
