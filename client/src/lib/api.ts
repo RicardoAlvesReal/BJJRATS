@@ -66,6 +66,8 @@ export interface UserProfile {
   academyAddress?: string;
   academyCity?: string;
   academyState?: string;
+  academyLatitude?: number | null;
+  academyLongitude?: number | null;
   academyLogoUrl?: string;
   academyCnpj?: string;
   academyCep?: string;
@@ -189,6 +191,12 @@ export interface AcademyRequest {
   studentUid: string;
   professorUid: string;
   academyId?: string;
+  academyName?: string;
+  professorName?: string;
+  studentName?: string;
+  studentEmail?: string;
+  studentPhoto?: string | null;
+  studentBelt?: string;
   status?: string;
   message?: string;
   createdAt?: string;
@@ -262,6 +270,8 @@ export const admin = {
     academyAddress?: string;
     academyCity?: string;
     academyState?: string;
+    academyLatitude?: number | null;
+    academyLongitude?: number | null;
     academyCnpj?: string;
     academyCep?: string;
     academyNumber?: string;
@@ -545,7 +555,7 @@ export const academyRequests = {
     const q = new URLSearchParams(params as Record<string, string>).toString();
     return apiFetch<AcademyRequest[]>(`/api/academy-requests${q ? `?${q}` : ''}`);
   },
-  create: (data: Omit<AcademyRequest, 'id' | 'createdAt' | 'studentUid'>) =>
+  create: (data: Omit<AcademyRequest, 'id' | 'createdAt' | 'studentUid'> & { studentUid?: string }) =>
     apiFetch<AcademyRequest>('/api/academy-requests', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<AcademyRequest>) =>
     apiFetch<AcademyRequest>(`/api/academy-requests/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),

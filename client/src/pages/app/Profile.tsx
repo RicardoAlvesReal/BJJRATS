@@ -16,6 +16,7 @@ import {
 import TrainingHistory from './TrainingHistory';
 import StatsShareCard from './StatsShareCard';
 import MinhasMensalidades from './MinhasMensalidades';
+import { LocateFixed } from 'lucide-react';
 
 interface Competition {
   id: string;
@@ -74,6 +75,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [locatingAcademy, setLocatingAcademy] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
   const [showHistory, setShowHistory] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
@@ -316,6 +318,31 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
     finally { setUploadingPhoto(false); }
   };
 
+  const handleUseAcademyGps = () => {
+    if (!navigator.geolocation) {
+      toast.error('GPS nao disponivel neste navegador');
+      return;
+    }
+
+    setLocatingAcademy(true);
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        setEditForm((p: any) => ({
+          ...p,
+          academyLatitude: position.coords.latitude,
+          academyLongitude: position.coords.longitude,
+        }));
+        setLocatingAcademy(false);
+        toast.success('Localizacao GPS da academia registrada');
+      },
+      () => {
+        setLocatingAcademy(false);
+        toast.error('Nao foi possivel acessar sua localizacao');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
   // Academy search state
   const [academySearch, setAcademySearch] = useState('');
   const [academyResults, setAcademyResults] = useState<any[]>([]);
@@ -397,6 +424,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
         academyName: (profile as any)?.academyName || '',
         academyCity: (profile as any)?.academyCity || '',
         academyState: (profile as any)?.academyState || '',
+        academyLatitude: (profile as any)?.academyLatitude ?? null,
+        academyLongitude: (profile as any)?.academyLongitude ?? null,
         phone: (profile as any)?.phone || '',
       });
       setEditing(true);
@@ -481,6 +510,40 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                   <input type="text" value={editForm[f.key] || ''} onChange={e => setEditForm((p: any) => ({ ...p, [f.key]: e.target.value }))} placeholder={f.placeholder} className="bjj-input" />
                 </div>
               ))}
+              <div>
+                <label className="bjj-label">GPS DA ACADEMIA</label>
+                <button
+                  type="button"
+                  onClick={handleUseAcademyGps}
+                  disabled={locatingAcademy}
+                  style={{
+                    width: '100%',
+                    background: editForm.academyLatitude != null && editForm.academyLongitude != null ? '#063820' : '#111',
+                    border: `1px dashed ${editForm.academyLatitude != null && editForm.academyLongitude != null ? '#0D9E6E' : '#CC0000'}`,
+                    color: editForm.academyLatitude != null && editForm.academyLongitude != null ? '#0DFF9A' : '#CC0000',
+                    fontFamily: 'Barlow Condensed, sans-serif',
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    padding: '0.875rem',
+                    cursor: locatingAcademy ? 'not-allowed' : 'pointer',
+                    opacity: locatingAcademy ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <LocateFixed size={16} />
+                  {locatingAcademy ? 'LOCALIZANDO...' : editForm.academyLatitude != null && editForm.academyLongitude != null ? 'ATUALIZAR GPS' : 'USAR GPS DA ACADEMIA'}
+                </button>
+                {editForm.academyLatitude != null && editForm.academyLongitude != null && (
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#0D9E6E', marginTop: '0.375rem' }}>
+                    GPS salvo para busca por distancia.
+                  </p>
+                )}
+              </div>
             </>
           )}
 

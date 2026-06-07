@@ -8,6 +8,12 @@ import { signToken, requireAuth, type AuthRequest } from '../middleware/auth.js'
 
 const router = Router();
 
+function toNullableNumber(value: unknown) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { name, email, password, role = 'student', belt = 'Branca', ...rest } = req.body as Record<string, string>;
@@ -42,6 +48,8 @@ router.post('/register', async (req, res) => {
     academyAddress:rest.academyAddress || null,
     academyCity:   rest.academyCity    || null,
     academyState:  rest.academyState   || null,
+    academyLatitude:  toNullableNumber(rest.academyLatitude),
+    academyLongitude: toNullableNumber(rest.academyLongitude),
   });
   const [user] = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
   const token = signToken(uid, user.role ?? 'student', user.communityModerator ?? false);

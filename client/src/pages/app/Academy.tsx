@@ -483,19 +483,9 @@ export default function Academy() {
       );
     }
     return (
-      <div style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
-        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏫</div>
-        <h2 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', textTransform: 'uppercase', color: '#FFFFFF', marginBottom: '0.5rem' }}>SEM ACADEMIA</h2>
-        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#666', maxWidth: '280px', lineHeight: 1.6 }}>
-          Você ainda não está vinculado a uma academia.
-        </p>
-        <button
-          onClick={() => setShowSearch(true)}
-          style={{ marginTop: '1.5rem', background: '#CC0000', border: 'none', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9375rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.875rem 2rem', cursor: 'pointer' }}
-        >
-          🔍 BUSCAR ACADEMIA
-        </button>
-      </div>
+      <AcademySearch
+        onLinked={async () => { await refreshProfile(); }}
+      />
     );
   }
 

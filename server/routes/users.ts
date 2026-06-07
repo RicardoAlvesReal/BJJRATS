@@ -16,6 +16,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
     totalTrainings: users.totalTrainings, totalMinutes: users.totalMinutes,
     streak: users.streak, academyName: users.academyName, academyCity: users.academyCity,
     academyState: users.academyState, academyAddress: users.academyAddress,
+    academyLatitude: users.academyLatitude, academyLongitude: users.academyLongitude,
     academyLogoUrl: users.academyLogoUrl, professorPhotoUrl: users.professorPhotoUrl,
     isAcademyAdmin: users.isAcademyAdmin,
     athleteType: users.athleteType, bjjSince: users.bjjSince,
@@ -24,7 +25,10 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
   const conditions = [ne(users.role, 'superadmin')];
   if (role)      conditions.push(eq(users.role, role));
   if (academyId) conditions.push(eq(users.academyId, academyId));
-  if (search)    conditions.push(or(ilike(users.name, `%${search}%`), ilike(users.academyName, `%${search}%`), ilike(users.academyCity, `%${search}%`)));
+  if (search) {
+    const searchCondition = or(ilike(users.name, `%${search}%`), ilike(users.academyName, `%${search}%`), ilike(users.academyCity, `%${search}%`));
+    if (searchCondition) conditions.push(searchCondition);
+  }
 
   if (conditions.length > 0) {
     const result = await query.where(and(...conditions));

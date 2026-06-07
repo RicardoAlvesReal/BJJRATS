@@ -16,11 +16,13 @@ export interface RegisterData {
   weightKg?: string;
   heightCm?: string;
   bjjSince?: string;
-  role?: 'student' | 'professor';
+  role?: 'student' | 'professor' | 'admin';
   academyName?: string;
   academyAddress?: string;
   academyCity?: string;
   academyState?: string;
+  academyLatitude?: number | null;
+  academyLongitude?: number | null;
   academyLogoUrl?: string;
   professorPhotoUrl?: string;
   academyId?: string | null;
@@ -66,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (data: RegisterData) => {
-    const { token, user: u } = await api.auth.register(data as Record<string, unknown>);
+    const { token, user: u } = await api.auth.register(data as unknown as Record<string, unknown>);
     localStorage.setItem(TOKEN_KEY, token);
     setUser(u);
     return u.uid;

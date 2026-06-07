@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS users (
   academy_address      TEXT,
   academy_city         TEXT,
   academy_state        TEXT,
+  academy_latitude     REAL,
+  academy_longitude    REAL,
   academy_logo_url     TEXT,
   academy_cnpj         TEXT,
   academy_cep          TEXT,

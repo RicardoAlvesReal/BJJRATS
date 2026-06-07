@@ -36,6 +36,8 @@ export const users = pgTable('users', {
   academyAddress:   text('academy_address'),
   academyCity:      text('academy_city'),
   academyState:     text('academy_state'),
+  academyLatitude:  real('academy_latitude'),
+  academyLongitude: real('academy_longitude'),
   academyLogoUrl:   text('academy_logo_url'),
   academyCnpj:      text('academy_cnpj'),
   academyCep:       text('academy_cep'),

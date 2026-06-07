@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { LocateFixed } from 'lucide-react';
 
 const LOGO = '/favicon.png';
 
@@ -38,6 +39,7 @@ export default function Register() {
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<Role>(null);
   const [loading, setLoading] = useState(false);
+  const [locatingAcademy, setLocatingAcademy] = useState(false);
 
   // Upload refs
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -69,6 +71,8 @@ export default function Register() {
     academyAddress: '',
     academyCity: '',
     academyState: '',
+    academyLatitude: null as number | null,
+    academyLongitude: null as number | null,
   });
 
   // Busca de academias no cadastro
@@ -139,6 +143,28 @@ export default function Register() {
   };
 
   const update = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }));
+
+  const useAcademyGps = () => {
+    if (!navigator.geolocation) {
+      toast.error('GPS nao disponivel neste navegador');
+      return;
+    }
+
+    setLocatingAcademy(true);
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        update('academyLatitude', position.coords.latitude);
+        update('academyLongitude', position.coords.longitude);
+        setLocatingAcademy(false);
+        toast.success('Localizacao GPS da academia registrada');
+      },
+      () => {
+        setLocatingAcademy(false);
+        toast.error('Nao foi possivel acessar sua localizacao');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
 
   const totalSteps = role ? TOTAL_STEPS[role] : 3;
   const stepLabel = STEP_LABELS[step]?.[role ?? 'student'] ?? '';
@@ -237,11 +263,13 @@ export default function Register() {
         weightKg: form.weightKg,
         heightCm: form.heightCm,
         bjjSince: form.bjjSince,
-        role,
+        role: role === 'admin' ? 'admin' : 'professor',
         academyName: form.academyName,
         academyAddress: form.academyAddress,
         academyCity: form.academyCity,
         academyState: form.academyState,
+        academyLatitude: form.academyLatitude,
+        academyLongitude: form.academyLongitude,
       });
 
       // 2. Agora autenticado — fazer upload das imagens
@@ -598,6 +626,40 @@ export default function Register() {
                   ))}
                 </select>
               </div>
+            </div>
+            <div>
+              <label className="bjj-label">GPS DA ACADEMIA</label>
+              <button
+                type="button"
+                onClick={useAcademyGps}
+                disabled={locatingAcademy}
+                style={{
+                  width: '100%',
+                  background: form.academyLatitude != null && form.academyLongitude != null ? '#063820' : '#111',
+                  border: `1px dashed ${form.academyLatitude != null && form.academyLongitude != null ? '#0D9E6E' : '#CC0000'}`,
+                  color: form.academyLatitude != null && form.academyLongitude != null ? '#0DFF9A' : '#CC0000',
+                  fontFamily: 'Barlow Condensed, sans-serif',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  padding: '0.875rem',
+                  cursor: locatingAcademy ? 'not-allowed' : 'pointer',
+                  opacity: locatingAcademy ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <LocateFixed size={16} />
+                {locatingAcademy ? 'LOCALIZANDO...' : form.academyLatitude != null && form.academyLongitude != null ? 'ATUALIZAR GPS' : 'USAR GPS DA ACADEMIA'}
+              </button>
+              {form.academyLatitude != null && form.academyLongitude != null && (
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#0D9E6E', marginTop: '0.375rem' }}>
+                  GPS salvo para busca por distancia.
+                </p>
+              )}
             </div>
             <button type="submit" style={{ background: '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: 'pointer', marginTop: '0.5rem' }}>
               PRÓXIMO →
