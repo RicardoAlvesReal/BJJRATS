@@ -10,7 +10,7 @@ const router = Router();
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   const { role, search, academyId } = req.query as Record<string, string>;
   let query = db.select({
-    uid: users.uid, name: users.name, email: users.email, photo: users.photo,
+    uid: users.uid, name: users.name, email: users.email, phone: users.phone, photo: users.photo,
     belt: users.belt, stripes: users.stripes, academy: users.academy,
     academyId: users.academyId, role: users.role, xp: users.xp,
     totalTrainings: users.totalTrainings, totalMinutes: users.totalMinutes,

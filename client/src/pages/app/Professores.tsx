@@ -3,8 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { GraduationCap, LocateFixed, MapPin, School, Search, Users } from 'lucide-react';
-import { toast } from 'sonner';
+import { GraduationCap, MapPin, School, Search, Users } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -74,7 +73,6 @@ export default function Professores() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ProfessorFilter>('all');
   const [userCoords, setUserCoords] = useState<Coordinates | null>(null);
-  const [locating, setLocating] = useState(false);
 
   const studentCity = normalizeText((profile as any)?.city || profile?.academyCity);
   const studentState = normalizeText((profile as any)?.state || profile?.academyState);
@@ -95,6 +93,27 @@ export default function Professores() {
       }
     };
     load();
+  }, []);
+
+  const requestUserLocation = () => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        setUserCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => {
+        // Sem permissao de localizacao, a tela segue usando cidade/UF como fallback.
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
+  useEffect(() => {
+    requestUserLocation();
   }, []);
 
   const getProfessorDistance = (prof: Professor) => {
@@ -123,30 +142,6 @@ export default function Professores() {
 
   const isCurrentProfessor = (prof: Professor) => {
     return !!currentProfessorName && normalizeText(prof.name) === currentProfessorName;
-  };
-
-  const handleUseGps = () => {
-    if (!navigator.geolocation) {
-      toast.error('GPS nao disponivel neste navegador');
-      return;
-    }
-
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        setUserCoords({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        setLocating(false);
-        toast.success('GPS ativado para ordenar professores por distancia');
-      },
-      () => {
-        setLocating(false);
-        toast.error('Nao foi possivel acessar sua localizacao');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-    );
   };
 
   const filtered = useMemo(() => {
@@ -241,34 +236,6 @@ export default function Professores() {
             style={{ paddingLeft: '2.45rem' }}
           />
         </div>
-        <button
-          type="button"
-          onClick={handleUseGps}
-          disabled={locating}
-          title="Usar GPS para ordenar por distancia"
-          style={{
-            background: userCoords ? '#063820' : '#111',
-            border: `1px solid ${userCoords ? '#0D9E6E' : '#252525'}`,
-            color: userCoords ? '#0DFF9A' : '#FFF',
-            fontFamily: 'Barlow Condensed, sans-serif',
-            fontWeight: 900,
-            fontSize: '0.68rem',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            padding: '0.78rem 0.75rem',
-            cursor: locating ? 'not-allowed' : 'pointer',
-            opacity: locating ? 0.65 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.35rem',
-            minWidth: '108px',
-            flex: '0 0 auto',
-          }}
-        >
-          <LocateFixed size={15} strokeWidth={2.25} />
-          {locating ? 'GPS...' : userCoords ? 'GPS ATIVO' : 'USAR GPS'}
-        </button>
       </div>
 
       <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any, scrollbarWidth: 'none' as any }}>

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { ArrowLeft, Link as LinkIcon, LocateFixed, MapPin, School, Search, UserRound } from 'lucide-react';
+import { ArrowLeft, Car, ExternalLink, Info, Link as LinkIcon, MapPin, MessageCircle, Navigation, Phone, School, Search, X } from 'lucide-react';
 
 interface AcademyResult {
   professorUid: string;
@@ -16,6 +16,7 @@ interface AcademyResult {
   academyAddress?: string;
   academyLatitude?: number | null;
   academyLongitude?: number | null;
+  phone?: string;
   academyLogoUrl?: string;
   professorPhotoUrl?: string;
   professorName: string;
@@ -67,6 +68,78 @@ function formatDistance(distanceKm: number) {
   return distanceKm < 10 ? `${distanceKm.toFixed(1)} km` : `${Math.round(distanceKm)} km`;
 }
 
+function getAddressLabel(academy: AcademyResult) {
+  return [
+    academy.academyAddress,
+    [academy.academyCity, academy.academyState].filter(Boolean).join(' - '),
+  ].filter(Boolean).join(', ');
+}
+
+function getDestinationLabel(academy: AcademyResult) {
+  const address = getAddressLabel(academy);
+  return address || academy.academyName;
+}
+
+function getCoordinateLabel(academy: AcademyResult) {
+  if (academy.academyLatitude === null || academy.academyLatitude === undefined) return null;
+  if (academy.academyLongitude === null || academy.academyLongitude === undefined) return null;
+  return `${academy.academyLatitude},${academy.academyLongitude}`;
+}
+
+function getMapDestination(academy: AcademyResult) {
+  return getCoordinateLabel(academy) || getDestinationLabel(academy);
+}
+
+function getGoogleMapsUrl(academy: AcademyResult) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(getMapDestination(academy))}`;
+}
+
+function getWazeUrl(academy: AcademyResult) {
+  const coords = getCoordinateLabel(academy);
+  if (coords) {
+    return `https://waze.com/ul?ll=${encodeURIComponent(coords)}&navigate=yes`;
+  }
+  return `https://waze.com/ul?q=${encodeURIComponent(getDestinationLabel(academy))}&navigate=yes`;
+}
+
+function getUberUrl(academy: AcademyResult) {
+  const params = new URLSearchParams({
+    action: 'setPickup',
+    pickup: 'my_location',
+  });
+  if (academy.academyLatitude !== null && academy.academyLatitude !== undefined && academy.academyLongitude !== null && academy.academyLongitude !== undefined) {
+    params.set('dropoff[latitude]', String(academy.academyLatitude));
+    params.set('dropoff[longitude]', String(academy.academyLongitude));
+  } else {
+    params.set('dropoff[formatted_address]', getDestinationLabel(academy));
+  }
+  params.set('dropoff[nickname]', academy.academyName);
+  return `https://m.uber.com/ul/?${params.toString()}`;
+}
+
+function getNinetyNineUrl() {
+  return 'https://99app.com/passageiro/';
+}
+
+function getMapEmbedUrl(academy: AcademyResult) {
+  return `https://www.google.com/maps?q=${encodeURIComponent(getMapDestination(academy))}&output=embed`;
+}
+
+function normalizeWhatsAppPhone(value?: string | null) {
+  const digits = (value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('55')) return digits;
+  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
+  return digits;
+}
+
+function getWhatsAppUrl(academy: AcademyResult) {
+  const phone = normalizeWhatsAppPhone(academy.phone);
+  if (!phone) return '';
+  const text = `Ola! Vim pelo BJJRats e queria informacoes sobre a ${academy.academyName}.`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+}
+
 export default function AcademySearch({ onBack, onLinked }: Props) {
   const { user, profile, refreshProfile } = useAuth();
   const [search, setSearch] = useState('');
@@ -74,8 +147,8 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
   const [academyUsers, setAcademyUsers] = useState<any[]>([]);
   const [userCoords, setUserCoords] = useState<Coordinates | null>(null);
   const [loading, setLoading] = useState(false);
-  const [locating, setLocating] = useState(false);
   const [linking, setLinking] = useState<string | null>(null);
+  const [selectedAcademy, setSelectedAcademy] = useState<AcademyResult | null>(null);
   const [searched, setSearched] = useState(false);
 
   const studentCity = normalizeText((profile as any)?.city || profile?.academyCity);
@@ -110,6 +183,7 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
           academyAddress: data.academyAddress || '',
           academyLatitude,
           academyLongitude,
+          phone: data.phone || '',
           academyLogoUrl: data.academyLogoUrl || '',
           professorPhotoUrl: data.professorPhotoUrl || data.photo || '',
           professorName: data.name || '',
@@ -154,8 +228,26 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
     }
   };
 
+  const requestUserLocation = () => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        setUserCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => {
+        // Sem permissao de localizacao, a tela segue usando cidade/UF como fallback.
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  };
+
   useEffect(() => {
     loadAcademies();
+    requestUserLocation();
   }, []);
 
   useEffect(() => {
@@ -170,30 +262,6 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
       return;
     }
     await loadAcademies(search);
-  };
-
-  const handleUseGps = () => {
-    if (!navigator.geolocation) {
-      toast.error('GPS nao disponivel neste navegador');
-      return;
-    }
-
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        setUserCoords({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-        setLocating(false);
-        toast.success('GPS ativado para ordenar academias por distancia');
-      },
-      () => {
-        setLocating(false);
-        toast.error('Nao foi possivel acessar sua localizacao');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-    );
   };
 
   const handleLink = async (academy: AcademyResult) => {
@@ -245,7 +313,7 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
       <div style={{ padding: '1.25rem' }}>
         {/* Instrução */}
         <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#888', marginBottom: '1.25rem', lineHeight: 1.5 }}>
-          Use o GPS para ordenar por distancia quando a academia tiver localizacao salva. Sem GPS, cidade/UF continuam como prioridade.
+          Academias proximas aparecem primeiro quando voce autorizar a localizacao. Sem GPS, cidade/UF continuam como prioridade.
         </p>
 
         {/* Campo de busca */}
@@ -268,34 +336,6 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
               minWidth: '180px',
             }}
           />
-          <button
-            type="button"
-            onClick={handleUseGps}
-            disabled={locating}
-            title="Usar GPS para ordenar por distancia"
-            style={{
-              background: userCoords ? '#063820' : '#111',
-              border: `1px solid ${userCoords ? '#0D9E6E' : '#2A2A2A'}`,
-              color: userCoords ? '#0DFF9A' : '#FFFFFF',
-              fontFamily: 'Barlow Condensed, sans-serif',
-              fontWeight: 700,
-              fontSize: '0.8125rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '0.75rem 0.875rem',
-              cursor: locating ? 'not-allowed' : 'pointer',
-              opacity: locating ? 0.6 : 1,
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.375rem',
-              minWidth: '108px',
-            }}
-          >
-            <LocateFixed size={16} />
-            {locating ? 'GPS...' : userCoords ? 'GPS ATIVO' : 'USAR GPS'}
-          </button>
           <button
             onClick={handleSearch}
             disabled={loading}
@@ -383,40 +423,280 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
                       <span>{[academy.academyCity, academy.academyState].filter(Boolean).join(' - ')}</span>
                     </p>
                   )}
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#666', marginBottom: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                    <UserRound size={14} style={{ color: '#666', flexShrink: 0 }} />
-                    <span>Prof. {academy.professorName}</span>
-                  </p>
-
-                  <button
-                    onClick={() => handleLink(academy)}
-                    disabled={linking === academy.professorUid}
-                    style={{
-                      background: linking === academy.professorUid ? '#333' : '#CC0000',
-                      border: 'none',
-                      color: '#FFFFFF',
-                      fontFamily: 'Barlow Condensed, sans-serif',
-                      fontWeight: 700,
-                      fontSize: '0.8125rem',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      padding: '0.5rem 1rem',
-                      cursor: linking === academy.professorUid ? 'not-allowed' : 'pointer',
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.375rem',
-                    }}
-                  >
-                    {linking === academy.professorUid ? 'VINCULANDO...' : <><LinkIcon size={15} /> VINCULAR A ESTA ACADEMIA</>}
-                  </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(92px, 0.8fr) minmax(132px, 1.2fr)', gap: '0.5rem', marginTop: '0.875rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAcademy(academy)}
+                      style={{
+                        background: '#151515',
+                        border: '1px solid #2A2A2A',
+                        color: '#FFFFFF',
+                        fontFamily: 'Barlow Condensed, sans-serif',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        padding: '0.5rem 0.75rem',
+                        cursor: 'pointer',
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.375rem',
+                      }}
+                    >
+                      <Info size={15} /> DETALHES
+                    </button>
+                    <button
+                      onClick={() => handleLink(academy)}
+                      disabled={linking === academy.professorUid}
+                      style={{
+                        background: linking === academy.professorUid ? '#333' : '#CC0000',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        fontFamily: 'Barlow Condensed, sans-serif',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        padding: '0.5rem 0.75rem',
+                        cursor: linking === academy.professorUid ? 'not-allowed' : 'pointer',
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.375rem',
+                      }}
+                    >
+                      {linking === academy.professorUid ? 'VINCULANDO...' : <><LinkIcon size={15} /> VINCULAR</>}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {selectedAcademy && (() => {
+        const addressLabel = getAddressLabel(selectedAcademy);
+        const whatsappUrl = getWhatsAppUrl(selectedAcademy);
+        const phoneLabel = selectedAcademy.phone || 'Numero nao informado';
+        const mapActions = [
+          { label: 'GOOGLE MAPS', url: getGoogleMapsUrl(selectedAcademy), icon: Navigation, color: '#1A6ECC' },
+          { label: 'WAZE', url: getWazeUrl(selectedAcademy), icon: MapPin, color: '#0D9E6E' },
+          { label: 'UBER', url: getUberUrl(selectedAcademy), icon: Car, color: '#FFFFFF' },
+          { label: '99', url: getNinetyNineUrl(), icon: Car, color: '#FFD000' },
+        ];
+
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Detalhes de ${selectedAcademy.academyName}`}
+            onClick={() => setSelectedAcademy(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1000,
+              background: 'rgba(0, 0, 0, 0.78)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
+            }}
+          >
+            <div
+              onClick={event => event.stopPropagation()}
+              style={{
+                width: 'min(560px, 100%)',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                background: '#0D0D0D',
+                border: '1px solid #2A2A2A',
+                borderTop: '3px solid #CC0000',
+                boxShadow: '0 24px 70px rgba(0, 0, 0, 0.55)',
+              }}
+            >
+              <div style={{ padding: '1rem', display: 'flex', alignItems: 'flex-start', gap: '0.875rem', borderBottom: '1px solid #1E1E1E' }}>
+                <div style={{ width: '58px', height: '58px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #CC0000', flexShrink: 0, background: '#1A0000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {selectedAcademy.academyLogoUrl ? (
+                    <img src={selectedAcademy.academyLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <School size={26} style={{ color: '#CC0000' }} />
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.05 }}>
+                    {selectedAcademy.academyName}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#777', marginTop: '0.35rem', lineHeight: 1.35 }}>
+                    {addressLabel || 'Endereco nao informado'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAcademy(null)}
+                  aria-label="Fechar"
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    flexShrink: 0,
+                    border: '1px solid #2A2A2A',
+                    background: '#111',
+                    color: '#FFF',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.625rem' }}>
+                  <div style={{ border: '1px solid #1E1E1E', background: '#111', padding: '0.875rem' }}>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Phone size={13} /> NUMERO
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <p style={{ flex: 1, minWidth: '160px', fontFamily: 'Barlow, sans-serif', fontSize: '0.9rem', color: selectedAcademy.phone ? '#FFF' : '#666' }}>
+                        {phoneLabel}
+                      </p>
+                      {whatsappUrl ? (
+                        <a
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            background: '#0D9E6E',
+                            color: '#001A10',
+                            textDecoration: 'none',
+                            fontFamily: 'Barlow Condensed, sans-serif',
+                            fontWeight: 900,
+                            fontSize: '0.75rem',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.08em',
+                            padding: '0.55rem 0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.35rem',
+                          }}
+                        >
+                          <MessageCircle size={15} /> WHATSAPP
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          style={{
+                            background: '#1A1A1A',
+                            border: '1px solid #2A2A2A',
+                            color: '#555',
+                            fontFamily: 'Barlow Condensed, sans-serif',
+                            fontWeight: 900,
+                            fontSize: '0.75rem',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.08em',
+                            padding: '0.55rem 0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.35rem',
+                          }}
+                        >
+                          <MessageCircle size={15} /> WHATSAPP
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ border: '1px solid #1E1E1E', background: '#111', padding: '0.875rem' }}>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <MapPin size={13} /> ENDERECO
+                    </p>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.9rem', color: addressLabel ? '#FFF' : '#666', lineHeight: 1.45 }}>
+                      {addressLabel || 'Endereco nao informado'}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #1E1E1E', background: '#111', overflow: 'hidden' }}>
+                  <iframe
+                    title={`Mapa de ${selectedAcademy.academyName}`}
+                    src={getMapEmbedUrl(selectedAcademy)}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    style={{ width: '100%', height: '220px', border: 'none', display: 'block', background: '#0A0A0A' }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.625rem' }}>
+                  {mapActions.map(action => {
+                    const Icon = action.icon;
+                    return (
+                      <a
+                        key={action.label}
+                        href={action.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          minHeight: '44px',
+                          background: '#151515',
+                          border: '1px solid #2A2A2A',
+                          color: action.color,
+                          textDecoration: 'none',
+                          fontFamily: 'Barlow Condensed, sans-serif',
+                          fontWeight: 900,
+                          fontSize: '0.75rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.08em',
+                          padding: '0.65rem 0.75rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                        }}
+                      >
+                        <Icon size={15} />
+                        {action.label}
+                        <ExternalLink size={12} style={{ color: '#555' }} />
+                      </a>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => handleLink(selectedAcademy)}
+                  disabled={linking === selectedAcademy.professorUid}
+                  style={{
+                    background: linking === selectedAcademy.professorUid ? '#333' : '#CC0000',
+                    border: 'none',
+                    color: '#FFFFFF',
+                    fontFamily: 'Barlow Condensed, sans-serif',
+                    fontWeight: 900,
+                    fontSize: '0.875rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    padding: '0.875rem 1rem',
+                    cursor: linking === selectedAcademy.professorUid ? 'not-allowed' : 'pointer',
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  {linking === selectedAcademy.professorUid ? 'VINCULANDO...' : <><LinkIcon size={16} /> VINCULAR A ESTA ACADEMIA</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
