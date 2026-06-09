@@ -13,6 +13,7 @@ import AdminPlans from './AdminPlans';
 import AdminAppLinks from './AdminAppLinks';
 import AdminAnnouncements from './AdminAnnouncements';
 import Community from '../app/Community';
+import NotificationBell from '@/components/NotificationBell';
 
 type AdminTab = 'dashboard' | 'users' | 'crm' | 'plans' | 'app' | 'avisos' | 'community';
 
@@ -32,6 +33,8 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col font-['Barlow_Condensed']">
+      <NotificationBell />
+
       {/* Top Bar */}
       <header className="bjj-glass-strong flex items-center justify-between px-5 h-14 sticky top-0 z-100" style={{ borderBottom: '2px solid #CC0000' }}>
         <div className="flex items-center gap-3">
@@ -105,6 +108,6 @@ const NAV_ITEMS: { id: string; label: string; superOnly?: boolean }[] = [
   { id: 'crm',       label: 'CRM'       },
   { id: 'plans',     label: 'Planos', superOnly: true },
   { id: 'app',       label: 'App',    superOnly: true },
-  { id: 'avisos',    label: 'Avisos', superOnly: true },
+  { id: 'avisos',    label: 'Notificações', superOnly: true },
   { id: 'community', label: 'Comunidade' },
 ];

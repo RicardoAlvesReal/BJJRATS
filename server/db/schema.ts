@@ -315,6 +315,14 @@ export const announcements = pgTable('announcements', {
   imageUrl:  text('image_url'),
   linkUrl:   text('link_url'),
   linkText:  text('link_text'),
+  sourceUid: text('source_uid'),
+  sourceName:text('source_name'),
+  sourceRole:text('source_role'),
+  scope:     text('scope').default('global'), // global|academy|professor
+  audience:  text('audience').default('all'), // all|students|professors
+  targetAcademyId: text('target_academy_id'),
+  targetProfessorUid: text('target_professor_uid'),
+  urgent:    boolean('urgent').default(false),
   isActive:  boolean('is_active').default(true),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),

@@ -31,7 +31,12 @@ export default function PricingPage() {
     setCreating(true);
     try {
       const result = await api.subscriptions.create({ planId, billingType });
-      // Redireciona para gerenciamento da assinatura
+      const paymentUrl = result.subscription.payment?.invoiceUrl || result.subscription.payment?.bankSlipUrl;
+      if (paymentUrl) {
+        window.location.href = paymentUrl;
+        return;
+      }
+
       navigate('/app/subscription');
     } catch (err: any) {
       alert(err?.message || 'Erro ao criar assinatura');

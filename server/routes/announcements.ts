@@ -1,29 +1,85 @@
 import { Router } from 'express';
 import { nanoid } from 'nanoid';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { announcements, announcementDismissals } from '../db/schema.js';
-import { requireAuth, requireRole, type AuthRequest } from '../middleware/auth.js';
+import { announcementDismissals, announcements, enrollments, users } from '../db/schema.js';
+import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /api/announcements — list announcements
-// ?all=true — returns all (including inactive), superadmin only
-// default — returns active, excluding dismissed by current user
+const AUDIENCES = new Set(['all', 'students', 'professors']);
+
+async function getViewer(uid: string) {
+  const [viewer] = await db
+    .select({
+      uid: users.uid,
+      name: users.name,
+      role: users.role,
+      isAcademyAdmin: users.isAcademyAdmin,
+      academyId: users.academyId,
+      academy: users.academy,
+      academyName: users.academyName,
+      professor: users.professor,
+    })
+    .from(users)
+    .where(eq(users.uid, uid))
+    .limit(1);
+
+  return viewer;
+}
+
+function audienceAllowed(audience: string | null | undefined, role?: string | null) {
+  const value = audience || 'all';
+  if (value === 'all') return true;
+  if (value === 'students') return role === 'student';
+  if (value === 'professors') return role === 'professor' || role === 'admin' || role === 'superadmin';
+  return true;
+}
+
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const showAll = req.query.all === 'true';
+    const mineOnly = req.query.mine === 'true';
 
     if (showAll) {
       if (req.userRole !== 'superadmin') {
         res.status(403).json({ error: 'Apenas superadmin pode ver todos.' });
         return;
       }
-      const rows = await db.select().from(announcements)
+
+      const rows = await db.select().from(announcements).orderBy(desc(announcements.createdAt));
+      res.json(rows);
+      return;
+    }
+
+    if (mineOnly) {
+      const rows = await db
+        .select()
+        .from(announcements)
+        .where(eq(announcements.sourceUid, req.userId!))
         .orderBy(desc(announcements.createdAt));
       res.json(rows);
       return;
     }
+
+    const viewer = await getViewer(req.userId!);
+    if (!viewer) {
+      res.status(404).json({ error: 'Usuario nao encontrado.' });
+      return;
+    }
+
+    const studentEnrollments = viewer.role === 'student'
+      ? await db
+        .select({ professorUid: enrollments.professorUid })
+        .from(enrollments)
+        .where(
+          and(
+            eq(enrollments.studentUid, req.userId!),
+            sql`${enrollments.status} IS DISTINCT FROM 'cancelled'`,
+          ),
+        )
+      : [];
+    const professorUids = new Set(studentEnrollments.map(row => row.professorUid));
 
     const rows = await db
       .select()
@@ -39,76 +95,164 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
       )
       .orderBy(desc(announcements.createdAt));
 
-    res.json(rows);
-  } catch (e) {
-    res.status(500).json({ error: 'Erro ao buscar avisos.' });
+    const filtered = rows.filter(row => {
+      const scope = row.scope || 'global';
+      if (scope === 'global') return true;
+
+      if (scope === 'academy') {
+        const targetAcademyId = row.targetAcademyId || row.sourceUid;
+        const sameAcademy =
+          !!targetAcademyId &&
+          (viewer.uid === targetAcademyId || viewer.academyId === targetAcademyId);
+        return sameAcademy && audienceAllowed(row.audience, viewer.role);
+      }
+
+      if (scope === 'professor') {
+        const targetProfessorUid = row.targetProfessorUid || row.sourceUid;
+        if (!targetProfessorUid) return false;
+        if (viewer.uid === targetProfessorUid) return true;
+        return professorUids.has(targetProfessorUid) && audienceAllowed(row.audience || 'students', viewer.role);
+      }
+
+      return false;
+    });
+
+    res.json(filtered);
+  } catch {
+    res.status(500).json({ error: 'Erro ao buscar notificações.' });
   }
 });
 
-// POST /api/announcements — create (superadmin only)
-router.post('/', requireAuth, requireRole('superadmin'), async (req: AuthRequest, res) => {
+router.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { title, content, imageUrl, linkUrl, linkText } = req.body;
+    const { title, content, imageUrl, linkUrl, linkText, urgent } = req.body;
     if (!title || !content) {
-      res.status(400).json({ error: 'title e content são obrigatórios.' });
+      res.status(400).json({ error: 'title e content sao obrigatorios.' });
       return;
     }
+
+    const author = await getViewer(req.userId!);
+    if (!author) {
+      res.status(404).json({ error: 'Usuario nao encontrado.' });
+      return;
+    }
+
+    const role = author.role || req.userRole || 'student';
+    const isAcademy = role === 'admin' || !!author.isAcademyAdmin;
+    const audience = AUDIENCES.has(String(req.body.audience || '')) ? String(req.body.audience) : 'all';
+    let scope = 'global';
+    let targetAcademyId: string | undefined;
+    let targetProfessorUid: string | undefined;
+
+    if (role === 'superadmin') {
+      scope = 'global';
+    } else if (isAcademy) {
+      scope = 'academy';
+      targetAcademyId = author.uid;
+    } else if (role === 'professor') {
+      scope = 'professor';
+      targetProfessorUid = author.uid;
+    } else {
+      res.status(403).json({ error: 'Apenas superadmin, academias e professores podem criar notificações.' });
+      return;
+    }
+
     const id = nanoid(12);
-    const row = await db.insert(announcements).values({
-      id, title, content, imageUrl, linkUrl, linkText,
+    const [row] = await db.insert(announcements).values({
+      id,
+      title,
+      content,
+      imageUrl,
+      linkUrl,
+      linkText,
+      sourceUid: author.uid,
+      sourceName: author.academyName || author.academy || author.name,
+      sourceRole: role,
+      scope,
+      audience: role === 'superadmin' ? 'all' : audience,
+      targetAcademyId,
+      targetProfessorUid,
+      urgent: !!urgent,
     }).returning();
-    res.json(row[0]);
-  } catch (e) {
-    res.status(500).json({ error: 'Erro ao criar aviso.' });
+
+    res.status(201).json(row);
+  } catch {
+    res.status(500).json({ error: 'Erro ao criar notificação.' });
   }
 });
 
-// PUT /api/announcements/:id — update (superadmin only)
-router.put('/:id', requireAuth, requireRole('superadmin'), async (req: AuthRequest, res) => {
+router.put('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { title, content, imageUrl, linkUrl, linkText, isActive } = req.body;
-    const row = await db.update(announcements)
-      .set({ title, content, imageUrl, linkUrl, linkText, isActive, updatedAt: sql`now()` })
+    const [existing] = await db
+      .select({ sourceUid: announcements.sourceUid })
+      .from(announcements)
+      .where(eq(announcements.id, req.params.id))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: 'Notificação nao encontrada.' });
+      return;
+    }
+    if (req.userRole !== 'superadmin' && existing.sourceUid !== req.userId) {
+      res.status(403).json({ error: 'Acesso negado.' });
+      return;
+    }
+
+    const { title, content, imageUrl, linkUrl, linkText, isActive, urgent } = req.body;
+    const [row] = await db.update(announcements)
+      .set({ title, content, imageUrl, linkUrl, linkText, isActive, urgent, updatedAt: sql`now()` })
       .where(eq(announcements.id, req.params.id))
       .returning();
-    if (!row.length) {
-      res.status(404).json({ error: 'Aviso não encontrado.' });
+
+    res.json(row);
+  } catch {
+    res.status(500).json({ error: 'Erro ao atualizar notificação.' });
+  }
+});
+
+router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const [existing] = await db
+      .select({ sourceUid: announcements.sourceUid })
+      .from(announcements)
+      .where(eq(announcements.id, req.params.id))
+      .limit(1);
+
+    if (!existing) {
+      res.status(404).json({ error: 'Notificação nao encontrada.' });
       return;
     }
-    res.json(row[0]);
-  } catch (e) {
-    res.status(500).json({ error: 'Erro ao atualizar aviso.' });
-  }
-});
+    if (req.userRole !== 'superadmin' && existing.sourceUid !== req.userId) {
+      res.status(403).json({ error: 'Acesso negado.' });
+      return;
+    }
 
-// DELETE /api/announcements/:id — delete (superadmin only)
-router.delete('/:id', requireAuth, requireRole('superadmin'), async (req: AuthRequest, res) => {
-  try {
     await db.delete(announcements).where(eq(announcements.id, req.params.id));
     res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: 'Erro ao excluir aviso.' });
+  } catch {
+    res.status(500).json({ error: 'Erro ao excluir notificação.' });
   }
 });
 
-// POST /api/announcements/:id/dismiss — mark as dismissed (any auth user)
 router.post('/:id/dismiss', requireAuth, async (req: AuthRequest, res) => {
   try {
     const exists = await db.select().from(announcements)
       .where(and(eq(announcements.id, req.params.id), eq(announcements.isActive, true)))
       .limit(1);
     if (!exists.length) {
-      res.status(404).json({ error: 'Aviso não encontrado.' });
+      res.status(404).json({ error: 'Notificação nao encontrada.' });
       return;
     }
+
     await db.insert(announcementDismissals).values({
       id: nanoid(12),
       announcementId: req.params.id,
       userUid: req.userId!,
     }).onConflictDoNothing();
+
     res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: 'Erro ao dispensar aviso.' });
+  } catch {
+    res.status(500).json({ error: 'Erro ao dispensar notificação.' });
   }
 });
 

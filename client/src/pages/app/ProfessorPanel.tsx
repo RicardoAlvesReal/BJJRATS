@@ -11,6 +11,27 @@ import api from '@/lib/api';
 import { sendOverdueWhatsApp, sendSuspendWhatsApp, sendLowFrequencyWhatsApp } from '@/lib/whatsappService';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import {
+  ArrowLeft,
+  BarChart3,
+  Bell,
+  CalendarCheck,
+  CalendarDays,
+  ChevronRight,
+  Clock,
+  CreditCard,
+  DollarSign,
+  LayoutDashboard,
+  LogOut,
+  Newspaper,
+  School,
+  Target,
+  Trophy,
+  UserCheck,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 
 interface Post {
   id: string;
@@ -65,7 +86,8 @@ interface TrialRequest {
   createdAtStr?: string;
 }
 
-type PanelTab = 'overview' | 'feed' | 'events' | 'challenges' | 'members' | 'financial' | 'frequencia' | 'horarios' | 'relatorios' | 'promocao' | 'leads';
+type PanelTab = 'overview' | 'avisos' | 'feed' | 'events' | 'challenges' | 'members' | 'financial' | 'frequencia' | 'horarios' | 'relatorios' | 'promocao' | 'leads';
+type PanelGroup = 'principal' | 'alunos' | 'gestao' | 'comunidade';
 type FinancialSubTab = 'enrollments' | 'payments' | 'suspensions';
 
 interface Enrollment {
@@ -105,6 +127,7 @@ interface Payment {
 interface Props {
   onBack: () => void;
   onLogout?: () => void;
+  notificationSlot?: React.ReactNode;
 }
 
 interface Member {
@@ -119,17 +142,6 @@ interface Member {
   athleteType?: string;
   bjjSince?: string;
   lastTrainingDate?: string;
-}
-
-interface NewMemberNotification {
-  id: string;
-  studentUid: string;
-  studentName: string;
-  studentBelt: string;
-  studentStripes: number;
-  studentPhoto?: string | null;
-  createdAtStr: string;
-  read: boolean;
 }
 
 interface JoinRequest {
@@ -159,23 +171,32 @@ interface TrainRequest {
   read: boolean;
 }
 
-const PANEL_TABS: { id: PanelTab; label: string; icon: string }[] = [
-  { id: 'overview', label: 'VISÃO GERAL', icon: '📊' },
-  { id: 'feed', label: 'FEED', icon: '📡' },
-  { id: 'events', label: 'EVENTOS', icon: '📅' },
-  { id: 'challenges', label: 'DESAFIOS', icon: '⭐' },
-  { id: 'members', label: 'MEMBROS', icon: '👥' },
-  { id: 'financial', label: 'FINANCEIRO', icon: '💰' },
-  { id: 'frequencia', label: 'FREQUÊNCIA', icon: '📆' },
-  { id: 'horarios', label: 'HORÁRIOS', icon: '🕐' },
-  { id: 'relatorios', label: 'RELATÓRIOS', icon: '📊' },
-  { id: 'promocao', label: 'PROMOÇÃO', icon: '🥋' },
-  { id: 'leads', label: 'LEADS', icon: '🎯' },
+const PANEL_TAB_GROUPS: { id: PanelGroup; label: string }[] = [
+  { id: 'principal', label: 'PRINCIPAL' },
+  { id: 'alunos', label: 'ALUNOS' },
+  { id: 'gestao', label: 'GESTÃO' },
+  { id: 'comunidade', label: 'COMUNIDADE' },
 ];
 
-export default function ProfessorPanel({ onBack, onLogout }: Props) {
+const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: LucideIcon }[] = [
+  { id: 'overview', label: 'VISÃO GERAL', group: 'principal', icon: LayoutDashboard },
+  { id: 'avisos', label: 'NOTIFICAÇÕES', group: 'principal', icon: Bell },
+  { id: 'members', label: 'MEMBROS', group: 'alunos', icon: Users },
+  { id: 'frequencia', label: 'FREQUÊNCIA', group: 'alunos', icon: CalendarCheck },
+  { id: 'promocao', label: 'PROMOÇÃO', group: 'alunos', icon: UserCheck },
+  { id: 'financial', label: 'FINANCEIRO', group: 'gestao', icon: CreditCard },
+  { id: 'horarios', label: 'HORÁRIOS', group: 'gestao', icon: Clock },
+  { id: 'relatorios', label: 'RELATÓRIOS', group: 'gestao', icon: BarChart3 },
+  { id: 'feed', label: 'FEED', group: 'comunidade', icon: Newspaper },
+  { id: 'events', label: 'EVENTOS', group: 'comunidade', icon: CalendarDays },
+  { id: 'challenges', label: 'DESAFIOS', group: 'comunidade', icon: Trophy },
+  { id: 'leads', label: 'LEADS', group: 'comunidade', icon: Target },
+];
+
+export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: Props) {
   const { user, profile } = useAuth();
   const [activeTab, setActiveTab] = useState<PanelTab>('overview');
+  const [activeTabGroup, setActiveTabGroup] = useState<PanelGroup>('principal');
   const [members, setMembers] = useState<Member[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [memberCount, setMemberCount] = useState<number | null>(null);
@@ -186,10 +207,6 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
-
-  // ── Notificações de novos membros ─────────────────────────────────────────
-  const [newMemberNotifs, setNewMemberNotifs] = useState<NewMemberNotification[]>([]);
-  const [showNotifs, setShowNotifs] = useState(false);
 
   // ── Solicitações de treino (QUERO TREINAR AQUI) ───────────────────────────
   const [trainRequests, setTrainRequests] = useState<TrainRequest[]>([]);
@@ -820,23 +837,6 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
     finally { setSavingEnroll(false); }
   }, [user, enrollSelectedStudent, enrollForm, enrollBillingMode, loadEnrollments, loadPayments]);
 
-  // ── Carregar notificações de novos membros ────────────────────────────────────────────
-  const loadNotifs = useCallback(async () => {
-    if (!user) return;
-    try {
-      const all = await api.notifications.list();
-      const notifs: NewMemberNotification[] = (all as any[])
-        .filter((n: any) => n.recipientUid === user.uid || n.uid === user.uid)
-        .filter((n: any) => n.type === 'new_member')
-        .sort((a: any, b: any) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      setNewMemberNotifs(notifs);
-    } catch (err) { console.error('Erro ao carregar notificações:', err); }
-  }, [user]);
-
-  useEffect(() => {
-    loadNotifs();
-  }, [loadNotifs]);
-
   // ── Carregar solicitações de treino ─────────────────────────────────────────
   const loadTrainRequests = useCallback(async () => {
     if (!user) return;
@@ -905,14 +905,6 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
       setTrainRequests(prev => prev.filter(r => r.id !== req.id));
       toast.success('Solicitação recusada.');
     } catch { toast.error('Erro ao recusar solicitação'); }
-  };
-
-  const markNotifsRead = async () => {
-    if (!user) return;
-    const unread = newMemberNotifs.filter(n => !n.read);
-    if (unread.length === 0) return;
-    await Promise.all(unread.map(n => api.notifications.markRead(n.id)));
-    setNewMemberNotifs(prev => prev.map(n => ({ ...n, read: true })));
   };
 
   // ── Solicitações de vínculo pendentes ──────────────────────────────────────
@@ -1154,6 +1146,36 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
     return matchName && matchBelt;
   });
 
+  const activeTabInfo = PANEL_TABS.find(tab => tab.id === activeTab) || PANEL_TABS[0];
+  const activeGroupTabs = PANEL_TABS.filter(tab => tab.group === activeTabGroup);
+  const pendingJoinCount = joinRequests.filter(r => r.status === 'pending').length;
+  const activeEnrollmentCount = enrollments.filter(e => e.status === 'active').length;
+  const suspendedEnrollmentCount = enrollments.filter(e => e.status === 'suspended').length;
+  const overduePaymentCount = payments.filter(p => p.status === 'overdue').length;
+  const pendingLeadCount = leads.filter(l => l.status === 'pending').length;
+  const paidRevenue = payments
+    .filter(p => p.status === 'paid')
+    .reduce((sum, payment) => sum + payment.amount, 0);
+
+  const handleGroupSelect = (groupId: PanelGroup) => {
+    setActiveTabGroup(groupId);
+    if (activeTabInfo.group !== groupId) {
+      const firstTab = PANEL_TABS.find(tab => tab.group === groupId);
+      if (firstTab) setActiveTab(firstTab.id);
+    }
+  };
+
+  const getTabBadge = (tabId: PanelTab) => {
+    if (tabId === 'members') return pendingJoinCount || memberCount || null;
+    if (tabId === 'financial') return overduePaymentCount || null;
+    if (tabId === 'leads') return pendingLeadCount || null;
+    return null;
+  };
+
+  useEffect(() => {
+    if (activeTabInfo.group !== activeTabGroup) setActiveTabGroup(activeTabInfo.group);
+  }, [activeTabGroup, activeTabInfo.group]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -1162,23 +1184,19 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
       <div style={{ background: '#0D0D0D', borderBottom: `2px solid ${accentColor}`, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
         {onLogout ? (
           <button onClick={onLogout} title="Sair da conta" style={{ background: 'none', border: 'none', color: '#CC3333', padding: '0.25rem', cursor: 'pointer' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
+            <LogOut size={20} strokeWidth={2.5} />
           </button>
         ) : (
           <button onClick={onBack} style={{ background: 'none', border: 'none', color: accentColor, padding: '0.25rem', cursor: 'pointer' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M19 12H5M12 5l-7 7 7 7"/>
-            </svg>
+            <ArrowLeft size={20} strokeWidth={2.5} />
           </button>
         )}
         {(profile?.academyLogoUrl || (profile as any)?.academyLogo) ? (
           <img src={profile?.academyLogoUrl || (profile as any)?.academyLogo} alt="Logo" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
         ) : (
-          <div style={{ width: '36px', height: '36px', background: '#001A33', border: `1px solid ${accentColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem', flexShrink: 0 }}>🏫</div>
+          <div style={{ width: '36px', height: '36px', background: '#001A33', border: `1px solid ${accentColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <School size={20} color={accentColor} />
+          </div>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFFFFF', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1188,96 +1206,83 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
             PAINEL DE GESTÃO
           </p>
         </div>
-        {/* Botão de notificações */}
-        <button
-          onClick={() => { setShowNotifs(v => !v); if (!showNotifs) markNotifsRead(); }}
-          style={{ position: 'relative', background: 'none', border: 'none', color: '#FFF', cursor: 'pointer', padding: '0.25rem', flexShrink: 0 }}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          {newMemberNotifs.filter(n => !n.read).length > 0 && (
-            <span style={{ position: 'absolute', top: '-2px', right: '-2px', background: '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.55rem', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {newMemberNotifs.filter(n => !n.read).length}
-            </span>
-          )}
-        </button>
-        <div style={{ background: '#001A33', border: `1px solid ${accentColor}`, padding: '0.25rem 0.625rem' }}>
+        <div style={{ background: '#001A33', border: `1px solid ${accentColor}`, padding: '0.25rem 0.625rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <UserCheck size={13} color={accentColor} strokeWidth={2.4} />
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>PROFESSOR</p>
         </div>
+        {notificationSlot}
       </div>
 
-      {/* Painel de notificações */}
-      {showNotifs && (
-        <div style={{ background: '#0D1A2A', border: `1px solid ${accentColor}44`, borderTop: 'none', padding: '1rem 1.25rem', maxHeight: '280px', overflowY: 'auto', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', color: accentColor, letterSpacing: '0.05em' }}>NOVOS ALUNOS VINCULADOS</p>
-            <button onClick={() => setShowNotifs(false)} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
+      {/* Sub-nav organizada por grupos */}
+      <div style={{ background: '#101010', borderBottom: '1px solid #1E1E1E', flexShrink: 0 }}>
+        <div style={{ maxWidth: '1180px', margin: '0 auto', padding: '0.625rem 1rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: '0.375rem' }}>
+            {PANEL_TAB_GROUPS.map(group => {
+              const isActive = activeTabGroup === group.id;
+              return (
+                <button
+                  key={group.id}
+                  onClick={() => handleGroupSelect(group.id)}
+                  style={{
+                    background: isActive ? '#001A33' : '#0A0A0A',
+                    border: `1px solid ${isActive ? accentColor : '#1E1E1E'}`,
+                    color: isActive ? '#FFFFFF' : '#666',
+                    fontFamily: 'Barlow Condensed, sans-serif',
+                    fontWeight: 900,
+                    fontSize: '0.65rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.07em',
+                    padding: '0.5rem 0.25rem',
+                    cursor: 'pointer',
+                    minWidth: 0,
+                  }}
+                >
+                  {group.label}
+                </button>
+              );
+            })}
           </div>
-          {newMemberNotifs.length === 0 ? (
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', textAlign: 'center', padding: '1rem 0' }}>Nenhuma notificação ainda</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-              {newMemberNotifs.map(n => (
-                <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem', background: n.read ? '#111' : '#001A33', border: `1px solid ${n.read ? '#1E1E1E' : accentColor + '44'}` }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', overflow: 'hidden', border: `2px solid ${accentColor}`, flexShrink: 0, background: '#001A33', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {n.studentPhoto ? (
-                      <img src={n.studentPhoto} alt={n.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <span style={{ fontSize: '1rem' }}>🥋</span>
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#FFF', lineHeight: 1 }}>{n.studentName}</p>
-                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', marginTop: '0.2rem' }}>
-                      Faixa {n.studentBelt}{n.studentStripes > 0 ? ` · ${n.studentStripes} grau${n.studentStripes > 1 ? 's' : ''}` : ''} · {n.createdAtStr}
-                    </p>
-                  </div>
-                  {!n.read && (
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: accentColor, flexShrink: 0 }} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Sub-nav horizontal */}
-      <div style={{ display: 'flex', overflowX: 'auto', background: '#111', borderBottom: '1px solid #1E1E1E', flexShrink: 0 }}>
-        {PANEL_TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '0.75rem 1rem',
-              background: 'none',
-              border: 'none',
-              borderBottom: activeTab === tab.id ? `2px solid ${accentColor}` : '2px solid transparent',
-              color: activeTab === tab.id ? '#FFFFFF' : '#555',
-              fontFamily: 'Barlow Condensed, sans-serif',
-              fontWeight: 700,
-              fontSize: '0.7rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.375rem',
-              transition: 'all 0.15s',
-            }}
-          >
-            <span>{tab.icon}</span>
-            {tab.label}
-            {tab.id === 'members' && memberCount !== null && memberCount > 0 && (
-              <span style={{ background: accentColor, color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', padding: '0.1rem 0.375rem', borderRadius: '999px', minWidth: '18px', textAlign: 'center' }}>
-                {memberCount}
-              </span>
-            )}
-          </button>
-        ))}
+          <div style={{ display: 'flex', overflowX: 'auto', gap: '0.375rem', paddingBottom: '0.125rem' }}>
+            {activeGroupTabs.map(tab => {
+              const Icon = tab.icon;
+              const badge = getTabBadge(tab.id);
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    padding: '0.6rem 0.75rem',
+                    background: isActive ? accentColor : '#111',
+                    border: `1px solid ${isActive ? accentColor : '#222'}`,
+                    color: isActive ? '#FFFFFF' : '#888',
+                    fontFamily: 'Barlow Condensed, sans-serif',
+                    fontWeight: 900,
+                    fontSize: '0.68rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    transition: 'all 0.15s',
+                    minHeight: '38px',
+                  }}
+                >
+                  <Icon size={15} strokeWidth={2.4} />
+                  {tab.label}
+                  {badge !== null && (
+                    <span style={{ background: isActive ? '#FFFFFF' : accentColor, color: isActive ? accentColor : '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.58rem', padding: '0.05rem 0.35rem', borderRadius: '999px', minWidth: '18px', textAlign: 'center' }}>
+                      {badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Content */}
@@ -1316,19 +1321,22 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
             </div>
 
             {/* Stats grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
               {[
-                { label: 'ALUNOS VINCULADOS', value: memberCount ?? '—', icon: '👥' },
-                { label: 'MEUS TREINOS', value: profile?.totalTrainings ?? 0, icon: '🥋' },
-                { label: 'MEU XP TOTAL', value: profile?.xp ?? 0, icon: '⚡' },
-                { label: 'HORAS TREINADAS', value: profile?.totalMinutes ? `${Math.round((profile.totalMinutes as number) / 60)}h` : '0h', icon: '⏱️' },
-              ].map(stat => (
-                <div key={stat.label} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>{stat.icon}</span>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', color: accentColor, lineHeight: 1 }}>{stat.value}</p>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stat.label}</p>
-                </div>
-              ))}
+                { label: 'ALUNOS', value: memberCount ?? '—', icon: Users, color: accentColor },
+                { label: 'MATRÍCULAS ATIVAS', value: enrollmentsLoading ? '...' : activeEnrollmentCount, icon: UserPlus, color: '#0D9E6E' },
+                { label: 'PENDÊNCIAS', value: pendingJoinCount + overduePaymentCount + suspendedEnrollmentCount, icon: Bell, color: pendingJoinCount + overduePaymentCount + suspendedEnrollmentCount > 0 ? '#CC0000' : '#555' },
+                { label: 'RECEBIDO NO MÊS', value: paymentsLoading ? '...' : `R$ ${paidRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, icon: DollarSign, color: '#0D9E6E' },
+              ].map(stat => {
+                const Icon = stat.icon;
+                return (
+                  <div key={stat.label} style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: `3px solid ${stat.color}`, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: '104px' }}>
+                    <Icon size={20} color={stat.color} strokeWidth={2.4} />
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.35rem', color: '#FFFFFF', lineHeight: 1 }}>{stat.value}</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.62rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stat.label}</p>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Resumo financeiro do mês */}
@@ -1340,17 +1348,17 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
                 <div style={{ background: '#0D1A0D', border: '1px solid #0D9E6E33', padding: '0.875rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                   <span style={{ fontSize: '1.1rem' }}>✅</span>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: '#0D9E6E', lineHeight: 1 }}>
-                    {paymentsLoading ? '...' : `R$\u00a0${payments.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                    {paymentsLoading ? '...' : `R$\u00a0${paidRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                   </p>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>RECEBIDO</p>
                 </div>
                 <div
                   onClick={() => setActiveTab('financial')}
-                  style={{ background: payments.filter(p => p.status === 'overdue').length > 0 ? '#1A0D0D' : '#111', border: `1px solid ${payments.filter(p => p.status === 'overdue').length > 0 ? '#CC000044' : '#1E1E1E'}`, padding: '0.875rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', cursor: 'pointer' }}
+                  style={{ background: overduePaymentCount > 0 ? '#1A0D0D' : '#111', border: `1px solid ${overduePaymentCount > 0 ? '#CC000044' : '#1E1E1E'}`, padding: '0.875rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', cursor: 'pointer' }}
                 >
                   <span style={{ fontSize: '1.1rem' }}>⚠️</span>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: payments.filter(p => p.status === 'overdue').length > 0 ? '#CC0000' : '#444', lineHeight: 1 }}>
-                    {paymentsLoading ? '...' : payments.filter(p => p.status === 'overdue').length}
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: overduePaymentCount > 0 ? '#CC0000' : '#444', lineHeight: 1 }}>
+                    {paymentsLoading ? '...' : overduePaymentCount}
                   </p>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>VENCIDOS</p>
                 </div>
@@ -1360,7 +1368,7 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
                 >
                   <span style={{ fontSize: '1.1rem' }}>📋</span>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: '#FFF', lineHeight: 1 }}>
-                    {enrollmentsLoading ? '...' : enrollments.filter(e => e.status === 'active').length}
+                    {enrollmentsLoading ? '...' : activeEnrollmentCount}
                   </p>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ATIVOS</p>
                 </div>
@@ -1646,28 +1654,24 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
             <div>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>AÇÕES RÁPIDAS</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                {[
-                  { label: 'Membros', tab: 'members' as PanelTab, icon: '👥' },
-                  { label: 'Financeiro', tab: 'financial' as PanelTab, icon: '💰' },
-                  { label: 'Feed', tab: 'feed' as PanelTab, icon: '📡' },
-                  { label: 'Eventos', tab: 'events' as PanelTab, icon: '📅' },
-                  { label: 'Desafios', tab: 'challenges' as PanelTab, icon: '⭐' },
-                  { label: 'Promoções', tab: 'promocao' as PanelTab, icon: '🥋' },
-                  { label: 'Frequência', tab: 'frequencia' as PanelTab, icon: '📆' },
-                  { label: 'Leads', tab: 'leads' as PanelTab, icon: '🎯' },
-                ].map(action => (
-                  <button key={action.label} onClick={() => setActiveTab(action.tab)}
+                {PANEL_TABS.filter(action => action.id !== 'overview' && action.id !== 'avisos').map(action => {
+                  const Icon = action.icon;
+                  return (
+                  <button key={action.id} onClick={() => setActiveTab(action.id)}
                     style={{ background: '#111', border: `1px solid ${accentColor}22`, padding: '0.875rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer', textAlign: 'left' }}>
-                    <span style={{ fontSize: '1.1rem' }}>{action.icon}</span>
+                    <Icon size={17} color={accentColor} strokeWidth={2.4} />
                     <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', color: '#CCC', letterSpacing: '0.05em' }}>{action.label}</span>
-                    <svg style={{ marginLeft: 'auto' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2">
-                      <path d="M9 18l6-6-6-6"/>
-                    </svg>
+                    <ChevronRight size={14} color={accentColor} strokeWidth={2.4} style={{ marginLeft: 'auto', flexShrink: 0 }} />
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'avisos' && (
+          <AvisosTab user={user} profile={profile} accentColor={accentColor} />
         )}
 
         {/* ── Feed ── */}
@@ -1686,7 +1690,7 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
               <div style={{ background: '#111', border: `1px solid ${accentColor}`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF' }}>NOVO POST</p>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {[{ v: 'geral', l: 'GERAL' }, { v: 'aviso', l: '⚠️ AVISO' }, { v: 'novidade', l: '🎉 NOVIDADE' }, { v: 'resultado', l: '🏆 RESULTADO' }].map(t => (
+                  {[{ v: 'geral', l: 'GERAL' }, { v: 'aviso', l: '⚠️ NOTIFICAÇÃO' }, { v: 'novidade', l: '🎉 NOVIDADE' }, { v: 'resultado', l: '🏆 RESULTADO' }].map(t => (
                     <button key={t.v} onClick={() => setPostType(t.v)}
                       style={{ padding: '0.3rem 0.625rem', background: postType === t.v ? accentColor : '#1A1A1A', border: `1px solid ${postType === t.v ? accentColor : '#333'}`, color: postType === t.v ? '#FFF' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', cursor: 'pointer' }}>
                       {t.l}
@@ -1735,7 +1739,7 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
               <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                 <p style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📡</p>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM POST AINDA</p>
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#444', marginTop: '0.5rem' }}>Publique novidades, avisos e resultados para seus alunos.</p>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#444', marginTop: '0.5rem' }}>Publique novidades, notificações e resultados para seus alunos.</p>
               </div>
             )}
             {posts.map(post => (
@@ -2236,7 +2240,7 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
           {/* Banner WhatsApp */}
           <div style={{ padding: '0.75rem 1.25rem', background: '#0A1A0A', borderBottom: '1px solid #1A4A1A', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <span style={{ fontSize: '1rem' }}>📱</span>
-            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#25D366', textTransform: 'uppercase', letterSpacing: '0.06em' }}>AVISOS VIA WHATSAPP ATIVADOS</span>
+            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#25D366', textTransform: 'uppercase', letterSpacing: '0.06em' }}>NOTIFICAÇÕES VIA WHATSAPP ATIVADAS</span>
           </div>
 
           {/* Sub-abas */}
@@ -2761,7 +2765,7 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#CC0000', textTransform: 'uppercase', marginBottom: '0.375rem' }}>MOTIVO REGISTRADO:</p>
                       <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#FFF', fontStyle: 'italic' }}>"{suspendReason}"</p>
                     </div>
-                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#AAA', lineHeight: 1.6 }}>Tem certeza? Esta ação suspenderá a matrícula de <strong style={{ color: '#FFF' }}>{showSuspendModal.studentName}</strong> e abrirá o WhatsApp com aviso privado.</p>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#AAA', lineHeight: 1.6 }}>Tem certeza? Esta ação suspenderá a matrícula de <strong style={{ color: '#FFF' }}>{showSuspendModal.studentName}</strong> e abrirá o WhatsApp com notificação privada.</p>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button onClick={() => setSuspendConfirmStep(1)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem', cursor: 'pointer' }}>VOLTAR</button>
                       <button onClick={() => handleSuspend(showSuspendModal, suspendReason)} disabled={suspending} style={{ flex: 2, background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem', cursor: suspending ? 'not-allowed' : 'pointer', opacity: suspending ? 0.6 : 1 }}>
@@ -3070,6 +3074,218 @@ export default function ProfessorPanel({ onBack, onLogout }: Props) {
 }
 
 // ── EventCard ────────────────────────────────────────────────────────────────
+
+function AvisosTab({ user, profile, accentColor }: { user: any; profile: any; accentColor: string }) {
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ title: '', content: '', audience: 'all', urgent: false });
+
+  const isAcademy = profile?.role === 'admin' || profile?.isAcademyAdmin;
+  const audienceOptions = isAcademy
+    ? [
+      { value: 'all', label: 'ALUNOS E PROFESSORES' },
+      { value: 'students', label: 'ALUNOS' },
+      { value: 'professors', label: 'PROFESSORES' },
+    ]
+    : [
+      { value: 'students', label: 'MEUS ALUNOS' },
+    ];
+
+  const loadAnnouncements = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await api.announcements.mine();
+      setAnnouncements(rows);
+    } catch {
+      toast.error('Erro ao carregar notificações');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAnnouncements();
+  }, [loadAnnouncements]);
+
+  const saveAnnouncement = async () => {
+    if (!form.title.trim() || !form.content.trim()) return;
+    setSaving(true);
+    try {
+      await api.announcements.create({
+        title: form.title.trim(),
+        content: form.content.trim(),
+        audience: isAcademy ? form.audience : 'students',
+        urgent: form.urgent,
+      });
+      setForm({ title: '', content: '', audience: 'all', urgent: false });
+      await loadAnnouncements();
+      toast.success('Notificação enviada!');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao enviar notificação');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleActive = async (announcement: any) => {
+    try {
+      await api.announcements.update(announcement.id, { isActive: !announcement.isActive });
+      await loadAnnouncements();
+    } catch {
+      toast.error('Erro ao alterar notificação');
+    }
+  };
+
+  const deleteAnnouncement = async (id: string) => {
+    if (!confirm('Excluir esta notificação?')) return;
+    try {
+      await api.announcements.delete(id);
+      setAnnouncements(prev => prev.filter(item => item.id !== id));
+    } catch {
+      toast.error('Erro ao excluir notificação');
+    }
+  };
+
+  return (
+    <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ background: '#111', border: `1px solid ${accentColor}`, borderLeft: `3px solid ${accentColor}`, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+        <div>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.95rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            NOVA NOTIFICAÇÃO
+          </p>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.68rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.2rem' }}>
+            {isAcademy ? (profile?.academyName || 'ACADEMIA') : (profile?.name || user?.name || 'PROFESSOR')}
+          </p>
+        </div>
+
+        <input
+          value={form.title}
+          onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))}
+          placeholder="Título da notificação"
+          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', boxSizing: 'border-box' }}
+        />
+
+        <textarea
+          value={form.content}
+          onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))}
+          placeholder="Mensagem para enviar no sininho dos alunos..."
+          rows={4}
+          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+        />
+
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {audienceOptions.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setForm(prev => ({ ...prev, audience: option.value }))}
+              style={{
+                background: form.audience === option.value ? accentColor : '#1A1A1A',
+                border: `1px solid ${form.audience === option.value ? accentColor : '#333'}`,
+                color: form.audience === option.value ? '#FFF' : '#666',
+                fontFamily: 'Barlow Condensed, sans-serif',
+                fontWeight: 900,
+                fontSize: '0.68rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                padding: '0.45rem 0.65rem',
+                cursor: 'pointer',
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setForm(prev => ({ ...prev, urgent: !prev.urgent }))}
+            style={{
+              background: form.urgent ? '#1A0000' : '#1A1A1A',
+              border: `1px solid ${form.urgent ? '#CC0000' : '#333'}`,
+              color: form.urgent ? '#FF4D4D' : '#666',
+              fontFamily: 'Barlow Condensed, sans-serif',
+              fontWeight: 900,
+              fontSize: '0.68rem',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              padding: '0.45rem 0.65rem',
+              cursor: 'pointer',
+            }}
+          >
+            URGENTE
+          </button>
+        </div>
+
+        <button
+          onClick={saveAnnouncement}
+          disabled={saving || !form.title.trim() || !form.content.trim()}
+          style={{ background: saving || !form.title.trim() || !form.content.trim() ? '#333' : accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', cursor: saving ? 'not-allowed' : 'pointer', width: '100%' }}
+        >
+          {saving ? 'ENVIANDO...' : 'ENVIAR NOTIFICAÇÃO'}
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#AAA', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          NOTIFICAÇÕES ENVIADAS
+        </p>
+        <button
+          type="button"
+          onClick={loadAnnouncements}
+          disabled={loading}
+          style={{ background: '#111', border: '1px solid #2A2A2A', color: loading ? '#444' : '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.75rem', cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.05em' }}
+        >
+          {loading ? '...' : 'ATUALIZAR'}
+        </button>
+      </div>
+
+      {loading && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', color: '#555', textTransform: 'uppercase', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>CARREGANDO...</p>}
+      {!loading && announcements.length === 0 && (
+        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem 1rem', textAlign: 'center' }}>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#555', textTransform: 'uppercase' }}>NENHUMA NOTIFICAÇÃO ENVIADA</p>
+        </div>
+      )}
+
+      {!loading && announcements.map(announcement => (
+        <div key={announcement.id} style={{ background: announcement.urgent ? '#190A0A' : '#111', border: `1px solid ${announcement.urgent ? '#CC000044' : '#1E1E1E'}`, borderLeft: `3px solid ${announcement.urgent ? '#CC0000' : accentColor}`, padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.1 }}>{announcement.title}</p>
+              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.78rem', color: '#888', lineHeight: 1.45, marginTop: '0.35rem' }}>{announcement.content}</p>
+            </div>
+            <span style={{ flexShrink: 0, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.62rem', color: announcement.isActive === false ? '#555' : '#0D9E6E', textTransform: 'uppercase', border: `1px solid ${announcement.isActive === false ? '#333' : '#0D9E6E55'}`, padding: '0.15rem 0.45rem' }}>
+              {announcement.isActive === false ? 'INATIVO' : 'ATIVO'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.62rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', border: '1px solid #252525', padding: '0.2rem 0.45rem' }}>
+              {(announcement.audience || 'all').toUpperCase()}
+            </span>
+            {announcement.urgent && (
+              <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.62rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.08em', border: '1px solid #CC000044', padding: '0.2rem 0.45rem' }}>
+                URGENTE
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => toggleActive(announcement)}
+              style={{ flex: 1, background: '#151515', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.68rem', textTransform: 'uppercase', padding: '0.5rem', cursor: 'pointer' }}
+            >
+              {announcement.isActive === false ? 'REATIVAR' : 'DESATIVAR'}
+            </button>
+            <button
+              onClick={() => deleteAnnouncement(announcement.id)}
+              style={{ background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.68rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer' }}
+            >
+              EXCLUIR
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function EventCard({ ev, accentColor, professorProfile, onDelete }: {
   ev: AcademyEvent;
@@ -4502,7 +4718,7 @@ function RelatoriosTab({
 
   const handleSendAllOverdue = () => {
     const targets = alunosAtraso.filter(a => a.daysOverdue >= 2 && a.enrollmentStatus === 'active');
-    if (!targets.length) { toast.info('Nenhum aluno elegível para aviso'); return; }
+    if (!targets.length) { toast.info('Nenhum aluno elegível para notificação'); return; }
     targets.forEach(a => {
       const enr = enrollments.find((e: any) => e.studentUid === a.studentUid);
       sendOverdueWhatsApp({

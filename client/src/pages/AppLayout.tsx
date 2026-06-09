@@ -16,7 +16,7 @@ import Professores from './app/Professores';
 import Goals from './app/Goals';
 import TrainingShareModal, { type TrainingData as ShareTrainingData, type ShareUserData } from './app/TrainingShareModal';
 import ProfessorPanel from './app/ProfessorPanel';
-import AnnouncementBanner from '@/components/AnnouncementBanner';
+import NotificationBell from '@/components/NotificationBell';
 import { useAuth } from '@/contexts/AuthContext';
 
 type Tab = 'dashboard' | 'history' | 'academy' | 'professores' | 'community' | 'goals' | 'profile';
@@ -202,7 +202,13 @@ export default function AppLayout() {
   }, [user, isProfessor]);
 
   if (showProfessorPanel) {
-    return <ProfessorPanel onBack={() => setShowProfessorPanel(false)} onLogout={isProfessor ? handleLogout : undefined} />;
+    return (
+      <ProfessorPanel
+        onBack={() => setShowProfessorPanel(false)}
+        onLogout={isProfessor ? handleLogout : undefined}
+        notificationSlot={<NotificationBell placement="inline" />}
+      />
+    );
   }
 
   if (showNewTraining || editTraining || editExtraTraining) {
@@ -226,6 +232,8 @@ export default function AppLayout() {
 
   return (
     <div className="bjj-app-wrapper">
+      <NotificationBell />
+
       {/* Promotion Notification Modal */}
       <AnimatePresence>
         {promotionNotif && (
@@ -464,9 +472,6 @@ export default function AppLayout() {
           </button>
         </div>
       </aside>
-
-      {/* Announcement Banner */}
-      <AnnouncementBanner />
 
       {/* Main Content */}
       <div className="bjj-main-content">

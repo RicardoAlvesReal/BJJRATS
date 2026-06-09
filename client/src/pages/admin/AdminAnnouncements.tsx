@@ -89,7 +89,7 @@ export default function AdminAnnouncements() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Announcement | null>(null);
-  const [form, setForm] = useState({ title: '', content: '', imageUrl: '', linkUrl: '', linkText: '' });
+  const [form, setForm] = useState({ title: '', content: '', imageUrl: '', linkUrl: '', linkText: '', urgent: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
@@ -102,7 +102,7 @@ export default function AdminAnnouncements() {
     setLoading(true);
     api.admin.announcements.list(true)
       .then(setList)
-      .catch(() => setError('Erro ao carregar avisos.'))
+      .catch(() => setError('Erro ao carregar notificações.'))
       .finally(() => setLoading(false));
   };
 
@@ -110,7 +110,7 @@ export default function AdminAnnouncements() {
 
   const openNew = () => {
     setEditTarget(null);
-    setForm({ title: '', content: '', imageUrl: '', linkUrl: '', linkText: '' });
+    setForm({ title: '', content: '', imageUrl: '', linkUrl: '', linkText: '', urgent: false });
     setImageFile(null);
     setImagePreview(null);
     setError('');
@@ -125,6 +125,7 @@ export default function AdminAnnouncements() {
       imageUrl: a.imageUrl || '',
       linkUrl: a.linkUrl || '',
       linkText: a.linkText || '',
+      urgent: !!a.urgent,
     });
     setImageFile(null);
     setImagePreview(null);
@@ -159,6 +160,7 @@ export default function AdminAnnouncements() {
         imageUrl,
         linkUrl: form.linkUrl.trim() || undefined,
         linkText: form.linkText.trim() || undefined,
+        urgent: form.urgent,
       };
       if (editTarget) {
         await api.admin.announcements.update(editTarget.id, payload);
@@ -196,7 +198,7 @@ export default function AdminAnnouncements() {
   if (loading) {
     return (
       <div style={{ padding: '2rem 0', textAlign: 'center' as const }}>
-        <p className="text-[#666] text-[0.85rem] font-['Barlow']">Carregando avisos...</p>
+        <p className="text-[#666] text-[0.85rem] font-['Barlow']">Carregando notificações...</p>
       </div>
     );
   }
@@ -204,9 +206,9 @@ export default function AdminAnnouncements() {
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={headingStyle}>Avisos</h1>
+        <h1 style={headingStyle}>Notificações</h1>
         <button onClick={openNew} style={btnPrimaryStyle as React.CSSProperties}>
-          Novo Aviso
+          Nova Notificação
         </button>
       </div>
 
@@ -216,9 +218,9 @@ export default function AdminAnnouncements() {
 
       {list.length === 0 && (
         <div className="text-center py-10">
-          <p className="text-[#555] text-[0.9rem] font-['Barlow']">Nenhum aviso criado.</p>
+          <p className="text-[#555] text-[0.9rem] font-['Barlow']">Nenhuma notificação criada.</p>
           <p className="text-[#444] text-[0.75rem] font-['Barlow_Condensed'] mt-1">
-            Crie avisos que aparecem para todos os usuários do app.
+            Crie notificações que aparecem para todos os usuários do app.
           </p>
         </div>
       )}
@@ -239,6 +241,11 @@ export default function AdminAnnouncements() {
                 {a.isActive === false && (
                   <span className="text-[0.5rem] font-bold text-[#666] uppercase tracking-[0.12em] border border-[#333] px-1.5 py-0.5 rounded">
                     Inativo
+                  </span>
+                )}
+                {a.urgent && (
+                  <span className="text-[0.5rem] font-bold text-[#CC0000] uppercase tracking-[0.12em] border border-[#CC000044] px-1.5 py-0.5 rounded">
+                    Urgente
                   </span>
                 )}
               </div>
@@ -319,7 +326,7 @@ export default function AdminAnnouncements() {
               style={modalStyle}
               onClick={e => e.stopPropagation()}>
               <h2 style={{ ...headingStyle, fontSize: '1.1rem', marginBottom: '1.25rem' }}>
-                {editTarget ? 'Editar Aviso' : 'Novo Aviso'}
+                {editTarget ? 'Editar Notificação' : 'Nova Notificação'}
               </h2>
 
               <div style={{ marginBottom: '0.75rem' }}>
@@ -331,7 +338,7 @@ export default function AdminAnnouncements() {
 
               <div style={{ marginBottom: '0.75rem' }}>
                 <label style={mutedStyle}>Conteúdo *</label>
-                <textarea style={textareaStyle} placeholder="Escreva o aviso..."
+                <textarea style={textareaStyle} placeholder="Escreva a notificação..."
                   value={form.content}
                   onChange={e => setForm(p => ({ ...p, content: e.target.value }))} />
               </div>
@@ -372,6 +379,15 @@ export default function AdminAnnouncements() {
                   onChange={e => setForm(p => ({ ...p, linkText: e.target.value }))} />
               </div>
 
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '1rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={form.urgent}
+                  onChange={e => setForm(p => ({ ...p, urgent: e.target.checked }))}
+                />
+                <span style={{ ...mutedStyle, color: form.urgent ? '#CC0000' : '#666' }}>Mostrar como urgente</span>
+              </label>
+
               {error && <p className="text-[#CC0000] text-[0.75rem] font-['Barlow'] mb-2">{error}</p>}
 
               <div className="flex gap-2">
@@ -404,7 +420,7 @@ export default function AdminAnnouncements() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               style={{ ...modalStyle, textAlign: 'center' as const }}>
-              <p className="text-white text-[1rem] font-['Barlow_Condensed'] font-black mb-2">Excluir aviso?</p>
+              <p className="text-white text-[1rem] font-['Barlow_Condensed'] font-black mb-2">Excluir notificação?</p>
               <p className="text-[#888] text-[0.8rem] font-['Barlow'] mb-4">Esta ação não pode ser desfeita.</p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmDel(null)} style={btnSecondaryStyle}>Cancelar</button>

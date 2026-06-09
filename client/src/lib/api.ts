@@ -159,8 +159,12 @@ export interface Notification {
   id: string;
   toUid: string;
   fromUid?: string;
+  fromName?: string;
   type: string;
   message: string;
+  title?: string;
+  body?: string;
+  data?: Record<string, any> | null;
   read?: boolean;
   createdAt?: string;
 }
@@ -321,7 +325,7 @@ export const admin = {
 
   announcements: {
     list: (all?: boolean) => apiFetch<Announcement[]>(`/api/announcements${all ? '?all=true' : ''}`),
-    create: (data: { title: string; content: string; imageUrl?: string; linkUrl?: string; linkText?: string }) =>
+    create: (data: { title: string; content: string; imageUrl?: string; linkUrl?: string; linkText?: string; urgent?: boolean }) =>
       apiFetch<Announcement>('/api/announcements', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: Partial<Announcement>) =>
       apiFetch<Announcement>(`/api/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -626,6 +630,14 @@ export interface Announcement {
   imageUrl?: string | null;
   linkUrl?: string | null;
   linkText?: string | null;
+  sourceUid?: string | null;
+  sourceName?: string | null;
+  sourceRole?: string | null;
+  scope?: 'global' | 'academy' | 'professor' | string | null;
+  audience?: 'all' | 'students' | 'professors' | string | null;
+  targetAcademyId?: string | null;
+  targetProfessorUid?: string | null;
+  urgent?: boolean | null;
   isActive?: boolean | null;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -663,7 +675,7 @@ export const subscriptions = {
   listPlans: () => apiFetch<Plan[]>('/api/subscriptions/plans'),
   getMy: () => apiFetch<{ subscription: Subscription | null }>('/api/subscriptions/my'),
   create: (data: { planId: string; billingType?: string; cpfCnpj?: string; phone?: string }) =>
-    apiFetch<{ subscription: { id: string; asaasId: string } }>('/api/subscriptions', {
+    apiFetch<{ subscription: { id: string; asaasId: string; payment?: { id: string; invoiceUrl?: string; bankSlipUrl?: string; status: string } | null } }>('/api/subscriptions', {
       method: 'POST', body: JSON.stringify(data),
     }),
   cancel: () =>
@@ -691,6 +703,13 @@ export const upload = {
 
 export const announcementsApi = {
   list: () => apiFetch<Announcement[]>('/api/announcements'),
+  mine: () => apiFetch<Announcement[]>('/api/announcements?mine=true'),
+  create: (data: { title: string; content: string; imageUrl?: string; linkUrl?: string; linkText?: string; audience?: string; urgent?: boolean }) =>
+    apiFetch<Announcement>('/api/announcements', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<Announcement>) =>
+    apiFetch<Announcement>(`/api/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    apiFetch<{ success: boolean }>(`/api/announcements/${id}`, { method: 'DELETE' }),
   dismiss: (id: string) =>
     apiFetch<{ success: boolean }>(`/api/announcements/${id}/dismiss`, { method: 'POST' }),
 };

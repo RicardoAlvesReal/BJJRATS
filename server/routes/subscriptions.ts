@@ -7,7 +7,7 @@ import { db } from '../db/index.js';
 import { users, plans, subscriptions } from '../db/schema.js';
 import {
   createCustomer, findCustomer, createSubscription as asaasCreateSub,
-  cancelSubscription as asaasCancelSub, parseWebhook,
+  cancelSubscription as asaasCancelSub, listSubscriptionPayments, parseWebhook,
   type AsaasWebhookEvent,
 } from '../services/asaas.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
@@ -100,8 +100,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   nextDue.setDate(nextDue.getDate() + trialDays + 7);
   const nextDueStr = nextDue.toISOString().split('T')[0];
 
-  const bt = (billingType === 'credit_card' ? 'CREDIT_CARD'
-    : billingType === 'boleto' ? 'BOLETO'
+  const normalizedBillingType = String(billingType || paymentMethod || 'PIX').toLowerCase();
+  const bt = (normalizedBillingType === 'credit_card' ? 'CREDIT_CARD'
+    : normalizedBillingType === 'boleto' ? 'BOLETO'
     : 'PIX') as 'PIX' | 'BOLETO' | 'CREDIT_CARD';
 
   // Cria subscription no Asaas (com vencimento após trial se houver)
@@ -134,7 +135,35 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     trialEndsAt,
   });
 
-  res.status(201).json({ subscription: { id: subId, asaasId: asaasSub.id } });
+  let firstPayment:
+    | { id: string; invoiceUrl?: string; bankSlipUrl?: string; status: string }
+    | null = null;
+
+  try {
+    const asaasPayments = await listSubscriptionPayments(asaasSub.id);
+    const payablePayment = asaasPayments.find(payment =>
+      ['PENDING', 'OVERDUE'].includes(payment.status),
+    ) ?? asaasPayments[0];
+
+    if (payablePayment) {
+      firstPayment = {
+        id: payablePayment.id,
+        invoiceUrl: payablePayment.invoiceUrl,
+        bankSlipUrl: payablePayment.bankSlipUrl,
+        status: payablePayment.status,
+      };
+    }
+  } catch (err) {
+    console.warn('[subscriptions] Nao foi possivel buscar a primeira cobranca Asaas:', err);
+  }
+
+  res.status(201).json({
+    subscription: {
+      id: subId,
+      asaasId: asaasSub.id,
+      payment: firstPayment,
+    },
+  });
 });
 
 // ─── POST /api/subscriptions/cancel ────────────────────────────────────────
@@ -171,14 +200,20 @@ router.post('/cancel', requireAuth, async (req: AuthRequest, res) => {
 // ─── POST /api/subscriptions/webhook ──────────────────────────────────────
 // Webhook do Asaas para notificações de pagamento
 router.post('/webhook', async (req, res) => {
-  const event: AsaasWebhookEvent = parseWebhook(req.body);
+  const webhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
+  if (webhookToken && req.header('asaas-access-token') !== webhookToken) {
+    res.status(401).json({ error: 'invalid_webhook_token' });
+    return;
+  }
 
-  if (event.subscription?.id) {
-    const subId = event.subscription.id;
+  const event: AsaasWebhookEvent = parseWebhook(req.body);
+  const asaasSubscriptionId = event.subscription?.id || event.payment?.subscription;
+
+  if (asaasSubscriptionId) {
     const [localSub] = await db
       .select()
       .from(subscriptions)
-      .where(eq(subscriptions.asaasId, subId))
+      .where(eq(subscriptions.asaasId, asaasSubscriptionId))
       .limit(1);
 
     if (localSub) {
@@ -192,6 +227,7 @@ router.post('/webhook', async (req, res) => {
           break;
 
         case 'SUBSCRIPTION_OVERDUE':
+        case 'PAYMENT_OVERDUE':
           await db
             .update(subscriptions)
             .set({ status: 'past_due' })
@@ -199,6 +235,8 @@ router.post('/webhook', async (req, res) => {
           break;
 
         case 'SUBSCRIPTION_PAYMENT_CONFIRMED':
+        case 'PAYMENT_CONFIRMED':
+        case 'PAYMENT_RECEIVED':
           // Renova período
           const now = new Date();
           const periodEnd = new Date(now);

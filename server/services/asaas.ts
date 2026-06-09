@@ -3,8 +3,8 @@
 const DEV_MODE = process.env.NODE_ENV === 'development' && !process.env.ASAAS_API_KEY;
 
 const ASAAS_BASE = process.env.ASAAS_SANDBOX === 'true'
-  ? 'https://sandbox.asaas.com/api/v3'
-  : 'https://www.asaas.com/api/v3';
+  ? 'https://api-sandbox.asaas.com/v3'
+  : 'https://api.asaas.com/v3';
 
 const API_KEY = process.env.ASAAS_API_KEY || '';
 
@@ -19,7 +19,9 @@ async function request<T = unknown>(
   const res = await fetch(`${ASAAS_BASE}${path}`, {
     method,
     headers: {
+      accept: 'application/json',
       'Content-Type': 'application/json',
+      'User-Agent': 'BJJRats/1.0.0',
       access_token: API_KEY,
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -51,13 +53,15 @@ export interface AsaasSubscription {
 
 export interface AsaasPayment {
   id: string;
-  subscription: string;
+  subscription?: string | null;
   value: number;
   netValue: number;
   dueDate: string;
   status: string;
   billingType: string;
   invoiceUrl?: string;
+  bankSlipUrl?: string;
+  transactionReceiptUrl?: string;
   pixQrCode?: string;
 }
 
@@ -133,6 +137,7 @@ export async function cancelSubscription(id: string): Promise<AsaasSubscription>
 // ─── Payments (for a subscription) ─────────────────────────────────────────
 
 export async function listSubscriptionPayments(subscriptionId: string): Promise<AsaasPayment[]> {
+  if (DEV_MODE) return [];
   const result = await request<{ data: AsaasPayment[] }>('GET', `/subscriptions/${subscriptionId}/payments`);
   return result.data ?? [];
 }

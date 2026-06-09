@@ -20,6 +20,14 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   res.status(201).json(row);
 });
 
+// PATCH /api/notifications/read-all  — marca todas como lidas
+router.patch('/read-all', requireAuth, async (req: AuthRequest, res) => {
+  await db.update(notifications).set({ read: true }).where(
+    and(eq(notifications.toUid, req.userId!), eq(notifications.read, false))
+  );
+  res.json({ success: true });
+});
+
 // PATCH /api/notifications/:id  — marca como lida
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ toUid: notifications.toUid }).from(notifications).where(eq(notifications.id, req.params.id)).limit(1);
@@ -27,14 +35,6 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const { id: _id, ...data } = req.body;
   const [row] = await db.update(notifications).set(data).where(eq(notifications.id, req.params.id)).returning();
   res.json(row);
-});
-
-// PATCH /api/notifications/read-all  — marca todas como lidas
-router.patch('/read-all', requireAuth, async (req: AuthRequest, res) => {
-  await db.update(notifications).set({ read: true }).where(
-    and(eq(notifications.toUid, req.userId!), eq(notifications.read, false))
-  );
-  res.json({ success: true });
 });
 
 export default router;

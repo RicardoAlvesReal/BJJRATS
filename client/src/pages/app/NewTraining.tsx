@@ -4,7 +4,7 @@
 // foto do treino (upload para Firebase Storage), anotações, XP preview e card para redes sociais
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import api from '@/lib/api';
+import api, { type UserProfile } from '@/lib/api';
 import { toast } from 'sonner';
 import { SESSION_TYPES, MODALITIES, INTENSITY_LABELS, SATISFACTION_LABELS, TECH_CATEGORIES, Training } from '@/lib/bjjrats-constants';
 import TrainingShareModal, { type TrainingData as ShareTrainingData, type ShareUserData } from './TrainingShareModal';
@@ -37,6 +37,89 @@ interface Props {
   editExtraTraining?: ExtraTrainingData;
 }
 
+interface TrainingFieldSuggestion {
+  id: string;
+  label: string;
+  value: string;
+  subtitle?: string;
+}
+
+function normalizeSuggestionText(value?: string | null): string {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function addSuggestion(map: Map<string, TrainingFieldSuggestion>, suggestion: TrainingFieldSuggestion) {
+  const label = suggestion.label.trim();
+  if (!label) return;
+  const subtitle = suggestion.subtitle?.trim();
+  const key = normalizeSuggestionText(`${label}|${subtitle || ''}`);
+  if (!map.has(key)) {
+    map.set(key, { ...suggestion, label, value: suggestion.value.trim() || label, subtitle });
+  }
+}
+
+function sortSuggestions(a: TrainingFieldSuggestion, b: TrainingFieldSuggestion) {
+  return a.label.localeCompare(b.label, 'pt-BR');
+}
+
+function buildAcademySuggestions(users: UserProfile[], profile?: UserProfile | null) {
+  const suggestions = new Map<string, TrainingFieldSuggestion>();
+  const profileAcademy = profile?.academyName || profile?.academy;
+
+  addSuggestion(suggestions, {
+    id: 'profile-academy',
+    label: profileAcademy || '',
+    value: profileAcademy || '',
+    subtitle: [profile?.academyCity, profile?.academyState].filter(Boolean).join(' - '),
+  });
+
+  users
+    .filter(data => data.role === 'admin' || data.role === 'professor' || data.isAcademyAdmin)
+    .forEach(data => {
+      const academyName = data.academyName || data.academy;
+      addSuggestion(suggestions, {
+        id: data.academyId || data.uid,
+        label: academyName || '',
+        value: academyName || '',
+        subtitle: [data.academyCity, data.academyState].filter(Boolean).join(' - '),
+      });
+    });
+
+  return Array.from(suggestions.values()).sort(sortSuggestions);
+}
+
+function buildProfessorSuggestions(users: UserProfile[], profile?: UserProfile | null) {
+  const suggestions = new Map<string, TrainingFieldSuggestion>();
+
+  addSuggestion(suggestions, {
+    id: 'profile-professor',
+    label: profile?.professor || '',
+    value: profile?.professor || '',
+    subtitle: profile?.academyName || profile?.academy,
+  });
+
+  users.forEach(data => {
+    addSuggestion(suggestions, {
+      id: data.uid,
+      label: data.name || '',
+      value: data.name || '',
+      subtitle: data.academyName || data.academy || [data.academyCity, data.academyState].filter(Boolean).join(' - '),
+    });
+  });
+
+  return Array.from(suggestions.values()).sort(sortSuggestions);
+}
+
+function matchesSuggestion(suggestion: TrainingFieldSuggestion, term: string) {
+  const normalizedTerm = normalizeSuggestionText(term);
+  if (!normalizedTerm) return true;
+  return normalizeSuggestionText(`${suggestion.label} ${suggestion.subtitle || ''}`).includes(normalizedTerm);
+}
+
 export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, editExtraTraining }: Props) {
   const { user, profile, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -57,20 +140,42 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
     editExtraTraining?.trainingPhoto || editTraining?.trainingPhoto || null
   );
 
-  // Academias e professores salvos
-  const [savedAcademies, setSavedAcademies] = useState<string[]>([]);
-  const [savedProfessors, setSavedProfessors] = useState<string[]>([]);
+  // Sugestoes cadastradas para preencher academia/professor no treino
+  const [academySuggestions, setAcademySuggestions] = useState<TrainingFieldSuggestion[]>([]);
+  const [professorSuggestions, setProfessorSuggestions] = useState<TrainingFieldSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [showAcademySuggestions, setShowAcademySuggestions] = useState(false);
   const [showProfessorSuggestions, setShowProfessorSuggestions] = useState(false);
 
-  // Carregar academias e professores salvos do perfil
+  // Carregar academias e professores cadastrados, mantendo os dados do perfil como fallback.
   useEffect(() => {
-    if (!profile) return;
-    const acads = profile.academy ? [profile.academy] : [];
-    const profs = profile.professor ? [profile.professor] : [];
-    setSavedAcademies(acads);
-    setSavedProfessors(profs);
-  }, [profile]);
+    let cancelled = false;
+
+    const loadSuggestions = async () => {
+      setSuggestionsLoading(true);
+      try {
+        const [users, professors] = await Promise.all([
+          api.users.list(),
+          api.users.list({ role: 'professor' }),
+        ]);
+        if (cancelled) return;
+        setAcademySuggestions(buildAcademySuggestions(users, profile));
+        setProfessorSuggestions(buildProfessorSuggestions(professors, profile));
+      } catch {
+        if (cancelled) return;
+        setAcademySuggestions(buildAcademySuggestions([], profile));
+        setProfessorSuggestions(buildProfessorSuggestions([], profile));
+      } finally {
+        if (!cancelled) setSuggestionsLoading(false);
+      }
+    };
+
+    loadSuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.academy, profile?.academyName, profile?.academyCity, profile?.academyState, profile?.professor]);
 
   const todayDate = new Date();
   const todayFormatted = `${String(todayDate.getDate()).padStart(2, '0')}/${String(todayDate.getMonth() + 1).padStart(2, '0')}/${todayDate.getFullYear()}`;
@@ -532,6 +637,12 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
   const xp = calcXPLocal();
   const techCount = countSelectedTechs();
   const activeCat = TECH_CATEGORIES.find(c => c.id === activeCategory) || TECH_CATEGORIES[0];
+  const filteredAcademySuggestions = academySuggestions
+    .filter(suggestion => matchesSuggestion(suggestion, form.academy))
+    .slice(0, 8);
+  const filteredProfessorSuggestions = professorSuggestions
+    .filter(suggestion => matchesSuggestion(suggestion, form.professor))
+    .slice(0, 8);
 
 /* success saved state */
   if (savedData) {
@@ -910,11 +1021,16 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
               placeholder="Nome da academia"
               className="bjj-input"
             />
-            {showAcademySuggestions && savedAcademies.length > 0 && (
+            {showAcademySuggestions && (filteredAcademySuggestions.length > 0 || suggestionsLoading) && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1A1A1A', border: '1px solid #CC0000', zIndex: 50, maxHeight: '160px', overflowY: 'auto' }}>
-                {savedAcademies.filter(a => a.toLowerCase().includes(form.academy.toLowerCase())).map((a, i) => (
-                  <div key={i} onMouseDown={() => { update('academy', a); setShowAcademySuggestions(false); }} style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: form.academy === a ? '#CC0000' : '#CCCCCC', background: form.academy === a ? '#1A0000' : 'transparent', borderBottom: '1px solid #2A2A2A' }}>
-                    {form.academy === a ? '✓ ' : ''}{a}
+                {suggestionsLoading && filteredAcademySuggestions.length === 0 ? (
+                  <div style={{ padding: '0.5rem 0.75rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', fontWeight: 700, color: '#777', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    CARREGANDO...
+                  </div>
+                ) : filteredAcademySuggestions.map(suggestion => (
+                  <div key={suggestion.id} onMouseDown={() => { update('academy', suggestion.value); setShowAcademySuggestions(false); }} style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: form.academy === suggestion.value ? '#CC0000' : '#CCCCCC', background: form.academy === suggestion.value ? '#1A0000' : 'transparent', borderBottom: '1px solid #2A2A2A' }}>
+                    <div style={{ fontWeight: 700 }}>{suggestion.label}</div>
+                    {suggestion.subtitle && <div style={{ marginTop: '0.15rem', color: '#777', fontSize: '0.68rem' }}>{suggestion.subtitle}</div>}
                   </div>
                 ))}
               </div>
@@ -932,11 +1048,16 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
               placeholder="Nome do professor"
               className="bjj-input"
             />
-            {showProfessorSuggestions && savedProfessors.length > 0 && (
+            {showProfessorSuggestions && (filteredProfessorSuggestions.length > 0 || suggestionsLoading) && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1A1A1A', border: '1px solid #CC0000', zIndex: 50, maxHeight: '160px', overflowY: 'auto' }}>
-                {savedProfessors.filter(p => p.toLowerCase().includes(form.professor.toLowerCase())).map((p, i) => (
-                  <div key={i} onMouseDown={() => { update('professor', p); setShowProfessorSuggestions(false); }} style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: form.professor === p ? '#CC0000' : '#CCCCCC', background: form.professor === p ? '#1A0000' : 'transparent', borderBottom: '1px solid #2A2A2A' }}>
-                    {form.professor === p ? '✓ ' : ''}{p}
+                {suggestionsLoading && filteredProfessorSuggestions.length === 0 ? (
+                  <div style={{ padding: '0.5rem 0.75rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', fontWeight: 700, color: '#777', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    CARREGANDO...
+                  </div>
+                ) : filteredProfessorSuggestions.map(suggestion => (
+                  <div key={suggestion.id} onMouseDown={() => { update('professor', suggestion.value); setShowProfessorSuggestions(false); }} style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: form.professor === suggestion.value ? '#CC0000' : '#CCCCCC', background: form.professor === suggestion.value ? '#1A0000' : 'transparent', borderBottom: '1px solid #2A2A2A' }}>
+                    <div style={{ fontWeight: 700 }}>{suggestion.label}</div>
+                    {suggestion.subtitle && <div style={{ marginTop: '0.15rem', color: '#777', fontSize: '0.68rem' }}>{suggestion.subtitle}</div>}
                   </div>
                 ))}
               </div>
