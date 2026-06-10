@@ -97,7 +97,9 @@ function Router() {
       <Route path="/post/:postId" component={PublicPost} />
       <Route path="/evento/:eventId" component={PublicEvent} />
       <Route path="/desafio/:challengeId" component={PublicChallenge} />
-      <Route path="/trial/:academyId" component={PublicTrial} />
+      <Route path="/trial/academia/:targetId" component={() => <PublicTrial targetKind="academy" />} />
+      <Route path="/trial/professor/:targetId" component={() => <PublicTrial targetKind="professor" />} />
+      <Route path="/trial/:academyId" component={() => <PublicTrial />} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/app/subscription" component={() => <ProtectedRoute component={SubscriptionManager} />} />
       <Route component={() => <Redirect to="/" />} />

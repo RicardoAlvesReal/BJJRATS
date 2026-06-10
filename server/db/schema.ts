@@ -32,6 +32,7 @@ export const users = pgTable('users', {
   role:             text('role').default('student'),   // 'superadmin' | 'admin' | 'professor' | 'student'
   communityModerator: boolean('community_moderator').default(false),
   trialEndsAt: timestamp('trial_ends_at'),
+  trialRequestsEnabled: boolean('trial_requests_enabled').default(true),
   academyName:      text('academy_name'),
   academyAddress:   text('academy_address'),
   academyCity:      text('academy_city'),

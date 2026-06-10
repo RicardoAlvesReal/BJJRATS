@@ -77,6 +77,7 @@ export interface UserProfile {
   professorPhotoUrl?: string;
   subscriptionExempt?: boolean;
   communityModerator?: boolean;
+  trialRequestsEnabled?: boolean;
   createdAt?: string;
 }
 
@@ -725,6 +726,32 @@ export const publicApi = {
     const q = search ? `?search=${encodeURIComponent(search)}&role=admin` : '?role=admin';
     return apiFetch<any[]>(`/api/public/professors${q}`);
   },
+  trialTarget: (kind: 'academy' | 'professor', uid: string) =>
+    apiFetch<{
+      id: string;
+      kind: 'academy' | 'professor';
+      ownerUid: string;
+      name: string;
+      logo?: string | null;
+      address?: string | null;
+      city?: string | null;
+      state?: string | null;
+      phone?: string | null;
+      trialRequestsEnabled?: boolean | null;
+      schedules?: { day: string; time?: string; modality?: string }[];
+    }>(`/api/public/trial/${kind}/${encodeURIComponent(uid)}`),
+  createTrialRequest: (data: {
+    targetKind: 'academy' | 'professor';
+    targetUid: string;
+    name: string;
+    email?: string;
+    phone: string;
+    belt?: string;
+    age?: string;
+    message?: string;
+    preferredDay?: string;
+  }) =>
+    apiFetch<{ success: boolean }>('/api/public/trial-requests', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 const api = {

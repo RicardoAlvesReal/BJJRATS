@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { ArrowLeft, Car, ExternalLink, Info, Link as LinkIcon, MapPin, MessageCircle, Navigation, Phone, School, Search, X } from 'lucide-react';
+import { ArrowLeft, CalendarPlus, Car, ExternalLink, Info, Link as LinkIcon, MapPin, MessageCircle, Navigation, Phone, School, Search, X } from 'lucide-react';
 
 interface AcademyResult {
   professorUid: string;
@@ -20,6 +20,7 @@ interface AcademyResult {
   academyLogoUrl?: string;
   professorPhotoUrl?: string;
   professorName: string;
+  trialRequestsEnabled?: boolean;
   locationScore: number;
   distanceKm?: number | null;
 }
@@ -148,6 +149,7 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
   const [userCoords, setUserCoords] = useState<Coordinates | null>(null);
   const [loading, setLoading] = useState(false);
   const [linking, setLinking] = useState<string | null>(null);
+  const [requestingTrial, setRequestingTrial] = useState<string | null>(null);
   const [selectedAcademy, setSelectedAcademy] = useState<AcademyResult | null>(null);
   const [searched, setSearched] = useState(false);
 
@@ -187,6 +189,7 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
           academyLogoUrl: data.academyLogoUrl || '',
           professorPhotoUrl: data.professorPhotoUrl || data.photo || '',
           professorName: data.name || '',
+          trialRequestsEnabled: data.trialRequestsEnabled !== false,
           locationScore,
           distanceKm,
         };
@@ -290,6 +293,43 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
       toast.error('Erro ao vincular à academia');
     } finally {
       setLinking(null);
+    }
+  };
+
+  const handleTrialRequest = async (academy: AcademyResult) => {
+    if (!user) return;
+
+    if (academy.trialRequestsEnabled === false) {
+      toast.error('Esta academia nao esta recebendo solicitacoes de aula gratis agora.');
+      return;
+    }
+
+    let phone = (profile as any)?.phone || (user as any)?.phone || '';
+    if (!phone.trim()) {
+      phone = window.prompt('Informe seu WhatsApp para solicitar a aula gratis:') || '';
+    }
+
+    if (!phone.trim()) {
+      toast.error('Informe um WhatsApp para a academia retornar o contato.');
+      return;
+    }
+
+    setRequestingTrial(academy.professorUid);
+    try {
+      await api.public.createTrialRequest({
+        targetKind: 'academy',
+        targetUid: academy.professorUid,
+        name: user.name || profile?.name || 'Aluno BJJRats',
+        email: user.email || profile?.email || '',
+        phone: phone.trim(),
+        belt: user.belt || profile?.belt || 'Branca',
+        message: `Aluno logado solicitou aula experimental gratuita na ${academy.academyName}.`,
+      });
+      toast.success(`Aula gratis solicitada para ${academy.academyName}!`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao solicitar aula gratis');
+    } finally {
+      setRequestingTrial(null);
     }
   };
 
@@ -470,6 +510,34 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
                     >
                       {linking === academy.professorUid ? 'VINCULANDO...' : <><LinkIcon size={15} /> VINCULAR</>}
                     </button>
+                    {academy.trialRequestsEnabled !== false && (
+                      <button
+                        type="button"
+                        onClick={() => handleTrialRequest(academy)}
+                        disabled={requestingTrial === academy.professorUid}
+                        style={{
+                          gridColumn: '1 / -1',
+                          background: requestingTrial === academy.professorUid ? '#1A1A1A' : '#0D9E6E',
+                          border: 'none',
+                          color: '#03140D',
+                          fontFamily: 'Barlow Condensed, sans-serif',
+                          fontWeight: 900,
+                          fontSize: '0.8125rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.08em',
+                          padding: '0.625rem 0.75rem',
+                          cursor: requestingTrial === academy.professorUid ? 'not-allowed' : 'pointer',
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.375rem',
+                          opacity: requestingTrial === academy.professorUid ? 0.65 : 1,
+                        }}
+                      >
+                        {requestingTrial === academy.professorUid ? 'SOLICITANDO...' : <><CalendarPlus size={15} /> AULA GRATIS</>}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -668,6 +736,33 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
                     );
                   })}
                 </div>
+
+                {selectedAcademy.trialRequestsEnabled !== false && (
+                  <button
+                    onClick={() => handleTrialRequest(selectedAcademy)}
+                    disabled={requestingTrial === selectedAcademy.professorUid}
+                    style={{
+                      background: requestingTrial === selectedAcademy.professorUid ? '#1A1A1A' : '#0D9E6E',
+                      border: 'none',
+                      color: '#03140D',
+                      fontFamily: 'Barlow Condensed, sans-serif',
+                      fontWeight: 900,
+                      fontSize: '0.875rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      padding: '0.875rem 1rem',
+                      cursor: requestingTrial === selectedAcademy.professorUid ? 'not-allowed' : 'pointer',
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.4rem',
+                      opacity: requestingTrial === selectedAcademy.professorUid ? 0.65 : 1,
+                    }}
+                  >
+                    {requestingTrial === selectedAcademy.professorUid ? 'SOLICITANDO...' : <><CalendarPlus size={16} /> SOLICITAR AULA GRATIS</>}
+                  </button>
+                )}
 
                 <button
                   onClick={() => handleLink(selectedAcademy)}

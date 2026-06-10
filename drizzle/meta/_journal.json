@@ -57,6 +57,13 @@
       "when": 1779950000000,
       "tag": "0007_announcement_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779960000000,
+      "tag": "0008_add_trial_requests_enabled",
+      "breakpoints": true
     }
   ]
 }

@@ -2137,7 +2137,7 @@ function LocalizarAcademiaTab() {
                   <button
                     onClick={() => {
                       const academyId = expandedAcademy?.ownerUid || expandedAcademy?.id;
-                      if (academyId) window.open(`/trial/${academyId}`, '_blank');
+                      if (academyId) window.open(`/trial/academia/${academyId}`, '_blank');
                     }}
                     style={{ width: '100%', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', textTransform: 'uppercase', padding: '0.75rem', background: 'transparent', border: '1px solid #0D9E6E', color: '#0D9E6E', cursor: 'pointer', letterSpacing: '0.08em' }}
                   >🎯 AGENDAR AULA EXPERIMENTAL (GRÁTIS)</button>
@@ -2205,5 +2205,4 @@ function LocalizarAcademiaTab() {
     </div>
   );
 }
-
 

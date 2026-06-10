@@ -3,9 +3,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { GraduationCap, MapPin, School, Search, Users } from 'lucide-react';
+import { CalendarPlus, GraduationCap, MapPin, School, Search, Users } from 'lucide-react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 type ProfessorFilter = 'all' | 'nearby' | 'academy';
 
@@ -23,6 +24,7 @@ interface Professor {
   academyLongitude?: number | null;
   academyLogoUrl?: string;
   professorPhotoUrl?: string;
+  trialRequestsEnabled?: boolean;
   athleteType?: string;
   bjjSince?: string;
 }
@@ -67,12 +69,13 @@ function formatDistance(distanceKm: number) {
 }
 
 export default function Professores() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [profs, setProfs] = useState<Professor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ProfessorFilter>('all');
   const [userCoords, setUserCoords] = useState<Coordinates | null>(null);
+  const [requestingTrial, setRequestingTrial] = useState<string | null>(null);
 
   const studentCity = normalizeText((profile as any)?.city || profile?.academyCity);
   const studentState = normalizeText((profile as any)?.state || profile?.academyState);
@@ -183,6 +186,43 @@ export default function Professores() {
     { id: 'nearby', label: 'PERTO', count: stats.nearby },
     { id: 'academy', label: 'MINHA ACADEMIA', count: stats.academy },
   ];
+
+  const handleTrialRequest = async (prof: Professor) => {
+    if (!user) return;
+
+    if (prof.trialRequestsEnabled === false) {
+      toast.error('Este professor nao esta recebendo solicitacoes de aula gratis agora.');
+      return;
+    }
+
+    let phone = (profile as any)?.phone || (user as any)?.phone || '';
+    if (!phone.trim()) {
+      phone = window.prompt('Informe seu WhatsApp para solicitar a aula gratis:') || '';
+    }
+
+    if (!phone.trim()) {
+      toast.error('Informe um WhatsApp para o professor retornar o contato.');
+      return;
+    }
+
+    setRequestingTrial(prof.uid);
+    try {
+      await api.public.createTrialRequest({
+        targetKind: 'professor',
+        targetUid: prof.uid,
+        name: user.name || profile?.name || 'Aluno BJJRats',
+        email: user.email || profile?.email || '',
+        phone: phone.trim(),
+        belt: user.belt || profile?.belt || 'Branca',
+        message: `Aluno logado solicitou aula experimental gratuita com ${prof.name || 'professor'}.`,
+      });
+      toast.success(`Aula gratis solicitada para ${prof.name || 'professor'}!`);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao solicitar aula gratis');
+    } finally {
+      setRequestingTrial(null);
+    }
+  };
 
   return (
     <motion.div
@@ -388,6 +428,36 @@ export default function Professores() {
                     );
                   })}
                 </div>
+
+                {prof.trialRequestsEnabled !== false && (
+                  <div style={{ borderTop: '1px solid #1E1E1E', padding: '0.75rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleTrialRequest(prof)}
+                      disabled={requestingTrial === prof.uid}
+                      style={{
+                        background: requestingTrial === prof.uid ? '#1A1A1A' : '#0D9E6E',
+                        border: 'none',
+                        color: '#03140D',
+                        fontFamily: 'Barlow Condensed, sans-serif',
+                        fontWeight: 900,
+                        fontSize: '0.82rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        padding: '0.7rem 0.75rem',
+                        cursor: requestingTrial === prof.uid ? 'not-allowed' : 'pointer',
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        opacity: requestingTrial === prof.uid ? 0.65 : 1,
+                      }}
+                    >
+                      {requestingTrial === prof.uid ? 'SOLICITANDO...' : <><CalendarPlus size={16} /> SOLICITAR AULA GRATIS</>}
+                    </button>
+                  </div>
+                )}
               </article>
             );
           })}

@@ -21,15 +21,21 @@ import {
   Clock,
   CreditCard,
   DollarSign,
+  Flame,
   LayoutDashboard,
   LogOut,
+  Medal,
   Newspaper,
-  School,
+  ShieldCheck,
+  Sparkles,
+  Swords,
   Target,
+  TrendingUp,
   Trophy,
   UserCheck,
   UserPlus,
   Users,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -194,7 +200,7 @@ const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: Lucide
 ];
 
 export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: Props) {
-  const { user, profile } = useAuth();
+  const { user, profile, updateProfileData } = useAuth();
   const [activeTab, setActiveTab] = useState<PanelTab>('overview');
   const [activeTabGroup, setActiveTabGroup] = useState<PanelGroup>('principal');
   const [members, setMembers] = useState<Member[]>([]);
@@ -258,6 +264,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   // ── Leads (Aulas Experimentais) ───────────────────────────────────────────────
   const [leads, setLeads] = useState<TrialRequest[]>([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
+  const [trialSettingSaving, setTrialSettingSaving] = useState(false);
 
   // ── Waiver / Contrato Digital ───────────────────────────────────────────────
   const [waiverText, setWaiverText] = useState('');
@@ -1106,6 +1113,22 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
 
   useEffect(() => { if (activeTab === 'leads') loadLeads(); }, [activeTab, loadLeads]);
 
+  const trialRequestsEnabled = profile?.trialRequestsEnabled !== false;
+
+  const handleToggleTrialRequests = async () => {
+    if (!user) return;
+    const nextValue = !trialRequestsEnabled;
+    setTrialSettingSaving(true);
+    try {
+      await updateProfileData({ trialRequestsEnabled: nextValue });
+      toast.success(nextValue ? 'Aula gratis ativada' : 'Aula gratis desativada');
+    } catch {
+      toast.error('Erro ao atualizar aula gratis');
+    } finally {
+      setTrialSettingSaving(false);
+    }
+  };
+
   const handleUpdateLeadStatus = async (_leadId: string, _status: TrialRequest['status']) => {
     toast.error('Funcionalidade temporariamente indisponível');
   };
@@ -1156,6 +1179,52 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const paidRevenue = payments
     .filter(p => p.status === 'paid')
     .reduce((sum, payment) => sum + payment.amount, 0);
+  const visibleMemberCount = memberCount ?? members.length;
+  const totalAttentionCount = pendingJoinCount + pendingLeadCount + overduePaymentCount + suspendedEnrollmentCount;
+  const dojoPower = Math.max(
+    0,
+    Math.round(activeEnrollmentCount * 140 + visibleMemberCount * 35 + Math.min(paidRevenue, 20000) / 20 + Math.max(0, pendingLeadCount) * 45)
+  );
+  const dojoLevel = Math.max(1, Math.floor(dojoPower / 1000) + 1);
+  const dojoProgress = dojoPower % 1000;
+  const dojoProgressPercent = Math.min(100, Math.round((dojoProgress / 1000) * 100));
+  const academyDisplayName = profile?.academyName || 'Professor Particular';
+  const commandStatus = overduePaymentCount > 0
+    ? { label: 'ATENCAO', color: '#CC0000', icon: Flame }
+    : totalAttentionCount > 0
+      ? { label: 'EM MISSAO', color: '#FFD166', icon: Zap }
+      : { label: 'DOMINANDO', color: '#0D9E6E', icon: ShieldCheck };
+  const CommandStatusIcon = commandStatus.icon;
+  const missionCards = [
+    {
+      label: 'Entradas pendentes',
+      value: pendingJoinCount,
+      color: '#FFD166',
+      icon: UserPlus,
+      onClick: () => { setActiveTabGroup('alunos'); setActiveTab('members'); setMembersSubTab('requests'); },
+    },
+    {
+      label: 'Aulas gratis',
+      value: pendingLeadCount,
+      color: '#0D9E6E',
+      icon: Target,
+      onClick: () => { setActiveTabGroup('comunidade'); setActiveTab('leads'); },
+    },
+    {
+      label: 'Financeiro',
+      value: overduePaymentCount,
+      color: overduePaymentCount > 0 ? '#CC0000' : '#1A6ECC',
+      icon: CreditCard,
+      onClick: () => { setActiveTabGroup('gestao'); setActiveTab('financial'); },
+    },
+    {
+      label: 'Agenda',
+      value: 'Horarios',
+      color: '#9B7CFF',
+      icon: CalendarDays,
+      onClick: () => { setActiveTabGroup('gestao'); setActiveTab('horarios'); },
+    },
+  ];
 
   const handleGroupSelect = (groupId: PanelGroup) => {
     setActiveTabGroup(groupId);
@@ -1178,45 +1247,60 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="prof-panel-root" style={{ background: '#0A0A0A', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
-      <div style={{ background: '#0D0D0D', borderBottom: `2px solid ${accentColor}`, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+      <div className="prof-panel-header" style={{ background: 'linear-gradient(135deg, #0D0D0D 0%, #111722 52%, #0B1510 100%)', borderBottom: `1px solid ${accentColor}55`, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', flexShrink: 0 }}>
         {onLogout ? (
-          <button onClick={onLogout} title="Sair da conta" style={{ background: 'none', border: 'none', color: '#CC3333', padding: '0.25rem', cursor: 'pointer' }}>
+          <button onClick={onLogout} title="Sair da conta" style={{ width: '40px', height: '40px', background: '#160A0A', border: '1px solid #CC333344', color: '#CC3333', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <LogOut size={20} strokeWidth={2.5} />
           </button>
         ) : (
-          <button onClick={onBack} style={{ background: 'none', border: 'none', color: accentColor, padding: '0.25rem', cursor: 'pointer' }}>
+          <button onClick={onBack} style={{ width: '40px', height: '40px', background: '#101821', border: `1px solid ${accentColor}55`, color: accentColor, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ArrowLeft size={20} strokeWidth={2.5} />
           </button>
         )}
         {(profile?.academyLogoUrl || (profile as any)?.academyLogo) ? (
-          <img src={profile?.academyLogoUrl || (profile as any)?.academyLogo} alt="Logo" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
+          <img className="prof-panel-emblem" src={profile?.academyLogoUrl || (profile as any)?.academyLogo} alt="Logo" style={{ width: '52px', height: '52px', objectFit: 'cover', border: `1px solid ${accentColor}`, background: '#0A0A0A' }} />
         ) : (
-          <div style={{ width: '36px', height: '36px', background: '#001A33', border: `1px solid ${accentColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <School size={20} color={accentColor} />
+          <div className="prof-panel-emblem" style={{ width: '52px', height: '52px', background: '#111', border: `1px solid ${accentColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Swords size={24} color={accentColor} strokeWidth={2.4} />
           </div>
         )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFFFFF', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {profile?.academyName || 'PROFESSOR PARTICULAR'}
+        <div className="prof-panel-title" style={{ flex: '1 1 260px', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+            <span style={{ background: `${commandStatus.color}20`, border: `1px solid ${commandStatus.color}`, color: commandStatus.color, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.18rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+              <CommandStatusIcon size={12} strokeWidth={2.4} />
+              {commandStatus.label}
+            </span>
+            <span style={{ background: '#111', border: '1px solid #2A2A2A', color: '#AAA', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.18rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+              <Medal size={12} color="#FFD166" strokeWidth={2.4} />
+              Nivel {dojoLevel}
+            </span>
+          </div>
+          <h1 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.75rem', textTransform: 'uppercase', color: '#FFFFFF', lineHeight: 0.95, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0' }}>
+            {academyDisplayName}
           </h1>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            PAINEL DE GESTÃO
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#7FADEB', textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '0.35rem' }}>
+            MESTRE BJJRATS
           </p>
         </div>
-        <div style={{ background: '#001A33', border: `1px solid ${accentColor}`, padding: '0.25rem 0.625rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-          <UserCheck size={13} color={accentColor} strokeWidth={2.4} />
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>PROFESSOR</p>
+        <div className="prof-panel-power" style={{ minWidth: '150px', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', color: '#777', letterSpacing: '0.08em' }}>PODER DO DOJO</span>
+            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', color: '#FFD166' }}>{dojoPower}</span>
+          </div>
+          <div style={{ height: '8px', background: '#0A0A0A', border: '1px solid #252525', overflow: 'hidden' }}>
+            <div style={{ width: `${Math.max(6, dojoProgressPercent)}%`, height: '100%', background: 'linear-gradient(90deg, #1A6ECC, #0D9E6E, #FFD166)' }} />
+          </div>
         </div>
-        {notificationSlot}
+        <div className="prof-panel-notifications">{notificationSlot}</div>
       </div>
 
       {/* Sub-nav organizada por grupos */}
-      <div style={{ background: '#101010', borderBottom: '1px solid #1E1E1E', flexShrink: 0 }}>
-        <div style={{ maxWidth: '1180px', margin: '0 auto', padding: '0.625rem 1rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: '0.375rem' }}>
+      <div style={{ background: '#0B0B0B', borderBottom: '1px solid #20242A', flexShrink: 0 }}>
+        <div className="prof-panel-nav-shell" style={{ maxWidth: '1180px', margin: '0 auto', padding: '0.625rem 1rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div className="prof-panel-group-tabs" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: '0.375rem' }}>
             {PANEL_TAB_GROUPS.map(group => {
               const isActive = activeTabGroup === group.id;
               return (
@@ -1224,8 +1308,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                   key={group.id}
                   onClick={() => handleGroupSelect(group.id)}
                   style={{
-                    background: isActive ? '#001A33' : '#0A0A0A',
-                    border: `1px solid ${isActive ? accentColor : '#1E1E1E'}`,
+                    background: isActive ? '#151C2A' : '#101010',
+                    border: `1px solid ${isActive ? `${accentColor}88` : '#242424'}`,
                     color: isActive ? '#FFFFFF' : '#666',
                     fontFamily: 'Barlow Condensed, sans-serif',
                     fontWeight: 900,
@@ -1235,6 +1319,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     padding: '0.5rem 0.25rem',
                     cursor: 'pointer',
                     minWidth: 0,
+                    borderRadius: '6px',
+                    boxShadow: isActive ? `0 0 0 1px ${accentColor}22 inset` : 'none',
                   }}
                 >
                   {group.label}
@@ -1243,7 +1329,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             })}
           </div>
 
-          <div style={{ display: 'flex', overflowX: 'auto', gap: '0.375rem', paddingBottom: '0.125rem' }}>
+          <div className="prof-panel-tabs" style={{ display: 'flex', overflowX: 'auto', gap: '0.375rem', paddingBottom: '0.125rem' }}>
             {activeGroupTabs.map(tab => {
               const Icon = tab.icon;
               const badge = getTabBadge(tab.id);
@@ -1255,7 +1341,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                   style={{
                     padding: '0.6rem 0.75rem',
                     background: isActive ? accentColor : '#111',
-                    border: `1px solid ${isActive ? accentColor : '#222'}`,
+                    border: `1px solid ${isActive ? accentColor : '#2A2A2A'}`,
                     color: isActive ? '#FFFFFF' : '#888',
                     fontFamily: 'Barlow Condensed, sans-serif',
                     fontWeight: 900,
@@ -1269,6 +1355,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     gap: '0.4rem',
                     transition: 'all 0.15s',
                     minHeight: '38px',
+                    borderRadius: '6px',
+                    boxShadow: isActive ? `0 8px 22px ${accentColor}30` : 'none',
                   }}
                 >
                   <Icon size={15} strokeWidth={2.4} />
@@ -1286,7 +1374,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '2rem' }}>
+      <div className="prof-panel-content" style={{ flex: 1, overflowY: 'auto', paddingBottom: '2rem' }}>
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={activeTab}
@@ -1295,11 +1383,75 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             animate="animate"
             exit="exit"
             transition={tabTransition}
+            className="prof-panel-motion"
+            style={{ maxWidth: '1180px', width: '100%', margin: '0 auto' }}
           >        {/* ── Visão Geral ── */}
         {activeTab === 'overview' && (
           <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div className="prof-panel-command-card" style={{ background: 'linear-gradient(135deg, #111 0%, #131923 58%, #0D1611 100%)', border: `1px solid ${accentColor}44`, borderLeft: `4px solid ${commandStatus.color}`, padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: 0 }}>
+                  {profile?.professorPhotoUrl ? (
+                    <img src={profile.professorPhotoUrl} alt={profile.name} style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${accentColor}`, flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: '64px', height: '64px', background: '#101821', border: `2px solid ${accentColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <ShieldCheck size={28} color={accentColor} strokeWidth={2.3} />
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.45rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.name || 'Professor'}</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#7FADEB', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.3rem' }}>
+                      Mestre BJJRats
+                    </p>
+                  </div>
+                </div>
+
+                <div className="prof-panel-compact-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.5rem' }}>
+                  {[
+                    { label: 'Dojo', value: `Nv. ${dojoLevel}`, icon: Sparkles, color: '#FFD166' },
+                    { label: 'Alunos', value: visibleMemberCount, icon: Users, color: accentColor },
+                    { label: 'Status', value: commandStatus.label, icon: CommandStatusIcon, color: commandStatus.color },
+                  ].map(item => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.label} style={{ background: '#0A0A0A99', border: `1px solid ${item.color}33`, padding: '0.75rem', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem' }}>
+                          <Icon size={14} color={item.color} strokeWidth={2.4} />
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.58rem', color: '#777', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{item.label}</span>
+                        </div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#FFF', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ background: '#0A0A0ACC', border: '1px solid #242424', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Progressao do mes</p>
+                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#FFD166' }}>{dojoProgress}/1000</span>
+                  </div>
+                  <div style={{ height: '12px', background: '#111', border: '1px solid #2A2A2A', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.max(6, dojoProgressPercent)}%`, height: '100%', background: 'linear-gradient(90deg, #1A6ECC, #0D9E6E, #FFD166)' }} />
+                  </div>
+                </div>
+
+                <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <button onClick={() => setActiveTab('financial')} style={{ background: '#101010', border: '1px solid #2A2A2A', color: '#DDD', padding: '0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.45rem', justifyContent: 'center' }}>
+                    <TrendingUp size={15} color="#0D9E6E" strokeWidth={2.4} />
+                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase' }}>Financeiro</span>
+                  </button>
+                  <button onClick={() => setActiveTab('members')} style={{ background: '#101010', border: '1px solid #2A2A2A', color: '#DDD', padding: '0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.45rem', justifyContent: 'center' }}>
+                    <Users size={15} color={accentColor} strokeWidth={2.4} />
+                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase' }}>Membros</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Academia info */}
-            <div style={{ background: '#111', border: `1px solid ${accentColor}22`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 {profile?.professorPhotoUrl ? (
                   <img src={profile.professorPhotoUrl} alt={profile.name} style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${accentColor}` }} />
@@ -1339,12 +1491,36 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               })}
             </div>
 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Zap size={15} color="#FFD166" strokeWidth={2.4} />
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#DDD', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Missoes rapidas</p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.625rem' }}>
+                {missionCards.map(mission => {
+                  const Icon = mission.icon;
+                  const isHot = typeof mission.value === 'number' && mission.value > 0;
+                  return (
+                    <button key={mission.label} onClick={mission.onClick} style={{ background: isHot ? `${mission.color}16` : '#111', border: `1px solid ${isHot ? mission.color : '#242424'}`, borderLeft: `3px solid ${mission.color}`, color: '#FFF', padding: '0.875rem', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.75rem', minHeight: '74px' }}>
+                      <div style={{ width: '34px', height: '34px', background: '#0A0A0A', border: `1px solid ${mission.color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Icon size={17} color={mission.color} strokeWidth={2.4} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: mission.color, lineHeight: 1 }}>{mission.value}</p>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.62rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.07em', marginTop: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mission.label}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Resumo financeiro do mês */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 💰 FINANCEIRO · {new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+              <div className="prof-panel-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
                 <div style={{ background: '#0D1A0D', border: '1px solid #0D9E6E33', padding: '0.875rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                   <span style={{ fontSize: '1.1rem' }}>✅</span>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.15rem', color: '#0D9E6E', lineHeight: 1 }}>
@@ -1465,7 +1641,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               {/* Formulário de edição */}
               {showAcademyForm && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                     <div>
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>CIDADE *</p>
                       <input type="text" value={academyFormData.city} onChange={e => setAcademyFormData(p => ({ ...p, city: e.target.value }))} placeholder="Ex: São Paulo"
@@ -1485,7 +1661,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     <input type="text" value={academyFormData.address} onChange={e => setAcademyFormData(p => ({ ...p, address: e.target.value }))} placeholder="Rua, número, bairro"
                       style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                     <div>
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>WHATSAPP</p>
                       <input type="tel" value={academyFormData.phone} onChange={e => setAcademyFormData(p => ({ ...p, phone: e.target.value }))} placeholder="11999999999"
@@ -1497,7 +1673,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                     <div>
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>ESTILO / EQUIPE</p>
                       <input type="text" value={academyFormData.style} onChange={e => setAcademyFormData(p => ({ ...p, style: e.target.value }))} placeholder="Ex: BJJ / MMA"
@@ -1509,7 +1685,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                  <div className="prof-panel-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
                     <div>
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>MENSALIDADE (R$)</p>
                       <input type="number" value={academyFormData.monthlyFee} onChange={e => setAcademyFormData(p => ({ ...p, monthlyFee: e.target.value }))} placeholder="0.00"
@@ -1653,7 +1829,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             {/* Quick actions */}
             <div>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>AÇÕES RÁPIDAS</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 {PANEL_TABS.filter(action => action.id !== 'overview' && action.id !== 'avisos').map(action => {
                   const Icon = action.icon;
                   return (
@@ -2215,24 +2391,14 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
 
           </div>
         )}
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* Modal de detalhe do membro */}
-      {selectedMember && (
-        <MemberDetailModal
-        member={selectedMember}
-        accentColor={accentColor}
-        professorUid={user?.uid}
-        onClose={() => setSelectedMember(null)}
-        onPromoted={(uid, belt, stripes) => {
-          setMembers(prev => prev.map(m => m.uid === uid ? { ...m, belt, stripes } : m));
-          setSelectedMember(null);
-        }}
-      />
-      )}
-
+        {activeTab === 'promocao' && (
+          <PromocaoTab
+            user={user}
+            profile={profile}
+            members={members}
+            accentColor={accentColor}
+          />
+        )}
       {/* ─── Aba FINANCEIRO ──────────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'financial' && (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -2398,7 +2564,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                 const pending = payments.filter(p => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
                 const overdue = payments.filter(p => p.status === 'overdue').reduce((s, p) => s + p.amount, 0);
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                  <div className="prof-panel-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
                     {[{ label: 'RECEBIDO', value: paid, color: '#4CAF50' }, { label: 'PENDENTE', value: pending, color: '#FF8C00' }, { label: 'ATRASADO', value: overdue, color: '#CC0000' }].map(item => (
                       <div key={item.label} style={{ background: '#111', border: `1px solid ${item.color}33`, padding: '0.625rem', textAlign: 'center' }}>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: item.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</p>
@@ -2805,30 +2971,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             if (enr) setShowSuspendModal(enr);
           }}
         />
-      )}      {/* Modal de detalhe do membro */}
-      {selectedMember && (
-        <MemberDetailModal
-        member={selectedMember}
-        accentColor={accentColor}
-        professorUid={user?.uid}
-        onClose={() => setSelectedMember(null)}
-        onPromoted={(uid, belt, stripes) => {
-          setMembers(prev => prev.map(m => m.uid === uid ? { ...m, belt, stripes } : m));
-          setSelectedMember(null);
-        }}
-      />
       )}
-
-      {/* ── ABA PROMOÇÃO ─────────────────────────────────────────────────────────── */}
-      {activeTab === 'promocao' && (
-        <PromocaoTab
-          user={user}
-          profile={profile}
-          members={members}
-          accentColor={accentColor}
-        />
-      )}
-
       {/* ── ABA LEADS ──────────────────────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'leads' && (
         <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -2839,19 +2982,52 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>Interessados que solicitaram aula experimental gratuita</p>
             </div>
             <button
+              disabled={!trialRequestsEnabled || trialSettingSaving}
               onClick={() => {
-                const url = `${window.location.origin}/trial/${user?.uid}`;
+                if (!trialRequestsEnabled) return;
+                const trialPath = profile?.role === 'admin' || profile?.isAcademyAdmin ? 'academia' : 'professor';
+                const url = `${window.location.origin}/trial/${trialPath}/${user?.uid}`;
                 navigator.clipboard.writeText(url);
                 toast.success('🔗 Link copiado! Compartilhe com interessados.');
               }}
-              style={{ background: '#0D9E6E22', border: '1px solid #0D9E6E', color: '#0D9E6E', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer', letterSpacing: '0.05em', flexShrink: 0 }}
+              style={{ background: trialRequestsEnabled ? '#0D9E6E22' : '#151515', border: `1px solid ${trialRequestsEnabled ? '#0D9E6E' : '#333'}`, color: trialRequestsEnabled ? '#0D9E6E' : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: trialRequestsEnabled && !trialSettingSaving ? 'pointer' : 'not-allowed', letterSpacing: '0.05em', flexShrink: 0 }}
             >
               🔗 COPIAR LINK
             </button>
           </div>
 
           {/* Estatísticas */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+          <div style={{ background: '#111', border: `1px solid ${trialRequestsEnabled ? '#0D9E6E55' : '#333'}`, borderLeft: `3px solid ${trialRequestsEnabled ? '#0D9E6E' : '#555'}`, padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.95rem', textTransform: 'uppercase', color: '#FFF', margin: 0 }}>AULA GRATIS</p>
+              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                {trialRequestsEnabled ? 'Recebendo solicitacoes de alunos.' : 'Solicitacoes pausadas para alunos e link publico.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleTrialRequests}
+              disabled={trialSettingSaving}
+              style={{
+                minWidth: '118px',
+                background: trialRequestsEnabled ? '#0D9E6E' : '#1A1A1A',
+                border: `1px solid ${trialRequestsEnabled ? '#0D9E6E' : '#555'}`,
+                color: trialRequestsEnabled ? '#03140D' : '#AAA',
+                fontFamily: 'Barlow Condensed, sans-serif',
+                fontWeight: 900,
+                fontSize: '0.75rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0.65rem 0.85rem',
+                cursor: trialSettingSaving ? 'not-allowed' : 'pointer',
+                opacity: trialSettingSaving ? 0.65 : 1,
+              }}
+            >
+              {trialSettingSaving ? 'SALVANDO...' : trialRequestsEnabled ? 'LIGADO' : 'DESLIGADO'}
+            </button>
+          </div>
+
+          <div className="prof-panel-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
             {(['pending', 'contacted', 'converted', 'cancelled'] as const).map(s => {
               const count = leads.filter(l => l.status === s).length;
               const colors: Record<string, string> = { pending: '#FFD700', contacted: '#1A6ECC', converted: '#0D9E6E', cancelled: '#555' };
@@ -2948,6 +3124,24 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
 
 
       {/* ─── Modal: Revisão de Cobranças ─────────────────────────────────────────── */}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* Modal de detalhe do membro */}
+      {selectedMember && (
+        <MemberDetailModal
+          member={selectedMember}
+          accentColor={accentColor}
+          professorUid={user?.uid}
+          onClose={() => setSelectedMember(null)}
+          onPromoted={(uid, belt, stripes) => {
+            setMembers(prev => prev.map(m => m.uid === uid ? { ...m, belt, stripes } : m));
+            setSelectedMember(null);
+          }}
+        />
+      )}
+
       {showBillingReview && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '1rem' }}>
           <div style={{ background: '#0A0A0A', border: '1px solid #2A2A2A', maxWidth: '480px', width: '100%', margin: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -3039,7 +3233,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                   const alreadyDone = billingReviewItems.filter(i => i.excluded).length;
                   return (
                     <div style={{ background: '#111', border: '1px solid #2A2A2A', padding: '0.875rem' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginBottom: '0.875rem' }}>
+                      <div className="prof-panel-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginBottom: '0.875rem' }}>
                         <div style={{ textAlign: 'center' }}>
                           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#666', marginBottom: '0.2rem' }}>A GERAR</p>
                           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#CC0000', margin: 0 }}>{toGenerate.length}</p>
@@ -3642,7 +3836,7 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
         </div>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
+        <div className="prof-panel-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
           {[
             { label: 'XP TOTAL', value: (member.xp ?? 0).toLocaleString('pt-BR'), icon: '⚡' },
             { label: 'TREINOS', value: member.totalTrainings ?? 0, icon: '🥋' },
@@ -4116,7 +4310,7 @@ function FrequenciaTab({ professorUid, accentColor }: { professorUid: string; ac
       </div>
 
       {/* Resumo do mês */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+      <div className="prof-panel-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
         {[
           { label: 'TREINOS', value: monthRecords.length },
           { label: 'ALUNOS ATIVOS', value: uniqueStudents.length },
@@ -4454,7 +4648,7 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
           </div>
 
           {/* Horário e duração */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <span style={S.label}>HORÁRIO *</span>
               <input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} style={S.input} />
@@ -4479,7 +4673,7 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
           </div>
 
           {/* Modo e Público */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>
               <span style={S.label}>MODO</span>
               <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
@@ -5548,7 +5742,7 @@ function PromocaoTab({ user, profile, members, accentColor }: PromocaoTabProps) 
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: BELT_COLORS[c.belt] || '#888', border: '1px solid #333' }} />
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#FFF', textTransform: 'uppercase', margin: 0 }}>FAIXA {(c.belt || '').toUpperCase()}</p>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+              <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                   <div>
                     <p style={S2.label}>TREINOS MÍNIMOS</p>
                     <input type="number" value={editForm.minTrainings ?? ''} onChange={e => setEditForm(f => ({ ...f, minTrainings: Number(e.target.value) }))} style={S2.input} />

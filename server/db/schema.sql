@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
   athlete_type         TEXT,
   is_academy_admin     BOOLEAN     DEFAULT FALSE,
   role                 TEXT        DEFAULT 'student',
+  trial_requests_enabled BOOLEAN  DEFAULT TRUE,
   academy_name         TEXT,
   academy_address      TEXT,
   academy_city         TEXT,
