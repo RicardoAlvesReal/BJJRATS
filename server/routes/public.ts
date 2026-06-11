@@ -32,6 +32,9 @@ router.get('/professors', async (req, res) => {
       academy: users.academy,
       academyName: users.academyName,
       academyCity: users.academyCity,
+      photo: users.photo,
+      academyLogoUrl: users.academyLogoUrl,
+      professorPhotoUrl: users.professorPhotoUrl,
       trialRequestsEnabled: users.trialRequestsEnabled,
     })
     .from(users)

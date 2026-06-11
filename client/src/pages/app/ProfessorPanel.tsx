@@ -17,9 +17,11 @@ import {
   Bell,
   CalendarCheck,
   CalendarDays,
+  Camera,
   ChevronRight,
   Clock,
   CreditCard,
+  Crown,
   DollarSign,
   Flame,
   LayoutDashboard,
@@ -28,7 +30,6 @@ import {
   Newspaper,
   ShieldCheck,
   Sparkles,
-  Swords,
   Target,
   TrendingUp,
   Trophy,
@@ -102,10 +103,13 @@ interface Enrollment {
   studentName: string;
   studentEmail: string;
   studentPhone?: string;
+  studentBelt?: string;
+  studentStripes?: number;
+  studentPhoto?: string | null;
   monthlyFee: number;
   dueDay: number;
   enrolledAt?: any;
-  status: 'active' | 'suspended' | 'cancelled';
+  status: 'pending' | 'active' | 'suspended' | 'cancelled';
   pixKey?: string;
   notes?: string;
   suspendReason?: string;
@@ -139,6 +143,9 @@ interface Props {
 interface Member {
   uid: string;
   name: string;
+  email?: string;
+  phone?: string;
+  role?: string;
   belt: string;
   stripes?: number;
   xp?: number;
@@ -256,6 +263,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   });
   const [savingAcademyData, setSavingAcademyData] = useState(false);
   const [uploadingAcademyPhoto, setUploadingAcademyPhoto] = useState(false);
+  const [uploadingProfessorPhoto, setUploadingProfessorPhoto] = useState(false);
   const academyPhotoInputRef = useRef<HTMLInputElement>(null);
 
   // ── Sincronização academyId ─────────────────────────────────────────────
@@ -345,7 +353,46 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     if (!user) return;
     setMembersLoading(true);
     try {
-      const docs: Member[] = await api.users.list({ academyId: user.uid });
+      const [linkedDocs, enrollmentDocs] = await Promise.all([
+        api.users.list({ academyId: user.uid }) as Promise<Member[]>,
+        api.enrollments.list({ professorUid: user.uid }) as unknown as Promise<Enrollment[]>,
+      ]);
+      const activeEnrollmentDocs = enrollmentDocs.filter(enr => ['active', 'suspended'].includes(enr.status) && !!enr.studentUid);
+      const byUid = new Map<string, Member>();
+
+      linkedDocs.forEach(student => {
+        if (student.uid) byUid.set(student.uid, student);
+      });
+
+      const missingUids = Array.from(new Set(activeEnrollmentDocs.map(enr => enr.studentUid)))
+        .filter(uid => uid && !byUid.has(uid));
+      const fetchedStudents = await Promise.all(missingUids.map(async uid => {
+        try {
+          return await api.users.get(uid) as Member;
+        } catch {
+          return null;
+        }
+      }));
+
+      fetchedStudents.forEach(student => {
+        if (student?.uid) byUid.set(student.uid, student);
+      });
+
+      activeEnrollmentDocs.forEach(enr => {
+        if (!byUid.has(enr.studentUid)) {
+          byUid.set(enr.studentUid, {
+            uid: enr.studentUid,
+            name: enr.studentName || 'Aluno',
+            email: enr.studentEmail || '',
+            phone: enr.studentPhone || '',
+            belt: enr.studentBelt || 'Branca',
+            stripes: enr.studentStripes ?? 0,
+            photo: enr.studentPhoto || null,
+          });
+        }
+      });
+
+      const docs = Array.from(byUid.values());
       // Ordenar por XP desc; desempate por total de treinos desc
       docs.sort((a, b) => {
         const xpDiff = (b.xp ?? 0) - (a.xp ?? 0);
@@ -721,26 +768,42 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   }, [payments, paymentMonthFilter]);
 
   const handleSearchStudents = useCallback(async (term: string) => {
-    if (!term.trim()) { setEnrollSearchResults([]); return; }
+    const normalizedTerm = term.trim().toLowerCase();
+    if (!normalizedTerm) { setEnrollSearchResults([]); return; }
     setEnrollSearching(true);
     try {
-      // Primeiro: buscar apenas alunos já vinculados à academia (academyId == professor.uid)
-      if (members.length > 0) {
-        const filtered = members
-          .filter(u => (u.name || '').toLowerCase().includes(term.toLowerCase()))
-          .slice(0, 8);
-        setEnrollSearchResults(filtered);
-        setEnrollSearching(false);
-        return;
-      }
-      // Fallback: buscar globalmente se members ainda não carregou
-      const results = (await api.users.list({ academyId: user!.uid }))
-        .filter(u => (u.name || '').toLowerCase().includes(term.toLowerCase()))
-        .slice(0, 8) as Member[];
+      // Busca alunos cadastrados globalmente e oculta quem ja esta matriculado aqui.
+      const enrolledUids = new Set(
+        enrollments
+          .filter(enr => enr.status !== 'cancelled')
+          .map(enr => enr.studentUid)
+          .filter(Boolean)
+      );
+      const matchesTerm = (student: Member) => {
+        const haystack = [
+          student.name,
+          student.email,
+          student.phone,
+          student.belt,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(normalizedTerm);
+      };
+      const merged = new Map<string, Member>();
+      const remoteStudents = await api.users.list({ role: 'student', search: normalizedTerm }) as Member[];
+      [...remoteStudents, ...members].forEach(student => {
+        if (!student.uid || student.uid === user?.uid) return;
+        if (student.role && student.role !== 'student') return;
+        if (enrolledUids.has(student.uid)) return;
+        if (!matchesTerm(student)) return;
+        merged.set(student.uid, student);
+      });
+      const results = Array.from(merged.values())
+        .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'))
+        .slice(0, 8);
       setEnrollSearchResults(results);
     } catch { setEnrollSearchResults([]); }
     finally { setEnrollSearching(false); }
-  }, [members, user]);
+  }, [enrollments, members, user]);
 
   const handleCreateEnrollment = useCallback(async () => {
     if (!user || !enrollSelectedStudent || !enrollForm.monthlyFee || !enrollBillingMode) return;
@@ -748,9 +811,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     try {
       const fee = parseFloat(enrollForm.monthlyFee);
       const today = new Date();
-      const todayStr = today.toISOString().slice(0, 10);
 
-      // Calcular dueDay e primeira cobrança conforme modalidade
+      // Calcular os termos que o aluno vai aceitar no convite.
       let dueDay: number;
       let firstDueDate: string;
       let firstAmount: number;
@@ -778,9 +840,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         firstMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
       }
 
-      // Criar matrícula
-      const newEnroll = await api.enrollments.create({
+      await api.enrollments.create({
         professorUid: user.uid,
+        professorName: profile?.name || user.email || 'Professor',
+        academyName: profile?.academyName || profile?.academy || '',
         studentUid: enrollSelectedStudent.uid,
         studentName: enrollSelectedStudent.name,
         studentEmail: (enrollSelectedStudent as any).email || '',
@@ -790,46 +853,19 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         monthlyFee: fee,
         dueDay,
         billingMode: enrollBillingMode,
+        firstAmount,
+        firstDueDate,
+        firstMonth,
         pixKey: enrollForm.pixKey,
         notes: enrollForm.notes,
-        status: 'active',
-        enrolledAtStr: todayStr,
-      });
-
-      // Gerar primeira cobrança automaticamente (mês adiantado)
-      await api.payments.create({
-        enrollmentId: newEnroll.id,
-        professorUid: user.uid,
-        studentUid: enrollSelectedStudent.uid,
-        studentName: enrollSelectedStudent.name,
-        studentEmail: (enrollSelectedStudent as any).email || '',
-        amount: firstAmount,
-        dueDate: firstDueDate,
-        paidAt: null,
         status: 'pending',
-        pixKey: enrollForm.pixKey || '',
-        notifiedDue: false,
-        notifiedOverdue: false,
-        month: firstMonth,
-        isFirstPayment: true,
-        billingMode: enrollBillingMode,
-      });
+      } as any);
 
       const modeLabel = enrollBillingMode === 'prorata'
         ? `Pró-rata R$ ${firstAmount.toFixed(2)} — vence ${new Date(firstDueDate + 'T00:00:00').toLocaleDateString('pt-BR')}`
         : `R$ ${firstAmount.toFixed(2)} — vence em 30 dias (${new Date(firstDueDate + 'T00:00:00').toLocaleDateString('pt-BR')})`;
 
-      // Sincronizar academyId do aluno automaticamente ao matricular
-      try {
-        const studentData = await api.users.get(enrollSelectedStudent.uid);
-        if (!(studentData as any).academyId) {
-          await api.users.update(enrollSelectedStudent.uid, {
-            academyId: user.uid,
-            academy: profile?.academyName || '',
-          });
-        }
-      } catch (syncErr) { console.warn('[Enroll] Erro ao sincronizar academyId:', syncErr); }
-      toast.success(`Matrícula criada! 1ª cobrança: ${modeLabel}`);
+      toast.success(`Convite enviado! O aluno precisa aceitar. Termos: ${modeLabel}`);
       setShowEnrollModal(false);
       setEnrollSelectedStudent(null);
       setEnrollSearchTerm('');
@@ -838,11 +874,9 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       setEnrollBillingMode(null);
       setEnrollStep(1);
       await loadEnrollments();
-      // Recarregar pagamentos do mês atual
-      await loadPayments(firstMonth);
-    } catch (err) { console.error(err); toast.error('Erro ao criar matrícula'); }
+    } catch (err: any) { console.error(err); toast.error(err?.message || 'Erro ao enviar convite de matrícula'); }
     finally { setSavingEnroll(false); }
-  }, [user, enrollSelectedStudent, enrollForm, enrollBillingMode, loadEnrollments, loadPayments]);
+  }, [user, profile, enrollSelectedStudent, enrollForm, enrollBillingMode, loadEnrollments]);
 
   // ── Carregar solicitações de treino ─────────────────────────────────────────
   const loadTrainRequests = useCallback(async () => {
@@ -1129,6 +1163,23 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     }
   };
 
+  const handleUploadProfessorPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    if (!file || !user) return;
+    setUploadingProfessorPhoto(true);
+    try {
+      const url = await api.upload.file(file, 'perfil');
+      await updateProfileData({ professorPhotoUrl: url, photo: url });
+      toast.success('Foto do professor atualizada');
+    } catch {
+      toast.error('Erro ao enviar foto do professor');
+    } finally {
+      input.value = '';
+      setUploadingProfessorPhoto(false);
+    }
+  };
+
   const handleUpdateLeadStatus = async (_leadId: string, _status: TrialRequest['status']) => {
     toast.error('Funcionalidade temporariamente indisponível');
   };
@@ -1188,6 +1239,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const dojoLevel = Math.max(1, Math.floor(dojoPower / 1000) + 1);
   const dojoProgress = dojoPower % 1000;
   const dojoProgressPercent = Math.min(100, Math.round((dojoProgress / 1000) * 100));
+  const professorDisplayPhoto = profile?.professorPhotoUrl || profile?.photo || '';
+  const headerAcademyLogo = profile?.academyLogoUrl || (profile as any)?.academyLogo || '';
+  const headerIdentityImage = headerAcademyLogo || professorDisplayPhoto;
+  const headerIdentityIsProfessorPhoto = !headerAcademyLogo && !!professorDisplayPhoto;
   const academyDisplayName = profile?.academyName || 'Professor Particular';
   const commandStatus = overduePaymentCount > 0
     ? { label: 'ATENCAO', color: '#CC0000', icon: Flame }
@@ -1260,11 +1315,11 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             <ArrowLeft size={20} strokeWidth={2.5} />
           </button>
         )}
-        {(profile?.academyLogoUrl || (profile as any)?.academyLogo) ? (
-          <img className="prof-panel-emblem" src={profile?.academyLogoUrl || (profile as any)?.academyLogo} alt="Logo" style={{ width: '52px', height: '52px', objectFit: 'cover', border: `1px solid ${accentColor}`, background: '#0A0A0A' }} />
+        {headerIdentityImage ? (
+          <img className="prof-panel-emblem" src={headerIdentityImage} alt={headerIdentityIsProfessorPhoto ? 'Foto do professor' : 'Logo'} style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: headerIdentityIsProfessorPhoto ? '50%' : 0, border: `1px solid ${accentColor}`, background: '#0A0A0A' }} />
         ) : (
           <div className="prof-panel-emblem" style={{ width: '52px', height: '52px', background: '#111', border: `1px solid ${accentColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Swords size={24} color={accentColor} strokeWidth={2.4} />
+            <Crown size={24} color={accentColor} strokeWidth={2.4} />
           </div>
         )}
         <div className="prof-panel-title" style={{ flex: '1 1 260px', minWidth: 0 }}>
@@ -1391,13 +1446,20 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             <div className="prof-panel-command-card" style={{ background: 'linear-gradient(135deg, #111 0%, #131923 58%, #0D1611 100%)', border: `1px solid ${accentColor}44`, borderLeft: `4px solid ${commandStatus.color}`, padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '1rem', minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: 0 }}>
-                  {profile?.professorPhotoUrl ? (
-                    <img src={profile.professorPhotoUrl} alt={profile.name} style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${accentColor}`, flexShrink: 0 }} />
-                  ) : (
-                    <div style={{ width: '64px', height: '64px', background: '#101821', border: `2px solid ${accentColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <ShieldCheck size={28} color={accentColor} strokeWidth={2.3} />
-                    </div>
-                  )}
+                  <label title="Alterar foto do professor" style={{ width: '64px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', flexShrink: 0, cursor: uploadingProfessorPhoto ? 'not-allowed' : 'pointer', opacity: uploadingProfessorPhoto ? 0.65 : 1 }}>
+                    {professorDisplayPhoto ? (
+                      <img src={professorDisplayPhoto} alt={profile?.name || 'Professor'} style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${accentColor}`, flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: '64px', height: '64px', background: '#101821', border: `2px solid ${accentColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <ShieldCheck size={28} color={accentColor} strokeWidth={2.3} />
+                      </div>
+                    )}
+                    <span style={{ width: '100%', background: '#101010', border: `1px solid ${accentColor}55`, color: accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.52rem', textTransform: 'uppercase', letterSpacing: '0.04em', padding: '0.18rem 0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}>
+                      <Camera size={10} strokeWidth={2.5} />
+                      {uploadingProfessorPhoto ? '...' : 'Foto'}
+                    </span>
+                    <input type="file" accept="image/*" onChange={handleUploadProfessorPhoto} style={{ display: 'none' }} disabled={uploadingProfessorPhoto} />
+                  </label>
                   <div style={{ minWidth: 0 }}>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.45rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.name || 'Professor'}</p>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#7FADEB', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.3rem' }}>
@@ -1453,8 +1515,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             {/* Academia info */}
             <div style={{ display: 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                {profile?.professorPhotoUrl ? (
-                  <img src={profile.professorPhotoUrl} alt={profile.name} style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${accentColor}` }} />
+                {professorDisplayPhoto ? (
+                  <img src={professorDisplayPhoto} alt={profile?.name || 'Professor'} style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '50%', border: `2px solid ${accentColor}` }} />
                 ) : (
                   <div style={{ width: '52px', height: '52px', background: '#001A33', border: `2px solid ${accentColor}`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0 }}>🥋</div>
                 )}
@@ -2451,7 +2513,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     style={{ background: '#0A1A2A', border: '1px solid #1A6ECC', color: '#1A6ECC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: syncingAcademyId ? 'not-allowed' : 'pointer', opacity: syncingAcademyId ? 0.6 : 1 }}>
                     {syncingAcademyId ? '⏳ SINCRONIZANDO...' : '🔄 SINCRONIZAR ALUNOS'}
                   </button>
-                  <button onClick={() => setShowEnrollModal(true)} style={{ background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.5rem 0.875rem', cursor: 'pointer' }}>+ NOVA MATRÍCULA</button>
+                  <button onClick={() => setShowEnrollModal(true)} style={{ background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.5rem 0.875rem', cursor: 'pointer' }}>+ CONVIDAR ALUNO</button>
                 </div>
               </div>
 
@@ -2460,12 +2522,12 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               ) : enrollments.length === 0 ? (
                 <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#555', textTransform: 'uppercase' }}>NENHUMA MATRÍCULA AINDA</p>
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#444', marginTop: '0.375rem' }}>Clique em + NOVA MATRÍCULA para começar</p>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#444', marginTop: '0.375rem' }}>Envie um convite para o aluno aceitar a matrícula.</p>
                 </div>
               ) : (
                 enrollments.map(enr => {
-                  const statusColor = enr.status === 'active' ? '#4CAF50' : enr.status === 'suspended' ? '#FF8C00' : '#555';
-                  const statusLabel = enr.status === 'active' ? 'ATIVO' : enr.status === 'suspended' ? 'SUSPENSO' : 'CANCELADO';
+                  const statusColor = enr.status === 'active' ? '#4CAF50' : enr.status === 'suspended' ? '#FF8C00' : enr.status === 'pending' ? '#1A6ECC' : '#555';
+                  const statusLabel = enr.status === 'active' ? 'ATIVO' : enr.status === 'suspended' ? 'SUSPENSO' : enr.status === 'pending' ? 'AGUARDANDO ALUNO' : 'CANCELADO';
                   // Enriquecer com dados do membro (foto, faixa)
                   const memberData = members.find(m => m.uid === enr.studentUid);
                   const memberBelt = memberData?.belt || 'Branca';
@@ -2525,7 +2587,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         <button
                           onClick={() => { setEnrollSelectedStudent(m); setEnrollStep(2); setShowEnrollModal(true); }}
                           style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.2rem 0.5rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                          + MATRICULAR
+                          + CONVIDAR
                         </button>
                       </div>
                     );
@@ -2626,12 +2688,12 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
 
               {enrollmentsLoading ? (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif' }}>CARREGANDO...</div>
-              ) : enrollments.filter(e => e.status !== 'cancelled').length === 0 ? (
+              ) : enrollments.filter(e => e.status === 'active' || e.status === 'suspended').length === 0 ? (
                 <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
                   <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#555', textTransform: 'uppercase' }}>NENHUMA MATRÍCULA</p>
                 </div>
               ) : (
-                enrollments.filter(e => e.status !== 'cancelled').map(enr => {
+                enrollments.filter(e => e.status === 'active' || e.status === 'suspended').map(enr => {
                   const isActive = enr.status === 'active';
                   const isSuspended = enr.status === 'suspended';
                   return (
@@ -2662,23 +2724,40 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
           )}
 
           {/* Modal de matrícula — 3 passos */}
-          {showEnrollModal && (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 2000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => { setShowEnrollModal(false); setEnrollStep(1); setEnrollSelectedStudent(null); setEnrollBillingMode(null); }}>
-              <div style={{ background: '#0A0A0A', border: '1px solid #CC0000', width: '100%', maxWidth: '480px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+          <AnimatePresence>
+            {showEnrollModal && (
+              <motion.div
+                key="enroll-modal-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(8px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+                onClick={() => { setShowEnrollModal(false); setEnrollStep(1); setEnrollSelectedStudent(null); setEnrollBillingMode(null); }}
+              >
+                <motion.div
+                  key="enroll-modal-panel"
+                  initial={{ opacity: 0, scale: 0.94, y: 24 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.97, y: 14 }}
+                  transition={{ type: 'spring', stiffness: 360, damping: 30, mass: 0.8 }}
+                  style={{ background: 'linear-gradient(180deg, #121212 0%, #080808 100%)', border: '1px solid #CC000066', borderTop: '3px solid #CC0000', borderRadius: '8px', boxShadow: '0 28px 90px rgba(0,0,0,0.78), 0 0 0 1px rgba(255,255,255,0.04) inset', width: '100%', maxWidth: '500px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: 'calc(100vh - 2rem)', overflowY: 'auto' }}
+                  onClick={e => e.stopPropagation()}
+                >
 
                 {/* Cabeçalho com indicador de passo */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', background: 'linear-gradient(135deg, rgba(204,0,0,0.16), rgba(26,110,204,0.08))', border: '1px solid #2A2A2A', borderRadius: '8px', padding: '0.875rem' }}>
                   <div>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', color: '#FFF', textTransform: 'uppercase' }}>📝 NOVA MATRÍCULA</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', color: '#FFF', textTransform: 'uppercase' }}>📝 CONVITE DE MATRÍCULA</p>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', textTransform: 'uppercase', marginTop: '0.2rem' }}>PASSO {enrollStep} DE 3</p>
                   </div>
-                  <button onClick={() => { setShowEnrollModal(false); setEnrollStep(1); setEnrollSelectedStudent(null); setEnrollBillingMode(null); }} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1.25rem' }}>✕</button>
+                  <button onClick={() => { setShowEnrollModal(false); setEnrollStep(1); setEnrollSelectedStudent(null); setEnrollBillingMode(null); }} style={{ width: '34px', height: '34px', background: '#0A0A0A', border: '1px solid #333', borderRadius: '6px', color: '#888', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
                 </div>
 
                 {/* Indicador visual de passos */}
                 <div style={{ display: 'flex', gap: '0.25rem' }}>
                   {[1,2,3].map(s => (
-                    <div key={s} style={{ flex: 1, height: '3px', background: enrollStep >= s ? '#CC0000' : '#1E1E1E', transition: 'background 0.2s' }} />
+                    <div key={s} style={{ flex: 1, height: '5px', borderRadius: '999px', background: enrollStep >= s ? 'linear-gradient(90deg, #CC0000, #FF3B3B)' : '#1E1E1E', transition: 'background 0.2s' }} />
                   ))}
                 </div>
 
@@ -2706,6 +2785,11 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         </div>
                       </button>
                     ))}
+                    {enrollSearchTerm.trim() && !enrollSearching && enrollSearchResults.length === 0 && (
+                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', lineHeight: 1.45 }}>
+                        Nenhum aluno encontrado. Confirme se ele ja criou uma conta de aluno ou se ele ja esta matriculado aqui.
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -2816,14 +2900,15 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         disabled={savingEnroll || !enrollBillingMode}
                         style={{ background: enrollBillingMode && !savingEnroll ? '#CC0000' : '#333', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', padding: '1rem', cursor: enrollBillingMode && !savingEnroll ? 'pointer' : 'not-allowed', opacity: enrollBillingMode && !savingEnroll ? 1 : 0.5 }}
                       >
-                        {savingEnroll ? 'CRIANDO MATRÍCULA...' : '✓ CONFIRMAR E CRIAR MATRÍCULA'}
+                        {savingEnroll ? 'ENVIANDO CONVITE...' : '✓ ENVIAR CONVITE AO ALUNO'}
                       </button>
                     </div>
                   );
                 })()}
-              </div>
-            </div>
-          )}
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Modal de confirmação de pagamento com upload de comprovante */}
           {showPaymentModal && (
@@ -3129,18 +3214,21 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       </div>
 
       {/* Modal de detalhe do membro */}
-      {selectedMember && (
-        <MemberDetailModal
-          member={selectedMember}
-          accentColor={accentColor}
-          professorUid={user?.uid}
-          onClose={() => setSelectedMember(null)}
-          onPromoted={(uid, belt, stripes) => {
-            setMembers(prev => prev.map(m => m.uid === uid ? { ...m, belt, stripes } : m));
-            setSelectedMember(null);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {selectedMember && (
+          <MemberDetailModal
+            key={selectedMember.uid}
+            member={selectedMember}
+            accentColor={accentColor}
+            professorUid={user?.uid}
+            onClose={() => setSelectedMember(null)}
+            onPromoted={(uid, belt, stripes) => {
+              setMembers(prev => prev.map(m => m.uid === uid ? { ...m, belt, stripes } : m));
+              setSelectedMember(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {showBillingReview && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '1rem' }}>
@@ -3801,12 +3889,20 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#444', marginTop: '0.75rem', textTransform: 'uppercase' }}>Toque fora para fechar</p>
       </div>
     )}
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={onClose}
     >
-      <div
-        style={{ background: '#111', width: '100%', maxWidth: '480px', borderTop: `2px solid ${accentColor}`, padding: '1.5rem', paddingBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 16 }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+        style={{ background: '#111', width: '100%', maxWidth: '480px', borderTop: `2px solid ${accentColor}`, padding: '1.5rem', paddingBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', maxHeight: 'calc(100vh - 2rem)', overflowY: 'auto' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header do modal */}
@@ -4176,8 +4272,8 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
     </>
   );
 }

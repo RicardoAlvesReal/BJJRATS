@@ -76,7 +76,7 @@ export default function Register() {
   });
 
   // Busca de academias no cadastro
-  const [academyResults, setAcademyResults] = useState<{ name: string; professor: string; uid: string }[]>([]);
+  const [academyResults, setAcademyResults] = useState<{ name: string; professor: string; uid: string; logo?: string }[]>([]);
   const [academyDropOpen, setAcademyDropOpen] = useState(false);
   const [searchingAcademy, setSearchingAcademy] = useState(false);
   // Busca de professores no cadastro
@@ -99,6 +99,7 @@ export default function Register() {
         uid: u.uid,
         name: u.academyName || u.academy || u.name || '',
         professor: u.name || '',
+        logo: u.academyLogoUrl || u.photo || '',
       }));
       setAcademyResults(results);
     } catch { setAcademyResults([]); }
@@ -114,6 +115,7 @@ export default function Register() {
         uid: u.uid,
         name: u.academyName || u.academy || u.name || '',
         professor: u.name || '',
+        logo: u.academyLogoUrl || u.photo || '',
       }));
       setAcademyResults(results);
     } catch { setAcademyResults([]); }
@@ -504,10 +506,19 @@ export default function Register() {
                         setAcademyDropOpen(false);
                         setAcademyResults([]);
                       }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid #1E1E1E', padding: '0.75rem 1rem', cursor: 'pointer', color: '#FFF' }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderBottom: '1px solid #1E1E1E', padding: '0.75rem 1rem', cursor: 'pointer', color: '#FFF' }}
                     >
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#FFF', margin: 0 }}>{acad.name}</p>
-                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#888', margin: 0 }}>Prof. {acad.professor}</p>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#0A0A0A', border: '1px solid #2A2A2A', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {acad.logo ? (
+                          <img src={acad.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ fontSize: '1rem' }}>🏫</span>
+                        )}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', color: '#FFF', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acad.name}</p>
+                        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#888', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Prof. {acad.professor}</p>
+                      </div>
                     </button>
                   ))}
                 </div>

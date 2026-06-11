@@ -7,6 +7,18 @@ import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
+function isOpenEnrollmentStatus(status?: string | null) {
+  return status !== 'cancelled' && status !== 'rejected';
+}
+
+async function findOpenEnrollment(professorUid: string, studentUid: string) {
+  const rows = await db.select().from(enrollments).where(and(
+    eq(enrollments.professorUid, professorUid),
+    eq(enrollments.studentUid, studentUid),
+  ));
+  return rows.find(row => isOpenEnrollmentStatus(row.status)) ?? null;
+}
+
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   const { professorUid, studentUid } = req.query as Record<string, string>;
   const conditions = [];
@@ -69,15 +81,20 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   if (newStatus === 'accepted') {
     await db.update(academyRequests).set({ ...data, status: 'accepted' }).where(eq(academyRequests.id, req.params.id));
 
-    const enrollmentId = nanoid();
-    await db.insert(enrollments).values({
-      id: enrollmentId,
-      professorUid: existing.professorUid,
-      academyName: existing.academyName ?? null,
-      studentUid: existing.studentUid,
-      studentName: existing.studentName ?? null,
-      status: 'active',
-    });
+    const existingEnrollment = await findOpenEnrollment(existing.professorUid, existing.studentUid);
+    if (existingEnrollment?.status === 'pending') {
+      await db.update(enrollments).set({ status: 'active' }).where(eq(enrollments.id, existingEnrollment.id));
+    } else if (!existingEnrollment) {
+      const enrollmentId = nanoid();
+      await db.insert(enrollments).values({
+        id: enrollmentId,
+        professorUid: existing.professorUid,
+        academyName: existing.academyName ?? null,
+        studentUid: existing.studentUid,
+        studentName: existing.studentName ?? null,
+        status: 'active',
+      });
+    }
 
     await db.update(users).set({
       academyId: existing.professorUid,

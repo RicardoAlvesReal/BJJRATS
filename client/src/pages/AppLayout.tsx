@@ -6,6 +6,7 @@ import { pageVariant as pageVariants, pageTransition, overlayVariant as overlayV
 import { COLORS } from '@/lib/design';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import api from '@/lib/api';
+import { toast } from 'sonner';
 import Dashboard from './app/Dashboard';
 import History from './app/History';
 import Community from './app/Community';
@@ -135,6 +136,18 @@ export default function AppLayout() {
   const [promotionNotif, setPromotionNotif] = useState<{ title: string; message: string; belt: string } | null>(null);
   const [communityBadge, setCommunityBadge] = useState(false);
   const [requestNotif, setRequestNotif] = useState<{ title: string; message: string; approved: boolean } | null>(null);
+  const [enrollmentInvite, setEnrollmentInvite] = useState<{
+    notificationId: string;
+    enrollmentId: string;
+    message: string;
+    professorUid?: string;
+    professorName?: string;
+    academyName?: string;
+    monthlyFee?: number;
+    firstAmount?: number;
+    firstDueDate?: string;
+  } | null>(null);
+  const [processingEnrollmentInvite, setProcessingEnrollmentInvite] = useState(false);
   const [paymentNotif, setPaymentNotif] = useState<{ title: string; body: string; amount: number; dueDate: string; pixKey: string } | null>(null);
   const [socialNotifs, setSocialNotifs] = useState<Array<{ id: string; message: string; type: 'like' | 'comment' }>>([]);
 
@@ -156,6 +169,21 @@ export default function AppLayout() {
           if (reqNotif) {
             setRequestNotif({ title: reqNotif.title, message: reqNotif.message, approved: reqNotif.type === 'request_approved' });
             await api.notifications.markRead(reqNotif.id);
+          }
+
+          const enrollmentInviteNotif = unread.find((n: any) => n.type === 'enrollment_invite' && n.data?.enrollmentId);
+          if (enrollmentInviteNotif) {
+            setEnrollmentInvite({
+              notificationId: enrollmentInviteNotif.id,
+              enrollmentId: enrollmentInviteNotif.data.enrollmentId,
+              message: enrollmentInviteNotif.message || 'Você recebeu um convite de matrícula.',
+              professorUid: enrollmentInviteNotif.data.professorUid,
+              professorName: enrollmentInviteNotif.data.professorName,
+              academyName: enrollmentInviteNotif.data.academyName,
+              monthlyFee: Number(enrollmentInviteNotif.data.monthlyFee) || 0,
+              firstAmount: Number(enrollmentInviteNotif.data.firstAmount) || 0,
+              firstDueDate: enrollmentInviteNotif.data.firstDueDate || '',
+            });
           }
 
           const paymentNotifDoc = unread.find((n: any) => n.type === 'payment_due');
@@ -200,6 +228,31 @@ export default function AppLayout() {
     };
     checkNotifications();
   }, [user, isProfessor]);
+
+  const handleEnrollmentInviteResponse = async (accepted: boolean) => {
+    if (!enrollmentInvite) return;
+    setProcessingEnrollmentInvite(true);
+    try {
+      await api.enrollments.update(enrollmentInvite.enrollmentId, { status: accepted ? 'active' : 'cancelled' });
+      await api.notifications.markRead(enrollmentInvite.notificationId);
+      if (accepted) {
+        try {
+          await updateProfileData({
+            academyId: enrollmentInvite.professorUid,
+            academy: enrollmentInvite.academyName || '',
+          });
+        } catch { /* o servidor ja ativou o vínculo */ }
+        toast.success('Matrícula aceita!');
+      } else {
+        toast.success('Convite recusado.');
+      }
+      setEnrollmentInvite(null);
+    } catch {
+      toast.error('Erro ao responder convite de matrícula');
+    } finally {
+      setProcessingEnrollmentInvite(false);
+    }
+  };
 
   if (showProfessorPanel) {
     return (
@@ -286,6 +339,66 @@ export default function AppLayout() {
               <p className="text-[1.75rem] font-black text-white uppercase tracking-[0.05em] leading-tight mb-3 font-['Barlow_Condensed']">{requestNotif.title}</p>
               <p className="text-base text-[#CCC] leading-relaxed mb-6 font-['Barlow']">{requestNotif.message}</p>
               <p className="text-[0.75rem] text-[#555] uppercase tracking-[0.1em] font-['Barlow_Condensed']">Toque para fechar</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Enrollment Invite */}
+      <AnimatePresence>
+        {enrollmentInvite && (
+          <motion.div
+            key="enrollment-invite"
+            className="bjj-modal-overlay"
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+          >
+            <motion.div className="bjj-modal-box" variants={modalVariants} onClick={e => e.stopPropagation()}>
+              <div
+                className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center"
+                style={{ background: '#1A6ECC', border: '4px solid #1A6ECC' }}
+              >
+                <span className="text-3xl">📝</span>
+              </div>
+              <p className="text-[1.75rem] font-black text-white uppercase tracking-[0.05em] leading-tight mb-3 font-['Barlow_Condensed']">Convite de matrícula</p>
+              <p className="text-base text-[#CCC] leading-relaxed mb-4 font-['Barlow']">{enrollmentInvite.message}</p>
+              <div className="mb-6" style={{ background: '#111', border: '1px solid #2A2A2A', padding: '0.875rem', textAlign: 'left' }}>
+                <p className="text-[0.75rem] text-[#888] uppercase font-['Barlow_Condensed']">Professor</p>
+                <p className="text-sm text-white font-['Barlow']">{enrollmentInvite.professorName || 'Professor'}</p>
+                {enrollmentInvite.academyName && (
+                  <>
+                    <p className="text-[0.75rem] text-[#888] uppercase font-['Barlow_Condensed'] mt-3">Academia</p>
+                    <p className="text-sm text-white font-['Barlow']">{enrollmentInvite.academyName}</p>
+                  </>
+                )}
+                <p className="text-[0.75rem] text-[#888] uppercase font-['Barlow_Condensed'] mt-3">Mensalidade</p>
+                <p className="text-sm text-white font-['Barlow']">R$ {(enrollmentInvite.monthlyFee || 0).toFixed(2)}</p>
+                {enrollmentInvite.firstDueDate && (
+                  <p className="text-xs text-[#666] font-['Barlow'] mt-1">
+                    Primeira cobrança prevista: R$ {(enrollmentInvite.firstAmount || enrollmentInvite.monthlyFee || 0).toFixed(2)} em {new Date(enrollmentInvite.firstDueDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleEnrollmentInviteResponse(false)}
+                  disabled={processingEnrollmentInvite}
+                  className="flex-1 py-3 text-sm font-black uppercase font-['Barlow_Condensed']"
+                  style={{ background: '#1A0000', border: '1px solid #CC0000', color: '#FF6B6B', opacity: processingEnrollmentInvite ? 0.6 : 1 }}
+                >
+                  Recusar
+                </button>
+                <button
+                  onClick={() => handleEnrollmentInviteResponse(true)}
+                  disabled={processingEnrollmentInvite}
+                  className="flex-1 py-3 text-sm font-black uppercase font-['Barlow_Condensed']"
+                  style={{ background: '#0D9E6E', border: '1px solid #0D9E6E', color: '#FFF', opacity: processingEnrollmentInvite ? 0.6 : 1 }}
+                >
+                  {processingEnrollmentInvite ? 'Processando...' : 'Aceitar'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

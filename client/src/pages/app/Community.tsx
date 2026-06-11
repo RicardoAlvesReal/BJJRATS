@@ -1740,7 +1740,7 @@ function LocalizarAcademiaTab() {
       setTrainType(null);
       setTrainBilling(null);
       setTrainName(''); setTrainCpf(''); setTrainBelt('');
-    } catch (err) { console.error(err); toast.error('Erro ao processar solicitação.'); }
+    } catch (err: any) { console.error(err); toast.error(err?.message || 'Erro ao processar solicitação.'); }
     finally { setSendingTrain(false); }
   };
 
@@ -2205,4 +2205,3 @@ function LocalizarAcademiaTab() {
     </div>
   );
 }
-

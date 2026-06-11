@@ -27,7 +27,13 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
   if (role)      conditions.push(eq(users.role, role));
   if (academyId) conditions.push(eq(users.academyId, academyId));
   if (search) {
-    const searchCondition = or(ilike(users.name, `%${search}%`), ilike(users.academyName, `%${search}%`), ilike(users.academyCity, `%${search}%`));
+    const searchCondition = or(
+      ilike(users.name, `%${search}%`),
+      ilike(users.email, `%${search}%`),
+      ilike(users.phone, `%${search}%`),
+      ilike(users.academyName, `%${search}%`),
+      ilike(users.academyCity, `%${search}%`)
+    );
     if (searchCondition) conditions.push(searchCondition);
   }
 

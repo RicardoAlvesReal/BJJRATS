@@ -311,7 +311,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
     setUploadingPhoto(true);
     try {
       const url = await api.upload.file(file, 'perfil');
-      await updateProfileData({ photo: url });
+      await updateProfileData({ photo: url, professorPhotoUrl: url });
       await refreshProfile();
       toast.success('Foto atualizada!');
     } catch { toast.error('Erro ao fazer upload da foto'); }
@@ -1153,8 +1153,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', marginBottom: '0.5rem' }}>FOTO DO PROFESSOR</p>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
                 <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#0A0A0A', border: '2px solid #1A6ECC', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                  {profile?.photo
-                    ? <img src={profile.photo} alt="foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {(profile?.professorPhotoUrl || profile?.photo)
+                    ? <img src={profile?.professorPhotoUrl || profile?.photo} alt="foto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : <span style={{ fontSize: '1.5rem' }}>👤</span>}
                 </div>
                 <label style={{ flex: 1, background: uploadingPhoto ? '#0A1A2A' : '#001A33', border: '1px dashed #1A6ECC', color: '#1A6ECC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.75rem', cursor: uploadingPhoto ? 'not-allowed' : 'pointer', textAlign: 'center', display: 'block' }}>
