@@ -1,0 +1,42 @@
+app = 'bjjrats-evolution-api'
+primary_region = 'gru'
+
+[build]
+
+[env]
+  SERVER_TYPE = "http"
+  SERVER_PORT = "8080"
+  SERVER_URL = "https://bjjrats-evolution-api.fly.dev"
+  AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES = "true"
+  DEL_INSTANCE = "false"
+  LANGUAGE = "pt-BR"
+  DATABASE_ENABLED = "true"
+  DATABASE_PROVIDER = "postgresql"
+  DATABASE_SAVE_DATA_INSTANCE = "true"
+  DATABASE_SAVE_DATA_NEW_MESSAGE = "false"
+  DATABASE_SAVE_MESSAGE_UPDATE = "false"
+  DATABASE_SAVE_DATA_CONTACTS = "false"
+  DATABASE_SAVE_DATA_CHATS = "false"
+  CACHE_REDIS_ENABLED = "false"
+  CACHE_LOCAL_ENABLED = "true"
+  CONFIG_SESSION_PHONE_CLIENT = "BJJRats"
+  CONFIG_SESSION_PHONE_NAME = "Chrome"
+  CONFIG_SESSION_PHONE_VERSION = ""
+  QRCODE_LIMIT = "60"
+  QRCODE_COLOR = "#CC0000"
+
+[[mounts]]
+  source = 'evolution_instances'
+  destination = '/evolution/instances'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

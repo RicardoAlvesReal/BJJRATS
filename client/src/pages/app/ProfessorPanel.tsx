@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
   LogOut,
   Medal,
+  MessageSquare,
   Newspaper,
   ShieldCheck,
   Sparkles,
@@ -93,7 +94,7 @@ interface TrialRequest {
   createdAtStr?: string;
 }
 
-type PanelTab = 'overview' | 'avisos' | 'feed' | 'events' | 'challenges' | 'members' | 'financial' | 'frequencia' | 'horarios' | 'relatorios' | 'promocao' | 'leads';
+type PanelTab = 'overview' | 'avisos' | 'feed' | 'events' | 'challenges' | 'members' | 'financial' | 'frequencia' | 'horarios' | 'relatorios' | 'promocao' | 'leads' | 'whatsapp';
 type PanelGroup = 'principal' | 'alunos' | 'gestao' | 'comunidade';
 type FinancialSubTab = 'enrollments' | 'payments' | 'suspensions';
 
@@ -204,7 +205,237 @@ const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: Lucide
   { id: 'events', label: 'EVENTOS', group: 'comunidade', icon: CalendarDays },
   { id: 'challenges', label: 'DESAFIOS', group: 'comunidade', icon: Trophy },
   { id: 'leads', label: 'LEADS', group: 'comunidade', icon: Target },
+  { id: 'whatsapp', label: 'WHATSAPP', group: 'gestao', icon: MessageSquare },
 ];
+
+function WhatsAppTab() {
+  const [status, setStatus] = useState<{ connected: boolean; instance: { id: string; status: string; phone?: string | null } | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [qrcode, setQrcode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [qrCodeText, setQrCodeText] = useState<string | null>(null);
+  const [pairingPhone, setPairingPhone] = useState('');
+  const [generatingPairingCode, setGeneratingPairingCode] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const connectionModeRef = useRef<'qr' | 'phone'>('qr');
+  const connectionPhoneRef = useRef('');
+  const refreshingConnectionRef = useRef(false);
+  const lastConnectionRefreshRef = useRef(0);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = await api.whatsapp.status();
+      setStatus(res);
+      setQrcode(null);
+      setPairingCode(null);
+      setQrCodeText(null);
+    } catch {
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  useEffect(() => {
+    if (!polling) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.whatsapp.status();
+        if (res.connected) {
+          setStatus(res);
+          setQrcode(null);
+          setPairingCode(null);
+          setQrCodeText(null);
+          setPolling(false);
+          setConnecting(false);
+          toast.success('WhatsApp conectado!');
+          return;
+        }
+
+        const shouldRefresh = Date.now() - lastConnectionRefreshRef.current > 12000;
+        if (shouldRefresh && !refreshingConnectionRef.current) {
+          refreshingConnectionRef.current = true;
+          lastConnectionRefreshRef.current = Date.now();
+          try {
+            const current = await api.whatsapp.connectionCode(
+              connectionModeRef.current === 'phone' ? connectionPhoneRef.current : undefined,
+            );
+            setQrcode(current.qrcode ?? null);
+            setPairingCode(current.pairingCode ?? null);
+            setQrCodeText(current.qrCodeText ?? null);
+          } catch {
+            // The next status poll will try again.
+          } finally {
+            refreshingConnectionRef.current = false;
+          }
+        }
+      } catch { /* silencioso */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [polling]);
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    connectionModeRef.current = 'qr';
+    connectionPhoneRef.current = '';
+    lastConnectionRefreshRef.current = Date.now();
+    try {
+      const res = await api.whatsapp.connect();
+      setQrcode(res.qrcode ?? null);
+      setPairingCode(res.pairingCode ?? null);
+      setQrCodeText(res.qrCodeText ?? null);
+      setPolling(true);
+      if (!res.qrcode && !res.pairingCode) {
+        toast.error('A Evolution API criou a instância, mas não retornou QR Code nem código.');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao conectar WhatsApp');
+      setConnecting(false);
+    }
+  };
+
+  const handleGeneratePairingCode = async () => {
+    const phone = pairingPhone.replace(/\D/g, '');
+    if (phone.length < 10) {
+      toast.error('Informe o WhatsApp com DDD');
+      return;
+    }
+    setGeneratingPairingCode(true);
+    connectionModeRef.current = 'phone';
+    connectionPhoneRef.current = phone;
+    lastConnectionRefreshRef.current = Date.now();
+    try {
+      const res = await api.whatsapp.pairingCode(phone);
+      setQrcode(res.qrcode ?? qrcode);
+      setPairingCode(res.pairingCode ?? null);
+      setQrCodeText(res.qrCodeText ?? qrCodeText);
+      setPolling(true);
+      if (res.pairingCode) {
+        toast.success('Código de pareamento gerado');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao gerar código');
+    } finally {
+      setGeneratingPairingCode(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar o WhatsApp?')) return;
+    try {
+      await api.whatsapp.disconnect();
+      setStatus({ connected: false, instance: null });
+      setQrcode(null);
+      setPairingCode(null);
+      setQrCodeText(null);
+      setPolling(false);
+      connectionPhoneRef.current = '';
+      connectionModeRef.current = 'qr';
+      toast.success('WhatsApp desconectado');
+    } catch {
+      toast.error('Erro ao desconectar');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        <div style={{ width: '32px', height: '32px', border: '3px solid #333', borderTopColor: '#25D366', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', color: '#666', textTransform: 'uppercase' }}>CARREGANDO...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div>
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFF', margin: 0 }}>📱 WHATSAPP</p>
+        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>Conecte seu WhatsApp para enviar mensagens automáticas aos alunos</p>
+      </div>
+
+      {status?.connected ? (
+        <div style={{ background: '#0A1A0A', border: '1px solid #1A4A1A', borderLeft: '3px solid #25D366', padding: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#25D366', textTransform: 'uppercase', margin: 0 }}>✅ CONECTADO</p>
+              {status.instance?.phone && (
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>{status.instance.phone}</p>
+              )}
+            </div>
+            <button onClick={handleDisconnect} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer' }}>DESCONECTAR</button>
+          </div>
+          <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#111', border: '1px solid #222' }}>
+            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', margin: 0, lineHeight: 1.5 }}>
+              As mensagens de cobrança, suspensão e baixa frequência serão enviadas automaticamente pelo seu WhatsApp quando você usar os botões correspondentes.
+            </p>
+          </div>
+        </div>
+      ) : qrcode || pairingCode || qrCodeText ? (
+        <div style={{ background: '#111', border: '1px solid #222', padding: '1.5rem', textAlign: 'center' }}>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#FFF', textTransform: 'uppercase', marginBottom: '1rem' }}>ESCANEIE O QR CODE</p>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', marginBottom: '1rem' }}>Abra o WhatsApp → Dispositivos conectados → Conectar dispositivo</p>
+          {qrcode ? (
+            <img src={qrcode} alt="QR Code" style={{ maxWidth: '280px', width: '100%', border: '4px solid #FFF', borderRadius: '8px' }} />
+          ) : (
+            <div style={{ background: '#1A1A1A', border: '1px solid #333', padding: '1rem', color: '#888', fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem' }}>
+              QR Code indisponivel. Use o codigo de pareamento abaixo.
+            </div>
+          )}
+          {pairingCode ? (
+            <div style={{ marginTop: '1rem', background: '#0A1A0A', border: '1px solid #25D36655', padding: '0.875rem' }}>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#25D366', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>CODIGO DE PAREAMENTO</p>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.6rem', color: '#FFF', letterSpacing: '0.12em', margin: 0 }}>{pairingCode}</p>
+            </div>
+          ) : (
+            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'left' }}>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GERAR CODIGO COM NUMERO</p>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <input
+                  type="tel"
+                  value={pairingPhone}
+                  onChange={e => setPairingPhone(e.target.value)}
+                  placeholder="Ex: 11999999999"
+                  style={{ flex: '1 1 180px', background: '#0D0D0D', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.85rem', padding: '0.75rem', outline: 'none' }}
+                />
+                <button
+                  onClick={handleGeneratePairingCode}
+                  disabled={generatingPairingCode}
+                  style={{ flex: '0 0 auto', background: '#25D366', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.75rem 1rem', cursor: generatingPairingCode ? 'not-allowed' : 'pointer', opacity: generatingPairingCode ? 0.65 : 1 }}
+                >
+                  {generatingPairingCode ? 'GERANDO...' : 'GERAR CODIGO'}
+                </button>
+              </div>
+            </div>
+          )}
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555', marginTop: '1rem' }}>Aguardando conexão...</p>
+        </div>
+      ) : (
+        <div style={{ background: '#111', border: '1px solid #222', borderLeft: '3px solid #555', padding: '1.25rem' }}>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#888', textTransform: 'uppercase', margin: 0 }}>DESCONECTADO</p>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.5rem', marginBottom: '1rem', lineHeight: 1.5 }}>
+            Conecte seu WhatsApp para enviar mensagens automáticas de cobrança, suspensão e lembretes diretamente aos seus alunos.
+          </p>
+          <button onClick={handleConnect} disabled={connecting} style={{ background: '#25D366', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.75rem 1.25rem', cursor: connecting ? 'not-allowed' : 'pointer', opacity: connecting ? 0.6 : 1, width: '100%' }}>
+            {connecting ? 'CONECTANDO...' : '📱 CONECTAR WHATSAPP'}
+          </button>
+        </div>
+      )}
+
+      <div style={{ background: '#0D0D0D', border: '1px solid #1E1E1E', padding: '1rem' }}>
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', marginBottom: '0.5rem' }}>COMO FUNCIONA</p>
+        <ul style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#666', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
+          <li>Cada professor conecta seu próprio WhatsApp</li>
+          <li>Mensagens são enviadas do seu número pessoal</li>
+          <li>Cobranças, suspensões e lembretes automáticos</li>
+          <li>Sem custo por mensagem</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
 
 export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: Props) {
   const { user, profile, updateProfileData } = useAuth();
@@ -488,13 +719,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       const dueDateFormatted = new Date(dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
       try {
         await api.notifications.create({
-          uid: enr.studentUid,
+          toUid: enr.studentUid,
           type: 'payment_due',
-          title: '💳 Nova mensalidade gerada',
-          body: `R$ ${enr.monthlyFee.toFixed(2)} — vence em ${dueDateFormatted}. Pague via PIX para continuar treinando.`,
-          amount: enr.monthlyFee,
-          dueDate,
-          pixKey: enr.pixKey || '',
+          message: `💳 Nova mensalidade gerada — R$ ${enr.monthlyFee.toFixed(2)} — vence em ${dueDateFormatted}. Pague via PIX para continuar treinando.`,
+          data: { amount: enr.monthlyFee, dueDate, pixKey: enr.pixKey || '' },
           read: false,
         });
       } catch { /* notificação não crítica */ }
@@ -580,8 +808,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       const pushBody = `R$ ${item.amount.toFixed(2)} — vence em ${dueDateFormatted}. Pague via PIX para continuar treinando.`;
       try {
         await api.notifications.create({
-          uid: item.studentUid, type: 'payment_due', title: pushTitle, body: pushBody,
-          amount: item.amount, dueDate: item.dueDate, pixKey: item.pixKey, read: false,
+          toUid: item.studentUid, type: 'payment_due', message: `${pushTitle} — ${pushBody}`,
+          data: { amount: item.amount, dueDate: item.dueDate, pixKey: item.pixKey }, read: false,
         });
       } catch { /* notificação não crítica */ }
       created++;
@@ -663,6 +891,15 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       setEnrollments(prev => prev.map(e => e.id === enrollment.id ? { ...e, status: 'active', suspendReason: '' } : e));
       toast.success('Matrícula reativada!');
     } catch { toast.error('Erro ao reativar'); }
+  }, []);
+
+  const handleDeleteEnrollment = useCallback(async (enrollment: Enrollment) => {
+    if (!window.confirm(`Tem certeza que deseja excluir a matrícula de ${enrollment.studentName}? Esta ação não pode ser desfeita.`)) return;
+    try {
+      await api.enrollments.delete(enrollment.id);
+      setEnrollments(prev => prev.filter(e => e.id !== enrollment.id));
+      toast.success('Matrícula excluída!');
+    } catch { toast.error('Erro ao excluir matrícula'); }
   }, []);
 
   // Carregar dados financeiros ao montar (para exibir resumo na visão geral)
@@ -907,11 +1144,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       await api.academyRequests.update(req.id, { status: 'accepted', read: true });
       if (req.requesterUid) {
         await api.notifications.create({
-          uid: req.requesterUid,
+          toUid: req.requesterUid,
           type: 'train_request_accepted',
-          title: '✅ SOLICITAÇÃO ACEITA!',
-          message: `Sua solicitação de ${req.trainType === 'matricula' ? 'matrícula' : 'aula avulsa'} em ${req.academyName} foi aceita! Entre em contato com o professor.`,
-          academyName: req.academyName,
+          message: `✅ SOLICITAÇÃO ACEITA! Sua solicitação de ${req.trainType === 'matricula' ? 'matrícula' : 'aula avulsa'} em ${req.academyName} foi aceita! Entre em contato com o professor.`,
+          data: { academyName: req.academyName },
           read: false,
         });
       }
@@ -935,11 +1171,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       await api.academyRequests.update(req.id, { status: 'rejected', read: true });
       if (req.requesterUid) {
         await api.notifications.create({
-          uid: req.requesterUid,
+          toUid: req.requesterUid,
           type: 'train_request_rejected',
-          title: '❌ SOLICITAÇÃO RECUSADA',
-          message: `Sua solicitação de ${req.trainType === 'matricula' ? 'matrícula' : 'aula avulsa'} em ${req.academyName} foi recusada.`,
-          academyName: req.academyName,
+          message: `❌ SOLICITAÇÃO RECUSADA — Sua solicitação de ${req.trainType === 'matricula' ? 'matrícula' : 'aula avulsa'} em ${req.academyName} foi recusada.`,
+          data: { academyName: req.academyName },
           read: false,
         });
       }
@@ -2558,6 +2793,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                           ) : enr.status === 'suspended' ? (
                             <button onClick={() => handleReactivate(enr)} style={{ background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>REATIVAR</button>
                           ) : null}
+                          <button onClick={() => handleDeleteEnrollment(enr)} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>EXCLUIR</button>
                         </div>
                       </div>
                       {enr.status === 'suspended' && enr.suspendReason && (
@@ -2714,6 +2950,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                           {isSuspended && (
                             <button onClick={() => handleReactivate(enr)} style={{ background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>REATIVAR</button>
                           )}
+                          <button onClick={() => handleDeleteEnrollment(enr)} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>EXCLUIR</button>
                         </div>
                       </div>
                     </div>
@@ -3208,6 +3445,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       )}
 
 
+      {/* ── ABA WHATSAPP ──────────────────────────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'whatsapp' && <WhatsAppTab />}
+
+
       {/* ─── Modal: Revisão de Cobranças ─────────────────────────────────────────── */}
           </motion.div>
         </AnimatePresence>
@@ -3589,18 +3830,11 @@ function EventCard({ ev, accentColor, professorProfile, onDelete }: {
       const academyName = professorProfile?.academyName || professorProfile?.academy || 'Academia';
       const notifPromises = registrations.map((uid: string) =>
         api.notifications.create({
-          uid,
-          recipientUid: uid,
+          toUid: uid,
           type: 'event_confirmed',
-          eventId: ev.id,
-          eventTitle: ev.title,
-          eventDate: ev.date,
-          eventTime: ev.time || '',
-          eventLocation: ev.location || '',
-          academyName,
           message: `Inscrições encerradas para "${ev.title}"${ev.date ? ` em ${ev.date}` : ''}${ev.time ? ` às ${ev.time}` : ''}${ev.location ? ` — ${ev.location}` : ''}. Você está confirmado!`,
+          data: { eventId: ev.id, eventTitle: ev.title, eventDate: ev.date, eventTime: ev.time || '', eventLocation: ev.location || '', academyName },
           read: false,
-          createdAtStr: new Date().toLocaleDateString('pt-BR'),
         })
       );
       await Promise.all(notifPromises);
@@ -3814,13 +4048,10 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
       });
       // Notificação ao aluno
       await api.notifications.create({
-        uid: member.uid,
-        recipientUid: member.uid,
+        toUid: member.uid,
         type: 'promotion',
-        title: '🏅 VOCÊ FOI PROMOVIDO!',
-        message: `Parabéns! Você foi promovido para Faixa ${newBelt}${newStripes > 0 ? ` · ${newStripes}º grau` : ''}!`,
-        belt: newBelt,
-        stripes: newStripes,
+        message: `🏅 VOCÊ FOI PROMOVIDO! Parabéns! Você foi promovido para Faixa ${newBelt}${newStripes > 0 ? ` · ${newStripes}º grau` : ''}!`,
+        data: { belt: newBelt, stripes: newStripes },
         read: false,
       });
       onPromoted(member.uid, newBelt, newStripes);

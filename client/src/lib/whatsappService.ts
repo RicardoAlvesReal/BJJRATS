@@ -1,19 +1,16 @@
 // BJJRats — WhatsApp Service
-// Substitui o EmailJS: abre o WhatsApp com mensagens personalizadas para cada aluno
-// Todas as mensagens são privadas (professor → aluno individual)
+// Envia mensagens via Evolution API (automático) ou abre wa.me (fallback manual)
 
-/** Formata número de telefone removendo caracteres não numéricos e adicionando DDI 55 */
+import api from './api';
+
 function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   if (!digits) return '';
-  // Se já começa com 55 e tem 12-13 dígitos, usa como está
   if (digits.startsWith('55') && digits.length >= 12) return digits;
-  // Se tem 10-11 dígitos (número BR sem DDI), adiciona 55
   if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
   return digits;
 }
 
-/** Abre o WhatsApp com uma mensagem pré-formatada */
 function openWhatsApp(phone: string, message: string): void {
   const formattedPhone = formatPhone(phone);
   const encodedMsg = encodeURIComponent(message);
@@ -21,6 +18,14 @@ function openWhatsApp(phone: string, message: string): void {
     ? `https://wa.me/${formattedPhone}?text=${encodedMsg}`
     : `https://wa.me/?text=${encodedMsg}`;
   window.open(url, '_blank');
+}
+
+async function sendOrFallback(phone: string, message: string): Promise<void> {
+  try {
+    await api.whatsapp.send(phone, message);
+  } catch {
+    openWhatsApp(phone, message);
+  }
 }
 
 export interface WhatsAppPayload {
@@ -37,8 +42,7 @@ export interface WhatsAppPayload {
   monthName?: string;
 }
 
-/** Aviso de vencimento próximo */
-export function sendDueWhatsApp(payload: WhatsAppPayload): void {
+export async function sendDueWhatsApp(payload: WhatsAppPayload): Promise<void> {
   const { studentName, studentPhone = '', professorName, academyName, amount, dueDate, pixKey } = payload;
   const amountStr = amount ? `R$ ${amount.toFixed(2)}` : '';
   const pixStr = pixKey ? `\n\n💳 *PIX:* ${pixKey}` : '';
@@ -47,11 +51,10 @@ export function sendDueWhatsApp(payload: WhatsAppPayload): void {
     `Passando para lembrar que sua mensalidade na *${academyName}* vence em *${dueDate || 'breve'}*${amountStr ? ` no valor de *${amountStr}*` : ''}.\n` +
     `Qualquer dúvida, estou à disposição!${pixStr}\n\n` +
     `OSS! 🥋 — ${professorName}`;
-  openWhatsApp(studentPhone, message);
+  await sendOrFallback(studentPhone, message);
 }
 
-/** Aviso de mensalidade atrasada */
-export function sendOverdueWhatsApp(payload: WhatsAppPayload): void {
+export async function sendOverdueWhatsApp(payload: WhatsAppPayload): Promise<void> {
   const { studentName, studentPhone = '', professorName, academyName, amount, daysOverdue = 0, pixKey } = payload;
   const amountStr = amount ? `R$ ${amount.toFixed(2)}` : '';
   const pixStr = pixKey ? `\n\n💳 *PIX:* ${pixKey}` : '';
@@ -72,11 +75,10 @@ export function sendOverdueWhatsApp(payload: WhatsAppPayload): void {
     (amountStr ? `*Valor:* ${amountStr}\n` : '') +
     pixStr +
     `\n\nOSS! 🥋 — ${professorName}`;
-  openWhatsApp(studentPhone, message);
+  await sendOrFallback(studentPhone, message);
 }
 
-/** Aviso de suspensão */
-export function sendSuspendWhatsApp(payload: WhatsAppPayload): void {
+export async function sendSuspendWhatsApp(payload: WhatsAppPayload): Promise<void> {
   const { studentName, studentPhone = '', professorName, academyName, suspendReason } = payload;
   const reasonStr = suspendReason ? `\n\n*Motivo:* ${suspendReason}` : '';
   const message =
@@ -84,16 +86,15 @@ export function sendSuspendWhatsApp(payload: WhatsAppPayload): void {
     `Informamos que seu acesso à *${academyName}* foi temporariamente suspenso.${reasonStr}\n\n` +
     `Para regularizar sua situação, entre em contato comigo.\n\n` +
     `OSS! 🥋 — ${professorName}`;
-  openWhatsApp(studentPhone, message);
+  await sendOrFallback(studentPhone, message);
 }
 
-/** Aviso de baixa frequência */
-export function sendLowFrequencyWhatsApp(payload: WhatsAppPayload): void {
+export async function sendLowFrequencyWhatsApp(payload: WhatsAppPayload): Promise<void> {
   const { studentName, studentPhone = '', professorName, academyName, trainingsCount = 0, monthName = 'este mês' } = payload;
   const message =
     `Olá *${studentName}*! 🥋\n\n` +
     `Sentimos sua falta no tatame! Você treinou apenas *${trainingsCount} vez${trainingsCount !== 1 ? 'es' : ''}* em *${monthName}* na *${academyName}*.\n\n` +
     `Cada treino conta na sua evolução rumo à próxima faixa. Que tal marcar presença esta semana? 💪\n\n` +
     `OSS! — ${professorName}`;
-  openWhatsApp(studentPhone, message);
+  await sendOrFallback(studentPhone, message);
 }

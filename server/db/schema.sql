@@ -294,3 +294,15 @@ CREATE INDEX IF NOT EXISTS idx_promotions_professor     ON promotions(professor_
 CREATE INDEX IF NOT EXISTS idx_promotions_student       ON promotions(student_uid);
 CREATE INDEX IF NOT EXISTS idx_user_achievements_uid    ON user_achievements(uid);
 CREATE INDEX IF NOT EXISTS idx_competitions_uid         ON competitions(uid);
+
+-- ─── whatsapp_instances ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS whatsapp_instances (
+  id             TEXT PRIMARY KEY,
+  professor_uid  TEXT NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  instance_name  TEXT NOT NULL,
+  status         TEXT DEFAULT 'disconnected',
+  phone          TEXT,
+  created_at     TIMESTAMP DEFAULT NOW(),
+  updated_at     TIMESTAMP DEFAULT NOW(),
+  UNIQUE(professor_uid)
+);

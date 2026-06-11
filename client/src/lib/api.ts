@@ -754,6 +754,44 @@ export const publicApi = {
     apiFetch<{ success: boolean }>('/api/public/trial-requests', { method: 'POST', body: JSON.stringify(data) }),
 };
 
+// ─── WhatsApp ─────────────────────────────────────────────────────────────────
+
+export interface WhatsAppStatus {
+  connected: boolean;
+  instance: {
+    id: string;
+    status: string;
+    phone?: string | null;
+  } | null;
+}
+
+export interface WhatsAppConnectResponse {
+  qrcode?: string | null;
+  qrCodeText?: string | null;
+  pairingCode?: string | null;
+}
+
+export const whatsapp = {
+  status: () => apiFetch<WhatsAppStatus>('/api/whatsapp/status'),
+  connect: () => apiFetch<WhatsAppConnectResponse>('/api/whatsapp/connect', { method: 'POST' }),
+  connectionCode: (phone?: string) =>
+    apiFetch<WhatsAppConnectResponse>('/api/whatsapp/connection-code', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+  pairingCode: (phone: string) =>
+    apiFetch<WhatsAppConnectResponse>('/api/whatsapp/pairing-code', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+  disconnect: () => apiFetch<{ success: boolean }>('/api/whatsapp/disconnect', { method: 'POST' }),
+  send: (phone: string, message: string) =>
+    apiFetch<{ success: boolean; messageId: string }>('/api/whatsapp/send', {
+      method: 'POST',
+      body: JSON.stringify({ phone, message }),
+    }),
+};
+
 const api = {
   auth,
   users,
@@ -776,6 +814,7 @@ const api = {
   admin,
   announcements: announcementsApi,
   public: publicApi,
+  whatsapp,
 };
 
 export default api;

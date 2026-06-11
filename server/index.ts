@@ -28,6 +28,7 @@ import subscriptionsRouter from "./routes/subscriptions.js";
 import publicRouter        from "./routes/public.js";
 import settingsRouter      from "./routes/settings.js";
 import announcementsRouter from "./routes/announcements.js";
+import whatsappRouter      from "./routes/whatsapp.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,6 +67,7 @@ async function startServer() {
   app.use("/api/public",           publicRouter);
   app.use("/api/settings",         settingsRouter);
   app.use("/api/announcements",    announcementsRouter);
+  app.use("/api/whatsapp",         whatsappRouter);
 
   // SPA static files — only in production (dev uses Vite dev server)
   if (process.env.NODE_ENV === "production") {

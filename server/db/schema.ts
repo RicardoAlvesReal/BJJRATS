@@ -338,3 +338,16 @@ export const announcementDismissals = pgTable('announcement_dismissals', {
 }, (table) => [
   uniqueIndex('idx_announcement_dismissal').on(table.announcementId, table.userUid),
 ]);
+
+// ─── whatsapp_instances ──────────────────────────────────────────────────────
+export const whatsappInstances = pgTable('whatsapp_instances', {
+  id:            text('id').primaryKey(),
+  professorUid:  text('professor_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  instanceName:  text('instance_name').notNull(),
+  status:        text('status').default('disconnected'), // 'connected'|'disconnected'|'connecting'
+  phone:         text('phone'),
+  createdAt:     timestamp('created_at').defaultNow(),
+  updatedAt:     timestamp('updated_at').defaultNow(),
+}, (table) => [
+  uniqueIndex('idx_whatsapp_professor').on(table.professorUid),
+]);
