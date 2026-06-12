@@ -114,6 +114,14 @@ export default function MinhasMensalidades({ onBack }: Props) {
     navigator.clipboard.writeText(key).then(() => toast.success('Chave PIX copiada!'));
   };
 
+  const openPaymentAccess = (value: string) => {
+    if (/^https?:\/\//.test(value)) {
+      window.open(value, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    copyPix(value);
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: '#0A0A0A', color: '#FFFFFF', paddingBottom: '5rem' }}>
       {/* Header */}
@@ -278,7 +286,7 @@ export default function MinhasMensalidades({ onBack }: Props) {
                   {/* Botão PIX para cobranças pendentes/atrasadas */}
                   {(pay.status === 'pending' || pay.status === 'overdue') && pay.pixLink && (
                     <button
-                      onClick={() => copyPix(pay.pixLink!)}
+                      onClick={() => openPaymentAccess(pay.pixLink!)}
                       style={{
                         width: '100%', background: '#0A1A0A', border: '1px solid #4CAF50',
                         color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700,
@@ -288,7 +296,7 @@ export default function MinhasMensalidades({ onBack }: Props) {
                       }}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                      COPIAR CHAVE PIX PARA PAGAMENTO
+                      {/^https?:\/\//.test(pay.pixLink) ? 'ABRIR LINK DE PAGAMENTO' : 'COPIAR CHAVE PIX PARA PAGAMENTO'}
                     </button>
                   )}
 

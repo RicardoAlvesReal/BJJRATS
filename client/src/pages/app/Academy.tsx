@@ -1053,9 +1053,9 @@ export default function Academy() {
                         </span>
                       </div>
                       {(pay.status === 'pending' || pay.status === 'overdue') && pay.pixLink && (
-                        <button onClick={() => { navigator.clipboard.writeText(pay.pixLink!).then(() => toast.success('Chave PIX copiada!')); }} style={{ width: '100%', background: '#0A1A0A', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                        <button onClick={() => { /^https?:\/\//.test(pay.pixLink!) ? window.open(pay.pixLink!, '_blank', 'noopener,noreferrer') : navigator.clipboard.writeText(pay.pixLink!).then(() => toast.success('Chave PIX copiada!')); }} style={{ width: '100%', background: '#0A1A0A', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                          COPIAR CHAVE PIX PARA PAGAMENTO
+                          {/^https?:\/\//.test(pay.pixLink!) ? 'ABRIR LINK DE PAGAMENTO' : 'COPIAR CHAVE PIX PARA PAGAMENTO'}
                         </button>
                       )}
                       {pay.status === 'overdue' && !pay.pixLink && (

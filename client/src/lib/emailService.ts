@@ -50,18 +50,21 @@ export async function sendOverdueNotice(config: EmailConfig, payload: EmailPaylo
   });
 }
 
-/** Envia aviso de atraso com número de dias (2, 5, 7 dias) */
+/** Envia aviso de atraso respeitando o limite de suspensao configurado. */
 export async function sendOverdueDaysNotice(
   config: EmailConfig,
-  payload: EmailPayload & { days_overdue: number }
+  payload: EmailPayload & { days_overdue: number; auto_suspend_after_days?: number }
 ): Promise<void> {
   initEmailJS(config.publicKey);
+  const autoSuspendAfterDays = payload.auto_suspend_after_days ?? 10;
   const message =
     payload.days_overdue <= 2
       ? `Sua mensalidade venceu há ${payload.days_overdue} dia(s). Por favor, regularize para continuar treinando. OSS! 🤙`
-      : payload.days_overdue <= 5
-      ? `Sua mensalidade está em atraso há ${payload.days_overdue} dias. Regularize o quanto antes para evitar a suspensão. OSS! 🤙`
-      : `⚠️ Atenção: sua mensalidade está em atraso há ${payload.days_overdue} dias. Entre em contato com o professor imediatamente para regularizar sua situação.`;
+      : autoSuspendAfterDays > 0 && payload.days_overdue < autoSuspendAfterDays
+      ? `Sua mensalidade está em atraso há ${payload.days_overdue} dias. Regularize antes de completar ${autoSuspendAfterDays} dia(s) de atraso para evitar a suspensão automática. OSS! 🤙`
+      : autoSuspendAfterDays > 0
+      ? `⚠️ Atenção: sua mensalidade está em atraso há ${payload.days_overdue} dias. O limite configurado é de ${autoSuspendAfterDays} dia(s). Entre em contato com o professor para regularizar sua situação.`
+      : `⚠️ Atenção: sua mensalidade está em atraso há ${payload.days_overdue} dias. Entre em contato com o professor para regularizar sua situação.`;
   await emailjs.send(config.serviceId, config.templateOverdue, {
     ...payload,
     custom_message: message,

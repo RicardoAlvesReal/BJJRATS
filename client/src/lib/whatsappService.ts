@@ -15,6 +15,7 @@ export interface WhatsAppPayload {
   amount?: number;
   dueDate?: string;
   daysOverdue?: number;
+  autoSuspendAfterDays?: number;
   pixKey?: string;
   suspendReason?: string;
   trainingsCount?: number;
@@ -34,17 +35,19 @@ export async function sendDueWhatsApp(payload: WhatsAppPayload): Promise<void> {
 }
 
 export async function sendOverdueWhatsApp(payload: WhatsAppPayload): Promise<void> {
-  const { studentName, studentPhone = '', professorName, academyName, amount, daysOverdue = 0, pixKey } = payload;
+  const { studentName, studentPhone = '', professorName, academyName, amount, daysOverdue = 0, autoSuspendAfterDays = 10, pixKey } = payload;
   const amountStr = amount ? `R$ ${amount.toFixed(2)}` : '';
   const pixStr = pixKey ? `\n\n💳 *PIX:* ${pixKey}` : '';
 
   let urgency = '';
   if (daysOverdue <= 2) {
     urgency = `Sua mensalidade venceu há *${daysOverdue} dia(s)*. Por favor, regularize para continuar treinando. 🙏`;
-  } else if (daysOverdue <= 7) {
-    urgency = `Sua mensalidade está em atraso há *${daysOverdue} dias*. Regularize o quanto antes para evitar a suspensão. ⚠️`;
+  } else if (autoSuspendAfterDays > 0 && daysOverdue < autoSuspendAfterDays) {
+    urgency = `Sua mensalidade está em atraso há *${daysOverdue} dias*. Regularize antes de completar *${autoSuspendAfterDays} dia(s)* de atraso para evitar a suspensão automática. ⚠️`;
+  } else if (autoSuspendAfterDays > 0) {
+    urgency = `⚠️ Atenção: sua mensalidade está em atraso há *${daysOverdue} dias*. O limite configurado é de *${autoSuspendAfterDays} dia(s)*. Entre em contato comigo para regularizar sua situação.`;
   } else {
-    urgency = `⚠️ Atenção: sua mensalidade está em atraso há *${daysOverdue} dias*. Entre em contato comigo imediatamente para regularizar sua situação.`;
+    urgency = `⚠️ Atenção: sua mensalidade está em atraso há *${daysOverdue} dias*. Entre em contato comigo para regularizar sua situação.`;
   }
 
   const message =

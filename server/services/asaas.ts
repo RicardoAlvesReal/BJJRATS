@@ -1,28 +1,39 @@
 // Asaas payment gateway service
 
-const DEV_MODE = process.env.NODE_ENV === 'development' && !process.env.ASAAS_API_KEY;
+export type AsaasRequestConfig = {
+  apiKey?: string | null;
+  sandbox?: boolean;
+};
 
-const ASAAS_BASE = process.env.ASAAS_SANDBOX === 'true'
-  ? 'https://api-sandbox.asaas.com/v3'
-  : 'https://api.asaas.com/v3';
+function getApiKey(config?: AsaasRequestConfig) {
+  return config?.apiKey || process.env.ASAAS_API_KEY || '';
+}
 
-const API_KEY = process.env.ASAAS_API_KEY || '';
+function getBaseUrl(config?: AsaasRequestConfig) {
+  const sandbox = config?.sandbox ?? process.env.ASAAS_SANDBOX === 'true';
+  return sandbox ? 'https://api-sandbox.asaas.com/v3' : 'https://api.asaas.com/v3';
+}
+
+function isDevMode(config?: AsaasRequestConfig) {
+  return process.env.NODE_ENV === 'development' && !getApiKey(config);
+}
 
 async function request<T = unknown>(
   method: string,
   path: string,
   body?: Record<string, unknown>,
+  config?: AsaasRequestConfig,
 ): Promise<T> {
-  if (DEV_MODE) {
+  if (isDevMode(config)) {
     throw new Error('Asaas request attempted in dev mode without ASAAS_API_KEY');
   }
-  const res = await fetch(`${ASAAS_BASE}${path}`, {
+  const res = await fetch(`${getBaseUrl(config)}${path}`, {
     method,
     headers: {
       accept: 'application/json',
       'Content-Type': 'application/json',
       'User-Agent': 'BJJRats/1.0.0',
-      access_token: API_KEY,
+      access_token: getApiKey(config),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -63,14 +74,15 @@ export interface AsaasPayment {
   bankSlipUrl?: string;
   transactionReceiptUrl?: string;
   pixQrCode?: string;
+  externalReference?: string;
 }
 
 // ─── Customers ─────────────────────────────────────────────────────────────
 
 export async function createCustomer(data: {
   name: string; email: string; cpfCnpj?: string; phone?: string;
-}): Promise<AsaasCustomer> {
-  if (DEV_MODE) {
+}, config?: AsaasRequestConfig): Promise<AsaasCustomer> {
+  if (isDevMode(config)) {
     return { id: `dev-cus-${Date.now()}`, name: data.name, email: data.email, cpfCnpj: data.cpfCnpj };
   }
   return request<AsaasCustomer>('POST', '/customers', {
@@ -78,12 +90,12 @@ export async function createCustomer(data: {
     email: data.email,
     cpfCnpj: data.cpfCnpj,
     phone: data.phone,
-  });
+  }, config);
 }
 
-export async function findCustomer(email: string): Promise<AsaasCustomer | null> {
-  if (DEV_MODE) return null;
-  const result = await request<{ data: AsaasCustomer[] }>('GET', `/customers?email=${encodeURIComponent(email)}`);
+export async function findCustomer(email: string, config?: AsaasRequestConfig): Promise<AsaasCustomer | null> {
+  if (isDevMode(config)) return null;
+  const result = await request<{ data: AsaasCustomer[] }>('GET', `/customers?email=${encodeURIComponent(email)}`, undefined, config);
   return result.data?.[0] ?? null;
 }
 
@@ -98,8 +110,8 @@ export async function createSubscription(data: {
   description?: string;
   maxPayments?: number;
   externalReference?: string;
-}): Promise<AsaasSubscription> {
-  if (DEV_MODE) {
+}, config?: AsaasRequestConfig): Promise<AsaasSubscription> {
+  if (isDevMode(config)) {
     return {
       id: `dev-sub-${Date.now()}`,
       customer: data.customer,
@@ -120,26 +132,61 @@ export async function createSubscription(data: {
     description: data.description,
     maxPayments: data.maxPayments,
     externalReference: data.externalReference,
-  });
+  }, config);
 }
 
-export async function getSubscription(id: string): Promise<AsaasSubscription> {
-  return request<AsaasSubscription>('GET', `/subscriptions/${id}`);
+export async function getSubscription(id: string, config?: AsaasRequestConfig): Promise<AsaasSubscription> {
+  return request<AsaasSubscription>('GET', `/subscriptions/${id}`, undefined, config);
 }
 
-export async function cancelSubscription(id: string): Promise<AsaasSubscription> {
-  if (DEV_MODE) {
+export async function cancelSubscription(id: string, config?: AsaasRequestConfig): Promise<AsaasSubscription> {
+  if (isDevMode(config)) {
     return { id, customer: '', billingType: 'PIX', value: 0, nextDueDate: '', status: 'CANCELLED', cycle: 'MONTHLY', deleted: true };
   }
-  return request<AsaasSubscription>('DELETE', `/subscriptions/${id}`);
+  return request<AsaasSubscription>('DELETE', `/subscriptions/${id}`, undefined, config);
 }
 
 // ─── Payments (for a subscription) ─────────────────────────────────────────
 
-export async function listSubscriptionPayments(subscriptionId: string): Promise<AsaasPayment[]> {
-  if (DEV_MODE) return [];
-  const result = await request<{ data: AsaasPayment[] }>('GET', `/subscriptions/${subscriptionId}/payments`);
+export async function listSubscriptionPayments(subscriptionId: string, config?: AsaasRequestConfig): Promise<AsaasPayment[]> {
+  if (isDevMode(config)) return [];
+  const result = await request<{ data: AsaasPayment[] }>('GET', `/subscriptions/${subscriptionId}/payments`, undefined, config);
   return result.data ?? [];
+}
+
+export async function createPayment(data: {
+  customer: string;
+  value: number;
+  dueDate: string;
+  billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+  description?: string;
+  externalReference?: string;
+}, config?: AsaasRequestConfig): Promise<AsaasPayment> {
+  if (isDevMode(config)) {
+    return {
+      id: `dev-pay-${Date.now()}`,
+      customer: data.customer,
+      value: data.value,
+      netValue: data.value,
+      dueDate: data.dueDate,
+      status: 'PENDING',
+      billingType: data.billingType,
+      invoiceUrl: `https://sandbox.asaas.local/pay/${data.externalReference || Date.now()}`,
+      externalReference: data.externalReference,
+    } as AsaasPayment;
+  }
+  return request<AsaasPayment>('POST', '/payments', {
+    customer: data.customer,
+    value: data.value,
+    dueDate: data.dueDate,
+    billingType: data.billingType,
+    description: data.description,
+    externalReference: data.externalReference,
+  }, config);
+}
+
+export async function testConnection(config?: AsaasRequestConfig): Promise<void> {
+  await request<{ data: AsaasCustomer[] }>('GET', '/customers?limit=1', undefined, config);
 }
 
 // ─── Webhook helpers ───────────────────────────────────────────────────────

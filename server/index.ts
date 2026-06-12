@@ -29,6 +29,7 @@ import publicRouter        from "./routes/public.js";
 import settingsRouter      from "./routes/settings.js";
 import announcementsRouter from "./routes/announcements.js";
 import whatsappRouter      from "./routes/whatsapp.js";
+import { startFinancialAutomationJobs } from "./services/financialAutomation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,6 +83,7 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    startFinancialAutomationJobs();
   });
 }
 

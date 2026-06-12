@@ -2,16 +2,19 @@ import { Router } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { enrollments, notifications, payments, settings } from '../db/schema.js';
+import { payments, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
-import { sendNotificationWhatsApp } from '../services/notificationWhatsApp.js';
+import { applyAutomaticSuspensionsForProfessor } from '../services/financialAutomation.js';
+import { getAsaasCredentials, getPaymentIntegration } from '../services/paymentIntegrations.js';
+import {
+  createCustomer,
+  createPayment as asaasCreatePayment,
+  findCustomer,
+  parseWebhook,
+  type AsaasWebhookEvent,
+} from '../services/asaas.js';
 
 const router = Router();
-const DEFAULT_AUTO_SUSPEND_AFTER_DAYS = 10;
-
-function financialSettingsKey(uid: string) {
-  return `professor:${uid}:financial:auto_suspend_after_days`;
-}
 
 function normalizePaymentDate(value: unknown) {
   if (value === null || value === undefined || value === '') return null;
@@ -42,85 +45,65 @@ function formatDateOnly(value: unknown) {
 }
 
 function serializePayment<T extends Record<string, unknown>>(payment: T) {
+  const pixLink = payment['pixLink'] ?? payment['pix_link'];
   return {
     ...payment,
     dueDate: formatDateOnly(payment['dueDate']),
     paidAt: formatDateOnly(payment['paidAt']),
+    pixLink,
+    pixKey: payment['pixKey'] ?? pixLink,
+    paymentLink: pixLink,
   };
 }
 
-function daysPastDue(value: unknown) {
-  const due = normalizePaymentDate(value);
-  if (!(due instanceof Date) || Number.isNaN(due.getTime())) return 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dueDay = new Date(due);
-  dueDay.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.floor((today.getTime() - dueDay.getTime()) / (1000 * 60 * 60 * 24)));
-}
+async function buildAsaasPaymentData(localPaymentId: string, data: Record<string, unknown>) {
+  const professorUid = String(data.professorUid || '');
+  const credentials = professorUid ? await getAsaasCredentials(professorUid) : null;
+  if (!credentials || data.paymentProvider === 'manual') return null;
 
-async function getAutoSuspendAfterDays(professorUid: string) {
-  const [row] = await db.select().from(settings)
-    .where(eq(settings.key, financialSettingsKey(professorUid)))
-    .limit(1);
-  const parsed = Number(row?.value);
-  if (!Number.isFinite(parsed)) return DEFAULT_AUTO_SUSPEND_AFTER_DAYS;
-  return Math.max(0, Math.min(365, Math.floor(parsed)));
-}
+  const amount = Number(data.amount);
+  const dueDateValue = formatDateOnly(data.dueDate);
+  if (!Number.isFinite(amount) || amount <= 0 || typeof dueDateValue !== 'string' || !dueDateValue) return null;
+  const dueDate = dueDateValue;
 
-async function applyAutomaticSuspensions(professorUid: string, rows: Array<typeof payments.$inferSelect>) {
-  const autoSuspendAfterDays = await getAutoSuspendAfterDays(professorUid);
-  if (autoSuspendAfterDays <= 0) return { autoSuspendAfterDays, suspended: 0 };
+  let studentName = String(data.studentName || '').trim();
+  let studentEmail = String(data.studentEmail || '').trim();
+  let studentPhone = String(data.studentPhone || '').trim();
 
-  const oldestOverdueByStudent = new Map<string, { days: number; payment: typeof payments.$inferSelect }>();
-  for (const payment of rows) {
-    if (payment.status === 'paid') continue;
-    const days = daysPastDue(payment.dueDate);
-    if (days < autoSuspendAfterDays) continue;
-    const current = oldestOverdueByStudent.get(payment.studentUid);
-    if (!current || days > current.days) {
-      oldestOverdueByStudent.set(payment.studentUid, { days, payment });
-    }
+  if ((!studentName || !studentEmail || !studentPhone) && data.studentUid) {
+    const [student] = await db.select({
+      name: users.name,
+      email: users.email,
+      phone: users.phone,
+    }).from(users).where(eq(users.uid, String(data.studentUid))).limit(1);
+    studentName ||= student?.name || '';
+    studentEmail ||= student?.email || '';
+    studentPhone ||= student?.phone || '';
   }
 
-  if (oldestOverdueByStudent.size === 0) return { autoSuspendAfterDays, suspended: 0 };
+  if (!studentName || !studentEmail) return null;
 
-  let suspended = 0;
-  const activeEnrollments = await db.select().from(enrollments)
-    .where(and(eq(enrollments.professorUid, professorUid), eq(enrollments.status, 'active')));
+  const config = { apiKey: credentials.apiKey, sandbox: credentials.sandbox };
+  const customer = await findCustomer(studentEmail, config) || await createCustomer({
+    name: studentName,
+    email: studentEmail,
+    phone: studentPhone || undefined,
+  }, config);
 
-  for (const enrollment of activeEnrollments) {
-    const overdue = oldestOverdueByStudent.get(enrollment.studentUid);
-    if (!overdue) continue;
+  const charge = await asaasCreatePayment({
+    customer: customer.id,
+    value: amount,
+    dueDate,
+    billingType: credentials.billingType,
+    description: `BJJRats - Mensalidade ${studentName}`,
+    externalReference: localPaymentId,
+  }, config);
 
-    await db.update(enrollments)
-      .set({ status: 'suspended' })
-      .where(eq(enrollments.id, enrollment.id));
-
-    suspended++;
-    try {
-      const [notification] = await db.insert(notifications).values({
-        id: nanoid(),
-        toUid: enrollment.studentUid,
-        fromUid: professorUid,
-        fromName: enrollment.professorName || enrollment.academyName || 'Professor',
-        type: 'payment_suspended',
-        message: `Seu acesso foi suspenso automaticamente apos ${overdue.days} dia(s) de inadimplencia. Regularize sua mensalidade para voltar a treinar.`,
-        data: {
-          enrollmentId: enrollment.id,
-          paymentId: overdue.payment.id,
-          daysOverdue: overdue.days,
-          autoSuspendAfterDays,
-        },
-        read: false,
-      }).returning();
-      await sendNotificationWhatsApp(notification, professorUid);
-    } catch (err) {
-      console.warn('[payments] automatic suspension notification failed', err);
-    }
-  }
-
-  return { autoSuspendAfterDays, suspended };
+  return {
+    provider: 'asaas',
+    paymentId: charge.id,
+    paymentLink: charge.invoiceUrl || charge.bankSlipUrl || data.pixLink || data.pixKey || null,
+  };
 }
 
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
@@ -133,7 +116,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
     ? await db.select().from(payments).where(and(...conditions)).orderBy(desc(payments.dueDate))
     : await db.select().from(payments).where(eq(payments.professorUid, req.userId!)).orderBy(desc(payments.dueDate));
   if (!studentUid && effectiveProfessorUid === req.userId) {
-    await applyAutomaticSuspensions(effectiveProfessorUid, rows);
+    await applyAutomaticSuspensionsForProfessor(effectiveProfessorUid, rows);
   }
   res.json(rows.map(serializePayment));
 });
@@ -141,8 +124,36 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const id = nanoid();
   const data = normalizePaymentPayload(req.body);
-  const [row] = await db.insert(payments).values({ id, ...data } as any).returning();
-  res.status(201).json(serializePayment(row));
+  const professorUid = String(data.professorUid || req.userId);
+  let asaasError: string | null = null;
+  let asaasResult: Awaited<ReturnType<typeof buildAsaasPaymentData>> = null;
+  const integration = await getPaymentIntegration(professorUid);
+
+  try {
+    asaasResult = await buildAsaasPaymentData(id, { ...data, professorUid });
+    if (asaasResult?.paymentLink) data.pixLink = asaasResult.paymentLink;
+  } catch (err) {
+    asaasError = err instanceof Error ? err.message : 'Erro ao criar cobrança Asaas';
+    if (!integration.manualPaymentsEnabled) {
+      res.status(502).json({ error: asaasError });
+      return;
+    }
+  }
+
+  if (!asaasResult && !integration.manualPaymentsEnabled) {
+    res.status(400).json({ error: 'Pagamentos manuais estao desativados e o Asaas nao esta conectado.' });
+    return;
+  }
+
+  if (!data.pixLink && data.pixKey) data.pixLink = data.pixKey;
+
+  const [row] = await db.insert(payments).values({ id, ...data, professorUid } as any).returning();
+  res.status(201).json({
+    ...serializePayment(row),
+    paymentProvider: asaasResult?.provider || 'manual',
+    asaasPaymentId: asaasResult?.paymentId || null,
+    asaasError,
+  });
 });
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
@@ -151,6 +162,53 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const { id: _id, ...data } = normalizePaymentPayload(req.body);
   const [row] = await db.update(payments).set(data as any).where(eq(payments.id, req.params.id)).returning();
   res.json(serializePayment(row));
+});
+
+router.post('/asaas/webhook', async (req, res) => {
+  const event: AsaasWebhookEvent = parseWebhook(req.body);
+  const localPaymentId = event.payment?.externalReference;
+
+  if (!localPaymentId) {
+    res.json({ received: true, ignored: 'missing_external_reference' });
+    return;
+  }
+
+  const [localPayment] = await db.select().from(payments).where(eq(payments.id, localPaymentId)).limit(1);
+  if (!localPayment) {
+    res.json({ received: true, ignored: 'payment_not_found' });
+    return;
+  }
+
+  const integration = await getPaymentIntegration(localPayment.professorUid);
+  const expectedToken = integration.webhookToken;
+  const providedToken = req.header('asaas-access-token');
+  if (expectedToken && providedToken !== expectedToken) {
+    res.status(401).json({ error: 'invalid_webhook_token' });
+    return;
+  }
+
+  switch (event.event) {
+    case 'PAYMENT_CONFIRMED':
+    case 'PAYMENT_RECEIVED':
+      await db.update(payments)
+        .set({ status: 'paid', paidAt: new Date() })
+        .where(eq(payments.id, localPayment.id));
+      break;
+    case 'PAYMENT_OVERDUE':
+      await db.update(payments)
+        .set({ status: 'overdue' })
+        .where(eq(payments.id, localPayment.id));
+      break;
+    case 'PAYMENT_DELETED':
+    case 'PAYMENT_REFUNDED':
+    case 'PAYMENT_CHARGEBACK_REQUESTED':
+      await db.update(payments)
+        .set({ status: 'pending' })
+        .where(eq(payments.id, localPayment.id));
+      break;
+  }
+
+  res.json({ received: true });
 });
 
 export default router;

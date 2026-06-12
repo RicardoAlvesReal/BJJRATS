@@ -5,19 +5,19 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { settings } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import {
+  DEFAULT_AUTO_SUSPEND_AFTER_DAYS,
+  financialSettingsKey,
+  normalizeAutoSuspendAfterDays,
+} from '../services/financialAutomation.js';
+import {
+  getPaymentIntegration,
+  savePaymentIntegration,
+  toPublicPaymentIntegration,
+} from '../services/paymentIntegrations.js';
+import { testConnection as testAsaasConnection } from '../services/asaas.js';
 
 const router = Router();
-const DEFAULT_AUTO_SUSPEND_AFTER_DAYS = 10;
-
-function financialSettingsKey(uid: string) {
-  return `professor:${uid}:financial:auto_suspend_after_days`;
-}
-
-function normalizeAutoSuspendAfterDays(value: unknown) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return DEFAULT_AUTO_SUSPEND_AFTER_DAYS;
-  return Math.max(0, Math.min(365, Math.floor(parsed)));
-}
 
 // ─── GET /api/settings/public ───────────────────────────────────────────────
 // Retorna configurações públicas (sem autenticação)
@@ -51,6 +51,45 @@ router.put('/financial', requireAuth, async (req: AuthRequest, res) => {
     autoSuspendAfterDays,
     defaultAutoSuspendAfterDays: DEFAULT_AUTO_SUSPEND_AFTER_DAYS,
   });
+});
+
+function paymentWebhookUrl(req: AuthRequest) {
+  const base = process.env.PUBLIC_API_URL || `${req.protocol}://${req.get('host')}`;
+  return `${base.replace(/\/$/, '')}/api/payments/asaas/webhook`;
+}
+
+router.get('/payment-integration', requireAuth, async (req: AuthRequest, res) => {
+  const integration = await getPaymentIntegration(req.userId!);
+  res.json({
+    ...toPublicPaymentIntegration(integration),
+    webhookUrl: paymentWebhookUrl(req),
+  });
+});
+
+router.put('/payment-integration', requireAuth, async (req: AuthRequest, res) => {
+  const integration = await savePaymentIntegration(req.userId!, req.body || {});
+  res.json({
+    ...toPublicPaymentIntegration(integration),
+    webhookUrl: paymentWebhookUrl(req),
+  });
+});
+
+router.post('/payment-integration/test', requireAuth, async (req: AuthRequest, res) => {
+  const stored = await getPaymentIntegration(req.userId!, true);
+  const apiKey = typeof req.body?.asaasApiKey === 'string' && req.body.asaasApiKey.trim()
+    ? req.body.asaasApiKey.trim()
+    : stored.asaasApiKey;
+  const sandbox = typeof req.body?.asaasSandbox === 'boolean'
+    ? req.body.asaasSandbox
+    : stored.asaasSandbox;
+
+  if (!apiKey) {
+    res.status(400).json({ error: 'Informe uma chave Asaas para testar.' });
+    return;
+  }
+
+  await testAsaasConnection({ apiKey, sandbox });
+  res.json({ success: true, sandbox });
 });
 
 export default router;

@@ -175,11 +175,20 @@ export interface Payment {
   id: string;
   studentUid: string;
   professorUid: string;
+  studentName?: string;
+  studentEmail?: string;
   month: string;
   amount: number;
   paid?: boolean;
+  status?: 'pending' | 'paid' | 'overdue' | 'suspended';
   paidAt?: string;
   dueDate?: string;
+  pixKey?: string;
+  pixLink?: string;
+  paymentLink?: string;
+  paymentProvider?: 'manual' | 'asaas';
+  asaasPaymentId?: string | null;
+  asaasError?: string | null;
   createdAt?: string;
 }
 
@@ -542,6 +551,37 @@ export const payments = {
 
 // ─── Enrollments ──────────────────────────────────────────────────────────────
 
+export interface FinancialSettings {
+  autoSuspendAfterDays: number;
+  defaultAutoSuspendAfterDays: number;
+}
+
+export interface PaymentIntegrationSettings {
+  provider: 'asaas';
+  manualPaymentsEnabled: boolean;
+  asaasEnabled: boolean;
+  asaasSandbox: boolean;
+  asaasBillingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+  hasAsaasApiKey: boolean;
+  asaasApiKeyLast4: string | null;
+  webhookToken: string;
+  webhookUrl: string;
+}
+
+export const financialSettings = {
+  get: () => apiFetch<FinancialSettings>('/api/settings/financial'),
+  update: (data: { autoSuspendAfterDays: number }) =>
+    apiFetch<FinancialSettings>('/api/settings/financial', { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+export const paymentIntegrations = {
+  get: () => apiFetch<PaymentIntegrationSettings>('/api/settings/payment-integration'),
+  update: (data: Partial<PaymentIntegrationSettings> & { asaasApiKey?: string; clearAsaasApiKey?: boolean }) =>
+    apiFetch<PaymentIntegrationSettings>('/api/settings/payment-integration', { method: 'PUT', body: JSON.stringify(data) }),
+  test: (data: { asaasApiKey?: string; asaasSandbox?: boolean }) =>
+    apiFetch<{ success: boolean; sandbox: boolean }>('/api/settings/payment-integration/test', { method: 'POST', body: JSON.stringify(data) }),
+};
+
 export const enrollments = {
   list: (params: { professorUid?: string; studentUid?: string } = {}) => {
     const q = new URLSearchParams(params as Record<string, string>).toString();
@@ -807,6 +847,8 @@ const api = {
   challenges,
   notifications,
   payments,
+  financialSettings,
+  paymentIntegrations,
   enrollments,
   academyRequests,
   subscriptions,

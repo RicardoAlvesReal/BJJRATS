@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import { BELT_COLORS, getLevelInfo, ACHIEVEMENTS, topTecnicas, calcStreak, LEVEL_COLORS, Training } from '@/lib/bjjrats-constants';
-import api, { type WhatsAppAutomationResult } from '@/lib/api';
+import api, { type PaymentIntegrationSettings, type WhatsAppAutomationResult } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -95,7 +95,7 @@ interface TrialRequest {
 
 type PanelTab = 'overview' | 'avisos' | 'feed' | 'events' | 'challenges' | 'members' | 'financial' | 'frequencia' | 'horarios' | 'relatorios' | 'promocao' | 'leads' | 'whatsapp';
 type PanelGroup = 'principal' | 'alunos' | 'gestao' | 'comunidade';
-type FinancialSubTab = 'enrollments' | 'payments' | 'suspensions';
+type FinancialSubTab = 'enrollments' | 'payments' | 'suspensions' | 'integrations';
 
 interface Enrollment {
   id: string;
@@ -127,6 +127,10 @@ interface Payment {
   paidAt?: string | null;
   status: 'pending' | 'paid' | 'overdue';
   pixKey?: string;
+  pixLink?: string;
+  paymentLink?: string;
+  paymentProvider?: 'manual' | 'asaas';
+  asaasError?: string | null;
   notifiedDue?: boolean;
   notifiedOverdue?: boolean;
   professorUid?: string;
@@ -555,6 +559,19 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [paymentMonthFilter, setPaymentMonthFilter] = useState(() => new Date().toISOString().slice(0, 7));
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'pending' | 'paid' | 'overdue'>('all');
+  const [autoSuspendAfterDays, setAutoSuspendAfterDays] = useState(10);
+  const [autoSuspendInput, setAutoSuspendInput] = useState('10');
+  const [savingFinancialSettings, setSavingFinancialSettings] = useState(false);
+  const [paymentIntegration, setPaymentIntegration] = useState<PaymentIntegrationSettings | null>(null);
+  const [paymentIntegrationForm, setPaymentIntegrationForm] = useState({
+    manualPaymentsEnabled: true,
+    asaasEnabled: false,
+    asaasSandbox: true,
+    asaasBillingType: 'PIX' as 'PIX' | 'BOLETO' | 'CREDIT_CARD',
+    asaasApiKey: '',
+  });
+  const [savingPaymentIntegration, setSavingPaymentIntegration] = useState(false);
+  const [testingPaymentIntegration, setTestingPaymentIntegration] = useState(false);
   // Tela de revisão/aprovação de cobranças
   const [showBillingReview, setShowBillingReview] = useState(false);
   const [billingReviewItems, setBillingReviewItems] = useState<{ enrollmentId: string; studentName: string; studentUid: string; studentEmail: string; amount: number; dueDate: string; pixKey: string; billingMode: string; excluded: boolean }[]>([]);
@@ -674,9 +691,91 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         });
       docs.sort((a, b) => a.studentName.localeCompare(b.studentName));
       setPayments(docs);
+      await loadEnrollments();
     } catch { setPayments([]); }
     finally { setPaymentsLoading(false); }
-  }, [user]);
+  }, [user, loadEnrollments]);
+
+  const loadFinancialSettings = useCallback(async () => {
+    try {
+      const settings = await api.financialSettings.get();
+      setAutoSuspendAfterDays(settings.autoSuspendAfterDays);
+      setAutoSuspendInput(String(settings.autoSuspendAfterDays));
+    } catch {
+      setAutoSuspendAfterDays(10);
+      setAutoSuspendInput('10');
+    }
+  }, []);
+
+  const saveFinancialSettings = useCallback(async () => {
+    const parsed = Number(autoSuspendInput);
+    const nextValue = Number.isFinite(parsed) ? Math.max(0, Math.min(365, Math.floor(parsed))) : 10;
+    setSavingFinancialSettings(true);
+    try {
+      const settings = await api.financialSettings.update({ autoSuspendAfterDays: nextValue });
+      setAutoSuspendAfterDays(settings.autoSuspendAfterDays);
+      setAutoSuspendInput(String(settings.autoSuspendAfterDays));
+      toast.success(settings.autoSuspendAfterDays > 0
+        ? `Suspensão automática configurada para ${settings.autoSuspendAfterDays} dia(s)`
+        : 'Suspensão automática desativada');
+      await loadPayments(paymentMonthFilter);
+    } catch {
+      toast.error('Erro ao salvar configuração de suspensão');
+    } finally {
+      setSavingFinancialSettings(false);
+    }
+  }, [autoSuspendInput, loadPayments, paymentMonthFilter]);
+
+  const applyPaymentIntegrationState = useCallback((settings: PaymentIntegrationSettings) => {
+    setPaymentIntegration(settings);
+    setPaymentIntegrationForm({
+      manualPaymentsEnabled: settings.manualPaymentsEnabled,
+      asaasEnabled: settings.asaasEnabled,
+      asaasSandbox: settings.asaasSandbox,
+      asaasBillingType: settings.asaasBillingType,
+      asaasApiKey: '',
+    });
+  }, []);
+
+  const loadPaymentIntegration = useCallback(async () => {
+    try {
+      const settings = await api.paymentIntegrations.get();
+      applyPaymentIntegrationState(settings);
+    } catch {
+      setPaymentIntegration(null);
+    }
+  }, [applyPaymentIntegrationState]);
+
+  const savePaymentIntegration = useCallback(async () => {
+    setSavingPaymentIntegration(true);
+    try {
+      const settings = await api.paymentIntegrations.update({
+        ...paymentIntegrationForm,
+        asaasApiKey: paymentIntegrationForm.asaasApiKey.trim() || undefined,
+      });
+      applyPaymentIntegrationState(settings);
+      toast.success(settings.asaasEnabled ? 'Integração Asaas salva' : 'Pagamentos manuais mantidos');
+    } catch {
+      toast.error('Erro ao salvar integração de pagamentos');
+    } finally {
+      setSavingPaymentIntegration(false);
+    }
+  }, [applyPaymentIntegrationState, paymentIntegrationForm]);
+
+  const testPaymentIntegration = useCallback(async () => {
+    setTestingPaymentIntegration(true);
+    try {
+      await api.paymentIntegrations.test({
+        asaasApiKey: paymentIntegrationForm.asaasApiKey.trim() || undefined,
+        asaasSandbox: paymentIntegrationForm.asaasSandbox,
+      });
+      toast.success('Conexão com Asaas validada');
+    } catch {
+      toast.error('Não foi possível validar a chave Asaas');
+    } finally {
+      setTestingPaymentIntegration(false);
+    }
+  }, [paymentIntegrationForm.asaasApiKey, paymentIntegrationForm.asaasSandbox]);
 
   const generateMonthlyPayments = useCallback(async (month: string, silent = false) => {
     if (!user || enrollments.length === 0) return;
@@ -704,7 +803,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       }
       const alreadyExists = existingPayments.some(p => p.enrollmentId === enr.id && p.month === month);
       if (alreadyExists) continue;
-      await api.payments.create({
+      const createdPayment = await api.payments.create({
         enrollmentId: enr.id,
         professorUid: user.uid,
         studentUid: enr.studentUid,
@@ -721,12 +820,16 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         billingMode,
       });
       const dueDateFormatted = new Date(dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
+      const paymentLink = createdPayment.paymentLink || createdPayment.pixLink;
+      const paymentText = paymentLink && /^https?:\/\//.test(paymentLink)
+        ? `Acesse o link de pagamento: ${paymentLink}`
+        : 'Pague via PIX para continuar treinando.';
       try {
         await api.notifications.create({
           toUid: enr.studentUid,
           type: 'payment_due',
-          message: `💳 Nova mensalidade gerada — R$ ${enr.monthlyFee.toFixed(2)} — vence em ${dueDateFormatted}. Pague via PIX para continuar treinando.`,
-          data: { amount: enr.monthlyFee, dueDate, pixKey: enr.pixKey || '' },
+          message: `💳 Nova mensalidade gerada — R$ ${enr.monthlyFee.toFixed(2)} — vence em ${dueDateFormatted}. ${paymentText}`,
+          data: { amount: enr.monthlyFee, dueDate, pixKey: enr.pixKey || '', paymentLink },
           read: false,
         });
       } catch { /* notificação não crítica */ }
@@ -791,7 +894,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     for (const item of toGenerate) {
       const alreadyExists = existingPayments.some(p => p.enrollmentId === item.enrollmentId && p.month === paymentMonthFilter);
       if (alreadyExists) continue;
-      await api.payments.create({
+      const createdPayment = await api.payments.create({
         enrollmentId: item.enrollmentId,
         professorUid: user.uid,
         studentUid: item.studentUid,
@@ -808,12 +911,16 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         billingMode: item.billingMode,
       });
       const dueDateFormatted = new Date(item.dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
+      const paymentLink = createdPayment.paymentLink || createdPayment.pixLink;
+      const paymentText = paymentLink && /^https?:\/\//.test(paymentLink)
+        ? `Acesse o link de pagamento: ${paymentLink}`
+        : 'Pague via PIX para continuar treinando.';
       const pushTitle = '💳 Nova mensalidade gerada';
-      const pushBody = `R$ ${item.amount.toFixed(2)} — vence em ${dueDateFormatted}. Pague via PIX para continuar treinando.`;
+      const pushBody = `R$ ${item.amount.toFixed(2)} — vence em ${dueDateFormatted}. ${paymentText}`;
       try {
         await api.notifications.create({
           toUid: item.studentUid, type: 'payment_due', message: `${pushTitle} — ${pushBody}`,
-          data: { amount: item.amount, dueDate: item.dueDate, pixKey: item.pixKey }, read: false,
+          data: { amount: item.amount, dueDate: item.dueDate, pixKey: item.pixKey, paymentLink }, read: false,
         });
       } catch { /* notificação não crítica */ }
       created++;
@@ -912,6 +1019,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   // Carregar dados financeiros ao montar (para exibir resumo na visão geral)
   useEffect(() => { loadEnrollments(); }, [loadEnrollments]);
   useEffect(() => { loadPayments(paymentMonthFilter); }, [loadPayments, paymentMonthFilter]);
+  useEffect(() => { loadFinancialSettings(); }, [loadFinancialSettings]);
+  useEffect(() => { loadPaymentIntegration(); }, [loadPaymentIntegration]);
 
   useEffect(() => {
     if (activeTab === 'financial') {
@@ -2715,9 +2824,9 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
 
           {/* Sub-abas */}
           <div style={{ display: 'flex', borderBottom: '1px solid #1E1E1E' }}>
-            {(['enrollments', 'payments', 'suspensions'] as FinancialSubTab[]).map(tab => {
-              const labels: Record<FinancialSubTab, string> = { enrollments: 'MATRÍCULAS', payments: 'MENSALIDADES', suspensions: 'SUSPENSÕES' };
-              const icons: Record<FinancialSubTab, string> = { enrollments: '📝', payments: '💳', suspensions: '🚫' };
+            {(['enrollments', 'payments', 'suspensions', 'integrations'] as FinancialSubTab[]).map(tab => {
+              const labels: Record<FinancialSubTab, string> = { enrollments: 'MATRÍCULAS', payments: 'MENSALIDADES', suspensions: 'SUSPENSÕES', integrations: 'INTEGRAÇÕES' };
+              const icons: Record<FinancialSubTab, string> = { enrollments: '📝', payments: '💳', suspensions: '🚫', integrations: '🔌' };
               const isActive = financialSubTab === tab;
               return (
                 <button key={tab} onClick={() => setFinancialSubTab(tab)} style={{ flex: 1, padding: '0.75rem 0.25rem', background: 'transparent', border: 'none', borderBottom: isActive ? '2px solid #CC0000' : '2px solid transparent', color: isActive ? '#FFFFFF' : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
@@ -2892,6 +3001,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                 payments.filter(p => paymentStatusFilter === 'all' || p.status === paymentStatusFilter).map(payment => {
                   const statusColor = payment.status === 'paid' ? '#4CAF50' : payment.status === 'overdue' ? '#CC0000' : '#FF8C00';
                   const statusLabel = payment.status === 'paid' ? 'PAGO' : payment.status === 'overdue' ? 'ATRASADO' : 'PENDENTE';
+                  const paymentAccess = payment.paymentLink || payment.pixLink || payment.pixKey;
+                  const paymentAccessIsUrl = Boolean(paymentAccess && /^https?:\/\//.test(paymentAccess));
                   return (
                     <div key={payment.id} style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: `3px solid ${statusColor}`, padding: '0.875rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -2910,8 +3021,16 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         ) : (
                           <button onClick={() => handleRevertPaid(payment)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.375rem', cursor: 'pointer' }}>ESTORNAR</button>
                         )}
-                        {payment.pixKey && (
-                          <button onClick={() => { navigator.clipboard.writeText(payment.pixKey!); toast.success('PIX copiado!'); }} style={{ background: 'transparent', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.375rem 0.5rem', cursor: 'pointer' }}>PIX</button>
+                        {paymentAccess && (
+                          <button
+                            onClick={() => {
+                              if (paymentAccessIsUrl) window.open(paymentAccess, '_blank', 'noopener,noreferrer');
+                              else navigator.clipboard.writeText(paymentAccess).then(() => toast.success('PIX copiado!'));
+                            }}
+                            style={{ background: 'transparent', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.375rem 0.5rem', cursor: 'pointer' }}
+                          >
+                            {paymentAccessIsUrl ? 'LINK' : 'PIX'}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -2921,12 +3040,103 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
             </div>
           )}
 
+          {financialSubTab === 'integrations' && (
+            <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              <div style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: '3px solid #4CAF50', padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.95rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ASAAS PARTICULAR</p>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.72rem', color: '#777', marginTop: '0.25rem', lineHeight: 1.45 }}>O dinheiro cai direto na conta Asaas conectada aqui. Pagamentos manuais continuam disponiveis.</p>
+                  </div>
+                  <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', color: paymentIntegration?.asaasEnabled && paymentIntegration?.hasAsaasApiKey ? '#4CAF50' : '#FF8C00', border: `1px solid ${paymentIntegration?.asaasEnabled && paymentIntegration?.hasAsaasApiKey ? '#4CAF50' : '#FF8C00'}`, padding: '0.2rem 0.5rem', textTransform: 'uppercase' }}>
+                    {paymentIntegration?.asaasEnabled && paymentIntegration?.hasAsaasApiKey ? 'CONECTADO' : 'MANUAL'}
+                  </span>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={paymentIntegrationForm.asaasEnabled} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, asaasEnabled: e.target.checked }))} />
+                  <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.78rem', color: '#EEE', textTransform: 'uppercase' }}>Usar Asaas automatico para novas cobrancas</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={paymentIntegrationForm.manualPaymentsEnabled} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, manualPaymentsEnabled: e.target.checked }))} />
+                  <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.78rem', color: '#EEE', textTransform: 'uppercase' }}>Manter confirmacao manual como alternativa</span>
+                </label>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.625rem' }}>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>AMBIENTE</p>
+                    <select value={paymentIntegrationForm.asaasSandbox ? 'sandbox' : 'production'} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, asaasSandbox: e.target.value === 'sandbox' }))} style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.82rem', padding: '0.625rem', outline: 'none' }}>
+                      <option value="sandbox">Sandbox / testes</option>
+                      <option value="production">Producao</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>COBRANCA</p>
+                    <select value={paymentIntegrationForm.asaasBillingType} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, asaasBillingType: e.target.value as 'PIX' | 'BOLETO' | 'CREDIT_CARD' }))} style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.82rem', padding: '0.625rem', outline: 'none' }}>
+                      <option value="PIX">PIX</option>
+                      <option value="BOLETO">Boleto</option>
+                      <option value="CREDIT_CARD">Cartao</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>API KEY ASAAS</p>
+                  <input type="password" value={paymentIntegrationForm.asaasApiKey} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, asaasApiKey: e.target.value }))} placeholder={paymentIntegration?.hasAsaasApiKey ? `Chave salva terminando em ${paymentIntegration.asaasApiKeyLast4}` : 'Cole a chave da API Asaas'} style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.82rem', padding: '0.625rem', outline: 'none' }} />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button onClick={testPaymentIntegration} disabled={testingPaymentIntegration || (!paymentIntegrationForm.asaasApiKey.trim() && !paymentIntegration?.hasAsaasApiKey)} style={{ flex: '1 1 130px', background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.72rem', textTransform: 'uppercase', padding: '0.625rem', cursor: testingPaymentIntegration ? 'not-allowed' : 'pointer', opacity: testingPaymentIntegration ? 0.65 : 1 }}>{testingPaymentIntegration ? 'TESTANDO...' : 'TESTAR CONEXAO'}</button>
+                  <button onClick={savePaymentIntegration} disabled={savingPaymentIntegration} style={{ flex: '1 1 130px', background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.72rem', textTransform: 'uppercase', padding: '0.625rem', cursor: savingPaymentIntegration ? 'not-allowed' : 'pointer', opacity: savingPaymentIntegration ? 0.65 : 1 }}>{savingPaymentIntegration ? 'SALVANDO...' : 'SALVAR INTEGRACAO'}</button>
+                </div>
+              </div>
+
+              {paymentIntegration && (
+                <div style={{ background: '#0A0A0A', border: '1px solid #222', padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.82rem', color: '#FFF', textTransform: 'uppercase' }}>WEBHOOK ASAAS</p>
+                  <button onClick={() => { navigator.clipboard.writeText(paymentIntegration.webhookUrl); toast.success('URL do webhook copiada'); }} style={{ background: '#111', border: '1px solid #2A2A2A', color: '#AAA', fontFamily: 'Barlow, sans-serif', fontSize: '0.72rem', padding: '0.625rem', cursor: 'pointer', textAlign: 'left', wordBreak: 'break-all' }}>URL: {paymentIntegration.webhookUrl}</button>
+                  <button onClick={() => { navigator.clipboard.writeText(paymentIntegration.webhookToken); toast.success('Token do webhook copiado'); }} style={{ background: '#111', border: '1px solid #2A2A2A', color: '#AAA', fontFamily: 'Barlow, sans-serif', fontSize: '0.72rem', padding: '0.625rem', cursor: 'pointer', textAlign: 'left', wordBreak: 'break-all' }}>TOKEN: {paymentIntegration.webhookToken}</button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ─── Sub-aba: SUSPENSÕES ────────────────────────────────────────────────────────────────────── */}
           {financialSubTab === 'suspensions' && (
             <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ background: '#1A0A00', border: '1px solid #3A1A00', padding: '0.75rem', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
                 <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#25D366', lineHeight: 1.5 }}>A suspensão é privada — o aluno recebe apenas uma mensagem via WhatsApp. Nenhuma notificação aparece no app do aluno.</p>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#25D366', lineHeight: 1.5 }}>A suspensao envia notificacao no app e WhatsApp automatico quando o professor estiver conectado.</p>
+              </div>
+
+              <div style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: '3px solid #CC0000', padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.05em' }}>SUSPENSAO AUTOMATICA</p>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.72rem', color: '#666', marginTop: '0.25rem', lineHeight: 1.45 }}>
+                    Defina quantos dias de atraso sao permitidos antes do sistema suspender a matricula automaticamente. Use 0 para desativar.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={365}
+                    value={autoSuspendInput}
+                    onChange={e => setAutoSuspendInput(e.target.value)}
+                    style={{ flex: '1 1 120px', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', padding: '0.625rem 0.75rem', outline: 'none' }}
+                  />
+                  <button
+                    onClick={saveFinancialSettings}
+                    disabled={savingFinancialSettings}
+                    style={{ flex: '1 1 140px', background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.625rem 0.75rem', cursor: savingFinancialSettings ? 'not-allowed' : 'pointer', opacity: savingFinancialSettings ? 0.65 : 1 }}
+                  >
+                    {savingFinancialSettings ? 'SALVANDO...' : 'SALVAR DIAS'}
+                  </button>
+                </div>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: autoSuspendAfterDays > 0 ? '#FF8C00' : '#555', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {autoSuspendAfterDays > 0 ? `ATUAL: SUSPENDER COM ${autoSuspendAfterDays} DIA(S) DE ATRASO` : 'ATUAL: SUSPENSAO AUTOMATICA DESATIVADA'}
+                </p>
               </div>
 
               {enrollmentsLoading ? (
@@ -3247,7 +3457,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                       {!suspendReason.trim() && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#CC0000', marginTop: '0.25rem' }}>O motivo é obrigatório</p>}
                     </div>
                     <div style={{ background: '#1A0A00', border: '1px solid #3A1A00', padding: '0.625rem' }}>
-                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#25D366', lineHeight: 1.5 }}>📱 O WhatsApp será aberto com uma mensagem privada para o aluno. Nenhuma notificação aparecerá no app.</p>
+                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#25D366', lineHeight: 1.5 }}>A suspensão cria uma notificação no app e tenta enviar WhatsApp automático ao aluno.</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button onClick={() => { setShowSuspendModal(null); setSuspendReason(''); }} style={{ flex: 1, background: 'transparent', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem', cursor: 'pointer' }}>CANCELAR</button>
@@ -3260,7 +3470,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#CC0000', textTransform: 'uppercase', marginBottom: '0.375rem' }}>MOTIVO REGISTRADO:</p>
                       <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#FFF', fontStyle: 'italic' }}>"{suspendReason}"</p>
                     </div>
-                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#AAA', lineHeight: 1.6 }}>Tem certeza? Esta ação suspenderá a matrícula de <strong style={{ color: '#FFF' }}>{showSuspendModal.studentName}</strong> e abrirá o WhatsApp com notificação privada.</p>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#AAA', lineHeight: 1.6 }}>Tem certeza? Esta ação suspenderá a matrícula de <strong style={{ color: '#FFF' }}>{showSuspendModal.studentName}</strong> e enviará a notificação automática.</p>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button onClick={() => setSuspendConfirmStep(1)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem', cursor: 'pointer' }}>VOLTAR</button>
                       <button onClick={() => handleSuspend(showSuspendModal, suspendReason)} disabled={suspending} style={{ flex: 2, background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem', cursor: suspending ? 'not-allowed' : 'pointer', opacity: suspending ? 0.6 : 1 }}>
@@ -3295,6 +3505,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
 
           profile={profile}
           enrollments={enrollments}
+          autoSuspendAfterDays={autoSuspendAfterDays}
           onSuspend={(enrollmentId) => {
             const enr = enrollments.find(e => e.id === enrollmentId);
             if (enr) setShowSuspendModal(enr);
@@ -5051,8 +5262,8 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
 
 // ── RelatoriosTab ─────────────────────────────────────────────────────────────
 // Relatórios mensais: alunos em atraso financeiro e baixa frequência
-// Avisos automáticos por email (2/5/7 dias de atraso) e incentivo de frequência
-// Alertas ao professor com 10/20 dias de atraso + botão SUSPENDER
+// Avisos automaticos por atraso configuravel e incentivo de frequencia
+// Alertas ao professor respeitando o limite de suspensao automatica
 
 interface RelatorioAluno {
   enrollmentId: string;
@@ -5078,12 +5289,14 @@ function RelatoriosTab({
   accentColor,
   profile,
   enrollments,
+  autoSuspendAfterDays,
   onSuspend,
 }: {
   professorUid: string;
   accentColor: string;
   profile: any;
   enrollments: any[];
+  autoSuspendAfterDays: number;
   onSuspend: (enrollmentId: string) => void;
 }) {
   const [alunos, setAlunos] = useState<RelatorioAluno[]>([]);
@@ -5218,11 +5431,16 @@ function RelatoriosTab({
   const handleSendOverdueWhatsApp = async (aluno: RelatorioAluno) => {
     try {
       const dueDate = new Date(aluno.dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
+      const suspensionNotice = autoSuspendAfterDays > 0
+        ? aluno.daysOverdue >= autoSuspendAfterDays
+          ? `O limite configurado e de ${autoSuspendAfterDays} dia(s) de atraso. Regularize sua situacao para evitar ou reverter a suspensao automatica.`
+          : `Regularize antes de completar ${autoSuspendAfterDays} dia(s) de atraso para evitar a suspensao automatica.`
+        : 'A suspensao automatica esta desativada, mas regularize para manter sua matricula em dia.';
       const notification = await api.notifications.create({
         toUid: aluno.studentUid,
         type: 'payment_overdue',
-        message: `Mensalidade em atraso ha ${aluno.daysOverdue} dia(s). Valor em aberto: R$ ${aluno.amountDue.toFixed(2)}. Vencimento: ${dueDate}. Regularize para continuar treinando.`,
-        data: { amount: aluno.amountDue, dueDate: aluno.dueDate, daysOverdue: aluno.daysOverdue, pixKey: profile?.pixKey || '' },
+        message: `Mensalidade em atraso ha ${aluno.daysOverdue} dia(s). Valor em aberto: R$ ${aluno.amountDue.toFixed(2)}. Vencimento: ${dueDate}. ${suspensionNotice}`,
+        data: { amount: aluno.amountDue, dueDate: aluno.dueDate, daysOverdue: aluno.daysOverdue, autoSuspendAfterDays, pixKey: profile?.pixKey || '' },
         read: false,
       });
       toast.success(getWhatsAppAutomationToast(notification.whatsapp, `Aviso enviado para ${aluno.studentName}`));
@@ -5252,11 +5470,16 @@ function RelatoriosTab({
     try {
       const results = await Promise.all(targets.map(a => {
         const dueDate = new Date(a.dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
+        const suspensionNotice = autoSuspendAfterDays > 0
+          ? a.daysOverdue >= autoSuspendAfterDays
+            ? `O limite configurado e de ${autoSuspendAfterDays} dia(s) de atraso. Regularize sua situacao para evitar ou reverter a suspensao automatica.`
+            : `Regularize antes de completar ${autoSuspendAfterDays} dia(s) de atraso para evitar a suspensao automatica.`
+          : 'A suspensao automatica esta desativada, mas regularize para manter sua matricula em dia.';
         return api.notifications.create({
           toUid: a.studentUid,
           type: 'payment_overdue',
-          message: `Mensalidade em atraso ha ${a.daysOverdue} dia(s). Valor em aberto: R$ ${a.amountDue.toFixed(2)}. Vencimento: ${dueDate}. Regularize para continuar treinando.`,
-          data: { amount: a.amountDue, dueDate: a.dueDate, daysOverdue: a.daysOverdue, pixKey: profile?.pixKey || '' },
+          message: `Mensalidade em atraso ha ${a.daysOverdue} dia(s). Valor em aberto: R$ ${a.amountDue.toFixed(2)}. Vencimento: ${dueDate}. ${suspensionNotice}`,
+          data: { amount: a.amountDue, dueDate: a.dueDate, daysOverdue: a.daysOverdue, autoSuspendAfterDays, pixKey: profile?.pixKey || '' },
           read: false,
         });
       }));
@@ -5412,8 +5635,14 @@ function RelatoriosTab({
     .filter(a => a.trainingsThisMonth < lowFreqThreshold && a.enrollmentStatus === 'active')
     .sort((a, b) => a.trainingsThisMonth - b.trainingsThisMonth);
 
-  const alertas10 = alunosAtraso.filter(a => a.daysOverdue >= 10 && a.daysOverdue < 20);
-  const alertas20 = alunosAtraso.filter(a => a.daysOverdue >= 20);
+  const suspensionAlertThreshold = autoSuspendAfterDays > 0 ? autoSuspendAfterDays : 999999;
+  const attentionAlertThreshold = autoSuspendAfterDays > 1 ? Math.max(1, Math.floor(autoSuspendAfterDays / 2)) : 1;
+  const alertas10 = autoSuspendAfterDays > 0
+    ? alunosAtraso.filter(a => a.daysOverdue >= attentionAlertThreshold && a.daysOverdue < suspensionAlertThreshold)
+    : [];
+  const alertas20 = autoSuspendAfterDays > 0
+    ? alunosAtraso.filter(a => a.daysOverdue >= suspensionAlertThreshold)
+    : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -5433,7 +5662,7 @@ function RelatoriosTab({
             <div style={{ background: '#2A0000', border: '1px solid #CC0000', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', color: '#CC0000', textTransform: 'uppercase' }}>
-                  ⚠️ {alertas20.length} ALUNO(S) COM 20+ DIAS DE ATRASO
+                  ⚠️ {alertas20.length} ALUNO(S) COM {suspensionAlertThreshold}+ DIAS DE ATRASO
                 </p>
                 <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', marginTop: '0.25rem' }}>
                   {alertas20.map(a => a.studentName).join(', ')}
@@ -5446,7 +5675,7 @@ function RelatoriosTab({
             <div style={{ background: '#1A1000', border: '1px solid #FF8C00', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', color: '#FF8C00', textTransform: 'uppercase' }}>
-                  🔔 {alertas10.length} ALUNO(S) COM 10–19 DIAS DE ATRASO
+                  🔔 {alertas10.length} ALUNO(S) COM {attentionAlertThreshold}-{suspensionAlertThreshold - 1} DIAS DE ATRASO
                 </p>
                 <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', marginTop: '0.25rem' }}>
                   {alertas10.map(a => a.studentName).join(', ')}
@@ -5495,7 +5724,7 @@ function RelatoriosTab({
               {alunosAtraso.length === 0 ? (
                 <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', textAlign: 'center', padding: '2rem' }}>✅ Nenhum aluno em atraso este mês</p>
               ) : alunosAtraso.map(aluno => {
-                const overdueColor = aluno.daysOverdue >= 20 ? '#CC0000' : aluno.daysOverdue >= 10 ? '#FF8C00' : '#FFD700';
+                const overdueColor = aluno.daysOverdue >= suspensionAlertThreshold ? '#CC0000' : aluno.daysOverdue >= attentionAlertThreshold ? '#FF8C00' : '#FFD700';
                 const isSuspended = aluno.enrollmentStatus === 'suspended';
                 return (
                   <div key={aluno.enrollmentId} style={{ ...S.card, borderLeft: `3px solid ${overdueColor}` }}>
@@ -5524,7 +5753,7 @@ function RelatoriosTab({
                         style={S.btn('#25D366', isSuspended)}>
                         📱 AVISAR NO WHATSAPP
                       </button>
-                      {aluno.daysOverdue >= 10 && !isSuspended && (
+                      {autoSuspendAfterDays > 0 && aluno.daysOverdue >= autoSuspendAfterDays && !isSuspended && (
                         <button
                           onClick={() => onSuspend(aluno.enrollmentId)}
                           style={S.btn('#CC0000')}>
