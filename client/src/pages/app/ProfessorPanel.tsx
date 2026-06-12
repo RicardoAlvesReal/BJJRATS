@@ -7,8 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import { BELT_COLORS, getLevelInfo, ACHIEVEMENTS, topTecnicas, calcStreak, LEVEL_COLORS, Training } from '@/lib/bjjrats-constants';
-import api from '@/lib/api';
-import { sendOverdueWhatsApp, sendSuspendWhatsApp, sendLowFrequencyWhatsApp } from '@/lib/whatsappService';
+import api, { type WhatsAppAutomationResult } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -208,118 +207,134 @@ const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: Lucide
   { id: 'whatsapp', label: 'WHATSAPP', group: 'gestao', icon: MessageSquare },
 ];
 
+const WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
+
+function formatAttemptRemaining(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function getWhatsAppAutomationToast(
+  whatsapp?: WhatsAppAutomationResult,
+  baseMessage = 'Notificação enviada',
+) {
+  if (whatsapp?.enabled && whatsapp.recipients > 0) {
+    const failedLabel = whatsapp.failed > 0 ? ` (${whatsapp.failed} falhou)` : '';
+    return `${baseMessage}! WhatsApp: ${whatsapp.sent}/${whatsapp.recipients}${failedLabel}`;
+  }
+  if (whatsapp?.enabled) {
+    return `${baseMessage} no app. Nenhum telefone encontrado para WhatsApp.`;
+  }
+  return `${baseMessage} no app. Conecte o WhatsApp para envio automático.`;
+}
+
 function WhatsAppTab() {
   const [status, setStatus] = useState<{ connected: boolean; instance: { id: string; status: string; phone?: string | null } | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [qrcode, setQrcode] = useState<string | null>(null);
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [qrCodeText, setQrCodeText] = useState<string | null>(null);
-  const [pairingPhone, setPairingPhone] = useState('');
-  const [generatingPairingCode, setGeneratingPairingCode] = useState(false);
   const [polling, setPolling] = useState(false);
-  const connectionModeRef = useRef<'qr' | 'phone'>('qr');
-  const connectionPhoneRef = useRef('');
-  const refreshingConnectionRef = useRef(false);
-  const lastConnectionRefreshRef = useRef(0);
+  const [attemptExpired, setAttemptExpired] = useState(false);
+  const [attemptStartedAt, setAttemptStartedAt] = useState<number | null>(null);
+  const [attemptTimeoutMs, setAttemptTimeoutMs] = useState(WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
+  const [attemptRemainingMs, setAttemptRemainingMs] = useState(WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
+
+  const expireConnectionAttempt = useCallback((showToast = true) => {
+    setStatus({ connected: false, instance: null });
+    setQrcode(null);
+    setQrCodeText(null);
+    setPolling(false);
+    setConnecting(false);
+    setAttemptExpired(true);
+    setAttemptStartedAt(null);
+    setAttemptRemainingMs(0);
+    if (showToast) {
+      toast.error('Tentativa expirada. Gere uma nova conexao.');
+    }
+  }, []);
 
   const loadStatus = useCallback(async () => {
     try {
       const res = await api.whatsapp.status();
+      setAttemptTimeoutMs(res.attemptTimeoutMs ?? WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
+      if (res.expired) {
+        expireConnectionAttempt(false);
+        return;
+      }
       setStatus(res);
       setQrcode(null);
-      setPairingCode(null);
       setQrCodeText(null);
+      setAttemptExpired(false);
+      setAttemptStartedAt(null);
     } catch {
       setStatus(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [expireConnectionAttempt]);
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  useEffect(() => {
+    if (!polling || !attemptStartedAt) return;
+
+    const tick = () => {
+      setAttemptRemainingMs(Math.max(0, attemptStartedAt + attemptTimeoutMs - Date.now()));
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [attemptStartedAt, attemptTimeoutMs, polling]);
 
   useEffect(() => {
     if (!polling) return;
     const interval = setInterval(async () => {
       try {
         const res = await api.whatsapp.status();
+        setAttemptTimeoutMs(res.attemptTimeoutMs ?? WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
+        if (res.expired) {
+          expireConnectionAttempt();
+          return;
+        }
         if (res.connected) {
           setStatus(res);
           setQrcode(null);
-          setPairingCode(null);
           setQrCodeText(null);
           setPolling(false);
           setConnecting(false);
+          setAttemptExpired(false);
+          setAttemptStartedAt(null);
           toast.success('WhatsApp conectado!');
           return;
         }
 
-        const shouldRefresh = Date.now() - lastConnectionRefreshRef.current > 12000;
-        if (shouldRefresh && !refreshingConnectionRef.current) {
-          refreshingConnectionRef.current = true;
-          lastConnectionRefreshRef.current = Date.now();
-          try {
-            const current = await api.whatsapp.connectionCode(
-              connectionModeRef.current === 'phone' ? connectionPhoneRef.current : undefined,
-            );
-            setQrcode(current.qrcode ?? null);
-            setPairingCode(current.pairingCode ?? null);
-            setQrCodeText(current.qrCodeText ?? null);
-          } catch {
-            // The next status poll will try again.
-          } finally {
-            refreshingConnectionRef.current = false;
-          }
-        }
       } catch { /* silencioso */ }
     }, 3000);
     return () => clearInterval(interval);
-  }, [polling]);
+  }, [expireConnectionAttempt, polling]);
 
   const handleConnect = async () => {
     setConnecting(true);
-    connectionModeRef.current = 'qr';
-    connectionPhoneRef.current = '';
-    lastConnectionRefreshRef.current = Date.now();
+    setAttemptExpired(false);
     try {
       const res = await api.whatsapp.connect();
       setQrcode(res.qrcode ?? null);
-      setPairingCode(res.pairingCode ?? null);
       setQrCodeText(res.qrCodeText ?? null);
+      const timeoutMs = res.attemptTimeoutMs ?? WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS;
+      setAttemptTimeoutMs(timeoutMs);
+      setAttemptStartedAt(Date.now());
+      setAttemptRemainingMs(timeoutMs);
       setPolling(true);
-      if (!res.qrcode && !res.pairingCode) {
-        toast.error('A Evolution API criou a instância, mas não retornou QR Code nem código.');
+      if (!res.qrcode) {
+        toast.error('A Evolution API criou a instância, mas não retornou QR Code.');
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao conectar WhatsApp');
       setConnecting(false);
-    }
-  };
-
-  const handleGeneratePairingCode = async () => {
-    const phone = pairingPhone.replace(/\D/g, '');
-    if (phone.length < 10) {
-      toast.error('Informe o WhatsApp com DDD');
-      return;
-    }
-    setGeneratingPairingCode(true);
-    connectionModeRef.current = 'phone';
-    connectionPhoneRef.current = phone;
-    lastConnectionRefreshRef.current = Date.now();
-    try {
-      const res = await api.whatsapp.pairingCode(phone);
-      setQrcode(res.qrcode ?? qrcode);
-      setPairingCode(res.pairingCode ?? null);
-      setQrCodeText(res.qrCodeText ?? qrCodeText);
-      setPolling(true);
-      if (res.pairingCode) {
-        toast.success('Código de pareamento gerado');
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao gerar código');
-    } finally {
-      setGeneratingPairingCode(false);
     }
   };
 
@@ -329,11 +344,10 @@ function WhatsAppTab() {
       await api.whatsapp.disconnect();
       setStatus({ connected: false, instance: null });
       setQrcode(null);
-      setPairingCode(null);
       setQrCodeText(null);
       setPolling(false);
-      connectionPhoneRef.current = '';
-      connectionModeRef.current = 'qr';
+      setAttemptExpired(false);
+      setAttemptStartedAt(null);
       toast.success('WhatsApp desconectado');
     } catch {
       toast.error('Erro ao desconectar');
@@ -373,7 +387,21 @@ function WhatsAppTab() {
             </p>
           </div>
         </div>
-      ) : qrcode || pairingCode || qrCodeText ? (
+      ) : attemptExpired ? (
+        <div style={{ background: '#180F06', border: '1px solid #5A2F08', borderLeft: '3px solid #F59E0B', padding: '1.25rem', textAlign: 'center' }}>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#F59E0B', textTransform: 'uppercase', margin: 0 }}>TENTATIVA EXPIRADA</p>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#A98758', marginTop: '0.5rem', marginBottom: '1rem', lineHeight: 1.5 }}>
+            A instancia anterior foi removida por seguranca. Reinicie a tentativa para gerar um novo QR Code.
+          </p>
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
+            style={{ background: '#F59E0B', border: 'none', color: '#111', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.75rem 1.25rem', cursor: connecting ? 'not-allowed' : 'pointer', opacity: connecting ? 0.65 : 1, width: '100%' }}
+          >
+            {connecting ? 'RESETANDO...' : 'RESETAR TENTATIVA'}
+          </button>
+        </div>
+      ) : qrcode || qrCodeText ? (
         <div style={{ background: '#111', border: '1px solid #222', padding: '1.5rem', textAlign: 'center' }}>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#FFF', textTransform: 'uppercase', marginBottom: '1rem' }}>ESCANEIE O QR CODE</p>
           <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', marginBottom: '1rem' }}>Abra o WhatsApp → Dispositivos conectados → Conectar dispositivo</p>
@@ -381,36 +409,12 @@ function WhatsAppTab() {
             <img src={qrcode} alt="QR Code" style={{ maxWidth: '280px', width: '100%', border: '4px solid #FFF', borderRadius: '8px' }} />
           ) : (
             <div style={{ background: '#1A1A1A', border: '1px solid #333', padding: '1rem', color: '#888', fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem' }}>
-              QR Code indisponivel. Use o codigo de pareamento abaixo.
+              QR Code indisponivel. Reinicie a tentativa para gerar um novo QR Code.
             </div>
           )}
-          {pairingCode ? (
-            <div style={{ marginTop: '1rem', background: '#0A1A0A', border: '1px solid #25D36655', padding: '0.875rem' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#25D366', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>CODIGO DE PAREAMENTO</p>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.6rem', color: '#FFF', letterSpacing: '0.12em', margin: 0 }}>{pairingCode}</p>
-            </div>
-          ) : (
-            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'left' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>GERAR CODIGO COM NUMERO</p>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <input
-                  type="tel"
-                  value={pairingPhone}
-                  onChange={e => setPairingPhone(e.target.value)}
-                  placeholder="Ex: 11999999999"
-                  style={{ flex: '1 1 180px', background: '#0D0D0D', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.85rem', padding: '0.75rem', outline: 'none' }}
-                />
-                <button
-                  onClick={handleGeneratePairingCode}
-                  disabled={generatingPairingCode}
-                  style={{ flex: '0 0 auto', background: '#25D366', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.75rem 1rem', cursor: generatingPairingCode ? 'not-allowed' : 'pointer', opacity: generatingPairingCode ? 0.65 : 1 }}
-                >
-                  {generatingPairingCode ? 'GERANDO...' : 'GERAR CODIGO'}
-                </button>
-              </div>
-            </div>
-          )}
-          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555', marginTop: '1rem' }}>Aguardando conexão...</p>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: attemptRemainingMs <= 30000 ? '#F59E0B' : '#555', marginTop: '1rem' }}>
+            Aguardando conexao... Tempo restante: {formatAttemptRemaining(attemptRemainingMs)}
+          </p>
         </div>
       ) : (
         <div style={{ background: '#111', border: '1px solid #222', borderLeft: '3px solid #555', padding: '1.25rem' }}>
@@ -869,15 +873,18 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         suspendReason: reason,
       });
       setEnrollments(prev => prev.map(e => e.id === enrollment.id ? { ...e, status: 'suspended', suspendReason: reason } : e));
-      toast.success('Aluno suspenso!');
-      // Abrir WhatsApp com aviso de suspensão
-      sendSuspendWhatsApp({
-        studentName: enrollment.studentName,
-        studentPhone: enrollment.studentPhone || '',
-        professorName: (profile as any)?.name || 'Professor',
-        academyName: (profile as any)?.academyName || 'Academia',
-        suspendReason: reason,
-      });
+      try {
+        const notification = await api.notifications.create({
+          toUid: enrollment.studentUid,
+          type: 'payment_suspended',
+          message: `Seu acesso foi temporariamente suspenso${reason ? ` — Motivo: ${reason}` : ''}. Entre em contato com o professor para regularizar sua situação.`,
+          data: { enrollmentId: enrollment.id, reason },
+          read: false,
+        });
+        toast.success(getWhatsAppAutomationToast(notification.whatsapp, 'Aluno suspenso e notificado'));
+      } catch {
+        toast.success('Aluno suspenso! Não foi possível enviar a notificação automática.');
+      }
       setShowSuspendModal(null);
       setSuspendReason('');
       setSuspendConfirmStep(1);
@@ -3635,7 +3642,7 @@ function AvisosTab({ user, profile, accentColor }: { user: any; profile: any; ac
     if (!form.title.trim() || !form.content.trim()) return;
     setSaving(true);
     try {
-      await api.announcements.create({
+      const created = await api.announcements.create({
         title: form.title.trim(),
         content: form.content.trim(),
         audience: isAcademy ? form.audience : 'students',
@@ -3643,7 +3650,7 @@ function AvisosTab({ user, profile, accentColor }: { user: any; profile: any; ac
       });
       setForm({ title: '', content: '', audience: 'all', urgent: false });
       await loadAnnouncements();
-      toast.success('Notificação enviada!');
+      toast.success(getWhatsAppAutomationToast(created.whatsapp));
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao enviar notificação');
     } finally {
@@ -5208,52 +5215,61 @@ function RelatoriosTab({
     }
   }, [subTab, loadExtra]);
 
-  const handleSendOverdueWhatsApp = (aluno: RelatorioAluno) => {
-    // Busca o telefone do aluno na lista de matrículas
-    const enr = enrollments.find((e: any) => e.studentUid === aluno.studentUid);
-    sendOverdueWhatsApp({
-      studentName: aluno.studentName,
-      studentPhone: enr?.studentPhone || '',
-      professorName: profile?.name || 'Professor',
-      academyName: profile?.academyName || 'Academia',
-      amount: aluno.amountDue,
-      dueDate: new Date(aluno.dueDate + 'T00:00:00').toLocaleDateString('pt-BR'),
-      daysOverdue: aluno.daysOverdue,
-      pixKey: profile?.pixKey || '',
-    });
-    toast.success(`WhatsApp aberto para ${aluno.studentName}`);
+  const handleSendOverdueWhatsApp = async (aluno: RelatorioAluno) => {
+    try {
+      const dueDate = new Date(aluno.dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
+      const notification = await api.notifications.create({
+        toUid: aluno.studentUid,
+        type: 'payment_overdue',
+        message: `Mensalidade em atraso ha ${aluno.daysOverdue} dia(s). Valor em aberto: R$ ${aluno.amountDue.toFixed(2)}. Vencimento: ${dueDate}. Regularize para continuar treinando.`,
+        data: { amount: aluno.amountDue, dueDate: aluno.dueDate, daysOverdue: aluno.daysOverdue, pixKey: profile?.pixKey || '' },
+        read: false,
+      });
+      toast.success(getWhatsAppAutomationToast(notification.whatsapp, `Aviso enviado para ${aluno.studentName}`));
+    } catch {
+      toast.error('Erro ao enviar aviso de inadimplencia');
+    }
   };
 
-  const handleSendLowFreqWhatsApp = (aluno: RelatorioAluno) => {
-    const enr = enrollments.find((e: any) => e.studentUid === aluno.studentUid);
-    sendLowFrequencyWhatsApp({
-      studentName: aluno.studentName,
-      studentPhone: enr?.studentPhone || '',
-      professorName: profile?.name || 'Professor',
-      academyName: profile?.academyName || 'Academia',
-      trainingsCount: aluno.trainingsThisMonth,
-      monthName,
-    });
-    toast.success(`WhatsApp aberto para ${aluno.studentName}`);
+  const handleSendLowFreqWhatsApp = async (aluno: RelatorioAluno) => {
+    try {
+      const notification = await api.notifications.create({
+        toUid: aluno.studentUid,
+        type: 'low_frequency',
+        message: `Sentimos sua falta no tatame. Voce treinou ${aluno.trainingsThisMonth} vez${aluno.trainingsThisMonth !== 1 ? 'es' : ''} em ${monthName}. Que tal marcar presenca esta semana?`,
+        data: { trainingsCount: aluno.trainingsThisMonth, monthName },
+        read: false,
+      });
+      toast.success(getWhatsAppAutomationToast(notification.whatsapp, `Aviso enviado para ${aluno.studentName}`));
+    } catch {
+      toast.error('Erro ao enviar aviso de baixa frequencia');
+    }
   };
 
-  const handleSendAllOverdue = () => {
+  const handleSendAllOverdue = async () => {
     const targets = alunosAtraso.filter(a => a.daysOverdue >= 2 && a.enrollmentStatus === 'active');
     if (!targets.length) { toast.info('Nenhum aluno elegível para notificação'); return; }
-    targets.forEach(a => {
-      const enr = enrollments.find((e: any) => e.studentUid === a.studentUid);
-      sendOverdueWhatsApp({
-        studentName: a.studentName,
-        studentPhone: enr?.studentPhone || '',
-        professorName: profile?.name || 'Professor',
-        academyName: profile?.academyName || 'Academia',
-        amount: a.amountDue,
-        dueDate: new Date(a.dueDate + 'T00:00:00').toLocaleDateString('pt-BR'),
-        daysOverdue: a.daysOverdue,
-        pixKey: profile?.pixKey || '',
-      });
-    });
-    toast.success(`${targets.length} janela(s) do WhatsApp abertas`);
+    try {
+      const results = await Promise.all(targets.map(a => {
+        const dueDate = new Date(a.dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
+        return api.notifications.create({
+          toUid: a.studentUid,
+          type: 'payment_overdue',
+          message: `Mensalidade em atraso ha ${a.daysOverdue} dia(s). Valor em aberto: R$ ${a.amountDue.toFixed(2)}. Vencimento: ${dueDate}. Regularize para continuar treinando.`,
+          data: { amount: a.amountDue, dueDate: a.dueDate, daysOverdue: a.daysOverdue, pixKey: profile?.pixKey || '' },
+          read: false,
+        });
+      }));
+      const summary = results.reduce((acc, item) => ({
+        enabled: acc.enabled && !!item.whatsapp?.enabled,
+        recipients: acc.recipients + (item.whatsapp?.recipients || 0),
+        sent: acc.sent + (item.whatsapp?.sent || 0),
+        failed: acc.failed + (item.whatsapp?.failed || 0),
+      }), { enabled: true, recipients: 0, sent: 0, failed: 0 });
+      toast.success(getWhatsAppAutomationToast(summary, `${targets.length} aviso(s) de inadimplencia enviados`));
+    } catch {
+      toast.error('Erro ao enviar avisos de inadimplencia');
+    }
   };
 
   // ── PDF da ficha do aluno ──────────────────────────────────────────────────
@@ -5349,21 +5365,29 @@ function RelatoriosTab({
     toast.success('Ficha exportada em PDF!');
   };
 
-  const handleSendAllLowFreq = () => {
+  const handleSendAllLowFreq = async () => {
     const targets = alunosBaixaFreq;
     if (!targets.length) { toast.info('Nenhum aluno com baixa frequência'); return; }
-    targets.forEach(a => {
-      const enr = enrollments.find((e: any) => e.studentUid === a.studentUid);
-      sendLowFrequencyWhatsApp({
-        studentName: a.studentName,
-        studentPhone: enr?.studentPhone || '',
-        professorName: profile?.name || 'Professor',
-        academyName: profile?.academyName || 'Academia',
-        trainingsCount: a.trainingsThisMonth,
-        monthName,
-      });
-    });
-    toast.success(`${targets.length} janela(s) do WhatsApp abertas`);
+    try {
+      const results = await Promise.all(targets.map(a =>
+        api.notifications.create({
+          toUid: a.studentUid,
+          type: 'low_frequency',
+          message: `Sentimos sua falta no tatame. Voce treinou ${a.trainingsThisMonth} vez${a.trainingsThisMonth !== 1 ? 'es' : ''} em ${monthName}. Que tal marcar presenca esta semana?`,
+          data: { trainingsCount: a.trainingsThisMonth, monthName },
+          read: false,
+        })
+      ));
+      const summary = results.reduce((acc, item) => ({
+        enabled: acc.enabled && !!item.whatsapp?.enabled,
+        recipients: acc.recipients + (item.whatsapp?.recipients || 0),
+        sent: acc.sent + (item.whatsapp?.sent || 0),
+        failed: acc.failed + (item.whatsapp?.failed || 0),
+      }), { enabled: true, recipients: 0, sent: 0, failed: 0 });
+      toast.success(getWhatsAppAutomationToast(summary, `${targets.length} aviso(s) de baixa frequencia enviados`));
+    } catch {
+      toast.error('Erro ao enviar avisos de baixa frequencia');
+    }
   };
 
   const S = {

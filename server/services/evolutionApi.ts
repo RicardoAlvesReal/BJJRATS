@@ -120,9 +120,32 @@ export async function createInstance(
   });
 }
 
-export async function getPairingCode(professorUid: string, phone: string): Promise<InstanceConnectResponse> {
+function normalizeCountryCode(countryCode?: string): string {
+  const digits = String(countryCode || '55').replace(/\D/g, '');
+  return digits || '55';
+}
+
+export function formatPairingPhone(phone: string, countryCode?: string): string {
+  const raw = phone.trim();
+  const digits = phone.replace(/\D/g, '');
+  if (!digits) return '';
+
+  // Evolution/WhatsApp pairing expects the number with country code.
+  // If the user typed an international number explicitly, keep it as-is.
+  if (raw.startsWith('+')) return digits;
+  if (digits.startsWith('00')) return digits.slice(2);
+
+  const dialCode = normalizeCountryCode(countryCode);
+  if (digits.startsWith(dialCode) && digits.length > dialCode.length + 6) {
+    return digits;
+  }
+
+  return `${dialCode}${digits}`;
+}
+
+export async function getPairingCode(professorUid: string, phone: string, countryCode?: string): Promise<InstanceConnectResponse> {
   const instanceName = getInstanceName(professorUid);
-  const formattedPhone = phone.replace(/\D/g, '');
+  const formattedPhone = formatPairingPhone(phone, countryCode);
   return request<InstanceConnectResponse>('GET', `/instance/connect/${instanceName}?number=${encodeURIComponent(formattedPhone)}`, undefined, 45000);
 }
 
@@ -207,6 +230,7 @@ export async function toConnectionPayload(source: unknown): Promise<WhatsAppConn
 export async function getPairingConnectionPayload(
   professorUid: string,
   phone: string,
+  countryCode?: string,
 ): Promise<WhatsAppConnectionPayload> {
   let lastPayload: WhatsAppConnectionPayload = {
     qrcode: null,
@@ -215,7 +239,7 @@ export async function getPairingConnectionPayload(
   };
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const result = await getPairingCode(professorUid, phone);
+    const result = await getPairingCode(professorUid, phone, countryCode);
     lastPayload = await toConnectionPayload(result);
     if (lastPayload.pairingCode) {
       return lastPayload;
@@ -229,10 +253,11 @@ export async function getPairingConnectionPayload(
 export async function getCurrentConnectionPayload(
   professorUid: string,
   phone?: string,
+  countryCode?: string,
 ): Promise<WhatsAppConnectionPayload> {
-  const formattedPhone = phone?.replace(/\D/g, '') || '';
+  const formattedPhone = phone ? formatPairingPhone(phone, countryCode) : '';
   if (formattedPhone.length >= 10) {
-    return getPairingConnectionPayload(professorUid, formattedPhone);
+    return getPairingConnectionPayload(professorUid, formattedPhone, countryCode);
   }
 
   const result = await connectInstance(professorUid);

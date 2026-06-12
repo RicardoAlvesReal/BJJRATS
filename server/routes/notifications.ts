@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { notifications } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { sendNotificationWhatsApp } from '../services/notificationWhatsApp.js';
 
 const router = Router();
 
@@ -16,8 +17,17 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const id = nanoid();
-  const [row] = await db.insert(notifications).values({ id, fromUid: req.userId!, ...req.body }).returning();
-  res.status(201).json(row);
+  const { id: _id, fromUid: _fromUid, createdAt: _createdAt, whatsapp: _whatsapp, ...body } = req.body || {};
+  const [row] = await db.insert(notifications).values({ id, ...body, fromUid: req.userId! }).returning();
+
+  let whatsapp = { enabled: false, recipients: 0, sent: 0, failed: 0 };
+  try {
+    whatsapp = await sendNotificationWhatsApp(row, req.userId!);
+  } catch (err) {
+    console.warn('[notifications] whatsapp automation failed', err);
+  }
+
+  res.status(201).json({ ...row, whatsapp });
 });
 
 // PATCH /api/notifications/read-all  — marca todas como lidas

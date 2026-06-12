@@ -84,6 +84,18 @@ const btnSecondaryStyle: React.CSSProperties = {
   width: '100%',
 };
 
+function getWhatsAppFeedback(a: Announcement) {
+  const whatsapp = a.whatsapp;
+  if (whatsapp?.enabled && whatsapp.recipients > 0) {
+    const failedLabel = whatsapp.failed > 0 ? ` (${whatsapp.failed} falhou)` : '';
+    return `Notificação criada. WhatsApp: ${whatsapp.sent}/${whatsapp.recipients}${failedLabel}`;
+  }
+  if (whatsapp?.enabled) {
+    return 'Notificação criada. Nenhum telefone encontrado para WhatsApp.';
+  }
+  return 'Notificação criada no app. Conecte um WhatsApp para envio automático.';
+}
+
 export default function AdminAnnouncements() {
   const [list, setList] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +104,7 @@ export default function AdminAnnouncements() {
   const [form, setForm] = useState({ title: '', content: '', imageUrl: '', linkUrl: '', linkText: '', urgent: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -114,6 +127,7 @@ export default function AdminAnnouncements() {
     setImageFile(null);
     setImagePreview(null);
     setError('');
+    setSuccess('');
     setModalOpen(true);
   };
 
@@ -130,6 +144,7 @@ export default function AdminAnnouncements() {
     setImageFile(null);
     setImagePreview(null);
     setError('');
+    setSuccess('');
     setModalOpen(true);
   };
 
@@ -149,6 +164,7 @@ export default function AdminAnnouncements() {
     }
     setSaving(true);
     setError('');
+    setSuccess('');
     try {
       let imageUrl = form.imageUrl.trim() || undefined;
       if (imageFile) {
@@ -162,14 +178,17 @@ export default function AdminAnnouncements() {
         linkText: form.linkText.trim() || undefined,
         urgent: form.urgent,
       };
+      let saved: Announcement;
       if (editTarget) {
-        await api.admin.announcements.update(editTarget.id, payload);
+        saved = await api.admin.announcements.update(editTarget.id, payload);
       } else {
-        await api.admin.announcements.create(payload);
+        saved = await api.admin.announcements.create(payload);
       }
       setModalOpen(false);
+      setSuccess(editTarget ? 'Notificação atualizada.' : getWhatsAppFeedback(saved));
       load();
     } catch (e: any) {
+      setSuccess('');
       setError(e?.message ?? 'Erro ao salvar.');
     } finally {
       setSaving(false);
@@ -214,6 +233,9 @@ export default function AdminAnnouncements() {
 
       {error && (
         <p className="text-[#CC0000] text-[0.8rem] font-['Barlow'] mb-3">{error}</p>
+      )}
+      {success && (
+        <p className="text-[#0D9E6E] text-[0.8rem] font-['Barlow'] mb-3">{success}</p>
       )}
 
       {list.length === 0 && (

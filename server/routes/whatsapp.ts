@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { whatsappInstances } from '../db/schema.js';
@@ -7,6 +7,9 @@ import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import * as evolution from '../services/evolutionApi.js';
 
 const router = Router();
+const CONNECTION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
+
+type WhatsAppInstanceRow = typeof whatsappInstances.$inferSelect;
 
 function getExpectedInstanceName(userId: string): string {
   return `bjjrats_${userId}`;
@@ -14,6 +17,60 @@ function getExpectedInstanceName(userId: string): string {
 
 function uniqueInstanceNames(...names: Array<string | null | undefined>): string[] {
   return Array.from(new Set(names.filter((name): name is string => Boolean(name))));
+}
+
+async function isConnectionAttemptExpired(instance: WhatsAppInstanceRow): Promise<boolean> {
+  if (instance.status !== 'connecting') return false;
+
+  const timeoutSeconds = Math.ceil(CONNECTION_ATTEMPT_TIMEOUT_MS / 1000);
+  const [row] = await db.select({
+    expired: sql<boolean>`
+      coalesce(${whatsappInstances.updatedAt}, ${whatsappInstances.createdAt})
+        <= localtimestamp - (${timeoutSeconds} * interval '1 second')
+    `,
+  })
+    .from(whatsappInstances)
+    .where(eq(whatsappInstances.id, instance.id))
+    .limit(1);
+
+  return Boolean(row?.expired);
+}
+
+async function deleteStoredInstance(instance: WhatsAppInstanceRow, expectedInstanceName?: string): Promise<void> {
+  const [current] = await db.select().from(whatsappInstances)
+    .where(eq(whatsappInstances.id, instance.id))
+    .limit(1);
+
+  if (!current || current.instanceName !== instance.instanceName) {
+    return;
+  }
+
+  const instanceNames = uniqueInstanceNames(instance.instanceName, expectedInstanceName);
+  for (const instanceName of instanceNames) {
+    await evolution.ensureInstanceDeletedByName(instanceName);
+  }
+  await db.delete(whatsappInstances).where(eq(whatsappInstances.id, instance.id));
+}
+
+async function expireInstanceIfStale(instance: WhatsAppInstanceRow, expectedInstanceName?: string): Promise<boolean> {
+  if (!await isConnectionAttemptExpired(instance)) return false;
+
+  try {
+    const state = await evolution.getConnectionState(instance.instanceName);
+    if (state.instance.state === 'open') {
+      const phone = state.instance.ownerJid?.split('@')[0] || instance.phone;
+      await db.update(whatsappInstances)
+        .set({ status: 'connected', phone })
+        .where(eq(whatsappInstances.id, instance.id));
+      return false;
+    }
+  } catch {
+    // If the state lookup fails because the instance vanished, the cleanup below
+    // removes the stale row as well.
+  }
+
+  await deleteStoredInstance(instance, expectedInstanceName);
+  return true;
 }
 
 router.get('/status', requireAuth, async (req: AuthRequest, res) => {
@@ -38,13 +95,15 @@ router.get('/status', requireAuth, async (req: AuthRequest, res) => {
         res.json({
           connected: true,
           instance: { id, status: 'connected', phone },
+          expired: false,
+          attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS,
         });
         return;
       }
     } catch {
       // Instance does not exist or is not connected.
     }
-    res.json({ connected: false, instance: null });
+    res.json({ connected: false, instance: null, expired: false, attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS });
     return;
   }
 
@@ -57,6 +116,14 @@ router.get('/status', requireAuth, async (req: AuthRequest, res) => {
       await db.update(whatsappInstances)
         .set({ status: 'connected', phone })
         .where(eq(whatsappInstances.id, instance.id));
+    } else if (!isConnected && await expireInstanceIfStale(instance, expectedInstanceName)) {
+      res.json({
+        connected: false,
+        instance: null,
+        expired: true,
+        attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS,
+      });
+      return;
     } else if (!isConnected && instance.status === 'connected') {
       await db.update(whatsappInstances)
         .set({ status: 'disconnected' })
@@ -70,8 +137,20 @@ router.get('/status', requireAuth, async (req: AuthRequest, res) => {
         status: isConnected ? 'connected' : 'disconnected',
         phone,
       },
+      expired: false,
+      attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS,
     });
   } catch {
+    if (await expireInstanceIfStale(instance, expectedInstanceName)) {
+      res.json({
+        connected: false,
+        instance: null,
+        expired: true,
+        attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS,
+      });
+      return;
+    }
+
     res.json({
       connected: false,
       instance: {
@@ -79,6 +158,8 @@ router.get('/status', requireAuth, async (req: AuthRequest, res) => {
         status: 'disconnected',
         phone: instance.phone,
       },
+      expired: false,
+      attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS,
     });
   }
 });
@@ -108,16 +189,20 @@ router.post('/connect', requireAuth, async (req: AuthRequest, res) => {
 
     let payload = await evolution.toConnectionPayload(result);
 
-    if (!payload.qrcode && !payload.pairingCode) {
+    if (!payload.qrcode) {
       const qr = await evolution.connectInstance(req.userId!);
       payload = await evolution.toConnectionPayload(qr);
     }
 
-    if (!payload.qrcode && !payload.pairingCode) {
-      throw new Error('Evolution API nao retornou QR Code ou codigo de pareamento');
+    if (!payload.qrcode) {
+      throw new Error('Evolution API nao retornou QR Code');
     }
 
-    res.json(payload);
+    res.json({
+      qrcode: payload.qrcode,
+      qrCodeText: payload.qrCodeText,
+      attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro ao conectar';
     res.status(500).json({ error: message });
@@ -125,7 +210,8 @@ router.post('/connect', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/pairing-code', requireAuth, async (req: AuthRequest, res) => {
-  const formattedPhone = String(req.body?.phone || '').replace(/\D/g, '');
+  const countryCode = String(req.body?.countryCode || '55');
+  const formattedPhone = evolution.formatPairingPhone(String(req.body?.phone || ''), countryCode);
   if (formattedPhone.length < 10) {
     res.status(400).json({ error: 'Informe um WhatsApp com DDD' });
     return;
@@ -155,12 +241,12 @@ router.post('/pairing-code', requireAuth, async (req: AuthRequest, res) => {
       status: 'connecting',
     });
 
-    const payload = await evolution.getPairingConnectionPayload(req.userId!, formattedPhone);
+    const payload = await evolution.getPairingConnectionPayload(req.userId!, formattedPhone, countryCode);
     if (!payload.pairingCode) {
       throw new Error('Evolution API nao retornou codigo de pareamento para este numero');
     }
 
-    res.json(payload);
+    res.json({ ...payload, attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro ao gerar codigo';
     res.status(500).json({ error: message });
@@ -172,16 +258,25 @@ router.post('/connection-code', requireAuth, async (req: AuthRequest, res) => {
     .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
   if (!instance) {
-    res.status(400).json({ error: 'Instancia do WhatsApp nao iniciada' });
+    res.status(400).json({ error: 'Instancia do WhatsApp nao iniciada', attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS });
     return;
   }
 
   try {
-    const payload = await evolution.getCurrentConnectionPayload(req.userId!, req.body?.phone);
+    if (await expireInstanceIfStale(instance, getExpectedInstanceName(req.userId!))) {
+      res.status(410).json({
+        error: 'Tentativa de conexao expirada. Inicie uma nova tentativa.',
+        expired: true,
+        attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS,
+      });
+      return;
+    }
+
+    const payload = await evolution.getCurrentConnectionPayload(req.userId!, req.body?.phone, req.body?.countryCode);
     if (!payload.qrcode && !payload.pairingCode) {
       throw new Error('Evolution API nao retornou QR Code ou codigo de pareamento');
     }
-    res.json(payload);
+    res.json({ ...payload, attemptTimeoutMs: CONNECTION_ATTEMPT_TIMEOUT_MS });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro ao atualizar codigo de conexao';
     res.status(500).json({ error: message });

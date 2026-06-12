@@ -168,6 +168,7 @@ export interface Notification {
   data?: Record<string, any> | null;
   read?: boolean;
   createdAt?: string;
+  whatsapp?: WhatsAppAutomationResult;
 }
 
 export interface Payment {
@@ -519,7 +520,7 @@ export const challenges = {
 
 export const notifications = {
   list: () => apiFetch<Notification[]>('/api/notifications'),
-  create: (data: Omit<Notification, 'id' | 'createdAt'>) =>
+  create: (data: Omit<Notification, 'id' | 'createdAt' | 'whatsapp'>) =>
     apiFetch<Notification>('/api/notifications', { method: 'POST', body: JSON.stringify(data) }),
   markRead: (id: string) =>
     apiFetch<Notification>(`/api/notifications/${id}`, { method: 'PATCH', body: JSON.stringify({ read: true }) }),
@@ -624,6 +625,15 @@ export const competitions = {
 
 // ─── Subscriptions ────────────────────────────────────────────────────────────
 
+export interface WhatsAppAutomationResult {
+  enabled: boolean;
+  recipients: number;
+  sent: number;
+  failed: number;
+}
+
+export type AnnouncementWhatsAppResult = WhatsAppAutomationResult;
+
 export interface Announcement {
   id: string;
   title: string;
@@ -642,6 +652,7 @@ export interface Announcement {
   isActive?: boolean | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  whatsapp?: WhatsAppAutomationResult;
 }
 
 export interface Plan {
@@ -763,27 +774,20 @@ export interface WhatsAppStatus {
     status: string;
     phone?: string | null;
   } | null;
+  expired?: boolean;
+  attemptTimeoutMs?: number;
 }
 
 export interface WhatsAppConnectResponse {
   qrcode?: string | null;
   qrCodeText?: string | null;
-  pairingCode?: string | null;
+  expired?: boolean;
+  attemptTimeoutMs?: number;
 }
 
 export const whatsapp = {
   status: () => apiFetch<WhatsAppStatus>('/api/whatsapp/status'),
   connect: () => apiFetch<WhatsAppConnectResponse>('/api/whatsapp/connect', { method: 'POST' }),
-  connectionCode: (phone?: string) =>
-    apiFetch<WhatsAppConnectResponse>('/api/whatsapp/connection-code', {
-      method: 'POST',
-      body: JSON.stringify({ phone }),
-    }),
-  pairingCode: (phone: string) =>
-    apiFetch<WhatsAppConnectResponse>('/api/whatsapp/pairing-code', {
-      method: 'POST',
-      body: JSON.stringify({ phone }),
-    }),
   disconnect: () => apiFetch<{ success: boolean }>('/api/whatsapp/disconnect', { method: 'POST' }),
   send: (phone: string, message: string) =>
     apiFetch<{ success: boolean; messageId: string }>('/api/whatsapp/send', {

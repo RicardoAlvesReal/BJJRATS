@@ -1,31 +1,10 @@
 // BJJRats — WhatsApp Service
-// Envia mensagens via Evolution API (automático) ou abre wa.me (fallback manual)
+// Envia mensagens via Evolution API (automatico).
 
 import api from './api';
 
-function formatPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.startsWith('55') && digits.length >= 12) return digits;
-  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
-  return digits;
-}
-
-function openWhatsApp(phone: string, message: string): void {
-  const formattedPhone = formatPhone(phone);
-  const encodedMsg = encodeURIComponent(message);
-  const url = formattedPhone
-    ? `https://wa.me/${formattedPhone}?text=${encodedMsg}`
-    : `https://wa.me/?text=${encodedMsg}`;
-  window.open(url, '_blank');
-}
-
-async function sendOrFallback(phone: string, message: string): Promise<void> {
-  try {
-    await api.whatsapp.send(phone, message);
-  } catch {
-    openWhatsApp(phone, message);
-  }
+async function sendAutomatic(phone: string, message: string): Promise<void> {
+  await api.whatsapp.send(phone, message);
 }
 
 export interface WhatsAppPayload {
@@ -51,7 +30,7 @@ export async function sendDueWhatsApp(payload: WhatsAppPayload): Promise<void> {
     `Passando para lembrar que sua mensalidade na *${academyName}* vence em *${dueDate || 'breve'}*${amountStr ? ` no valor de *${amountStr}*` : ''}.\n` +
     `Qualquer dúvida, estou à disposição!${pixStr}\n\n` +
     `OSS! 🥋 — ${professorName}`;
-  await sendOrFallback(studentPhone, message);
+  await sendAutomatic(studentPhone, message);
 }
 
 export async function sendOverdueWhatsApp(payload: WhatsAppPayload): Promise<void> {
@@ -75,7 +54,7 @@ export async function sendOverdueWhatsApp(payload: WhatsAppPayload): Promise<voi
     (amountStr ? `*Valor:* ${amountStr}\n` : '') +
     pixStr +
     `\n\nOSS! 🥋 — ${professorName}`;
-  await sendOrFallback(studentPhone, message);
+  await sendAutomatic(studentPhone, message);
 }
 
 export async function sendSuspendWhatsApp(payload: WhatsAppPayload): Promise<void> {
@@ -86,7 +65,7 @@ export async function sendSuspendWhatsApp(payload: WhatsAppPayload): Promise<voi
     `Informamos que seu acesso à *${academyName}* foi temporariamente suspenso.${reasonStr}\n\n` +
     `Para regularizar sua situação, entre em contato comigo.\n\n` +
     `OSS! 🥋 — ${professorName}`;
-  await sendOrFallback(studentPhone, message);
+  await sendAutomatic(studentPhone, message);
 }
 
 export async function sendLowFrequencyWhatsApp(payload: WhatsAppPayload): Promise<void> {
@@ -96,5 +75,5 @@ export async function sendLowFrequencyWhatsApp(payload: WhatsAppPayload): Promis
     `Sentimos sua falta no tatame! Você treinou apenas *${trainingsCount} vez${trainingsCount !== 1 ? 'es' : ''}* em *${monthName}* na *${academyName}*.\n\n` +
     `Cada treino conta na sua evolução rumo à próxima faixa. Que tal marcar presença esta semana? 💪\n\n` +
     `OSS! — ${professorName}`;
-  await sendOrFallback(studentPhone, message);
+  await sendAutomatic(studentPhone, message);
 }
