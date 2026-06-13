@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { payments, users } from '../db/schema.js';
@@ -146,6 +146,29 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   }
 
   if (!data.pixLink && data.pixKey) data.pixLink = data.pixKey;
+
+  // Impedir duplicata: mesma matrícula (studentUid + professorUid) no mesmo mês
+  if (data.studentUid && data.dueDate) {
+    const dueDateStr = formatDateOnly(data.dueDate);
+    if (typeof dueDateStr === 'string') {
+      const monthPrefix = dueDateStr.slice(0, 7); // YYYY-MM
+      const [duplicate] = await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(
+          and(
+            eq(payments.professorUid, professorUid),
+            eq(payments.studentUid, String(data.studentUid)),
+            sql`to_char(${payments.dueDate}, 'YYYY-MM') = ${monthPrefix}`,
+          )
+        )
+        .limit(1);
+      if (duplicate) {
+        res.status(409).json({ error: 'Já existe uma cobrança para este aluno neste mês.', existingId: duplicate.id });
+        return;
+      }
+    }
+  }
 
   const [row] = await db.insert(payments).values({ id, ...data, professorUid } as any).returning();
   res.status(201).json({

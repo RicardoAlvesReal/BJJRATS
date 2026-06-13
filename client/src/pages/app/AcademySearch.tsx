@@ -389,6 +389,7 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
               padding: '0.75rem 1.25rem',
+              minHeight: '48px',
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading ? 0.6 : 1,
               whiteSpace: 'nowrap',
@@ -432,113 +433,114 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
             {results.map(academy => (
               <div
                 key={academy.professorUid}
-                style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', gap: '0.875rem', alignItems: 'flex-start' }}
+                style={{ background: '#111', border: '1px solid #1E1E1E', overflow: 'hidden' }}
               >
-                {/* Logo ou ícone */}
-                <div style={{ width: '56px', height: '56px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #CC0000', flexShrink: 0, background: '#1A0000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {academy.academyLogoUrl ? (
-                    <img src={academy.academyLogoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <School size={26} style={{ color: '#CC0000' }} />
-                  )}
-                </div>
-
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.03em', marginBottom: '0.25rem' }}>
-                    {academy.academyName || 'Academia sem nome'}
-                  </p>
-                  {academy.distanceKm !== null && academy.distanceKm !== undefined ? (
-                    <span style={{ display: 'inline-block', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#0DFF9A', border: '1px solid #0D9E6E', padding: '0.125rem 0.375rem', marginBottom: '0.375rem' }}>
-                      {formatDistance(academy.distanceKm)}
-                    </span>
-                  ) : academy.locationScore > 0 && (
-                    <span style={{ display: 'inline-block', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#0D9E6E', border: '1px solid #0D9E6E', padding: '0.125rem 0.375rem', marginBottom: '0.375rem' }}>
-                      MESMA REGIAO
-                    </span>
-                  )}
-                  {(academy.academyCity || academy.academyState) && (
-                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#888', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                      <MapPin size={14} style={{ color: '#777', flexShrink: 0 }} />
-                      <span>{[academy.academyCity, academy.academyState].filter(Boolean).join(' - ')}</span>
-                    </p>
-                  )}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(92px, 0.8fr) minmax(132px, 1.2fr)', gap: '0.5rem', marginTop: '0.875rem' }}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedAcademy(academy)}
-                      style={{
-                        background: '#151515',
-                        border: '1px solid #2A2A2A',
-                        color: '#FFFFFF',
-                        fontFamily: 'Barlow Condensed, sans-serif',
-                        fontWeight: 700,
-                        fontSize: '0.8125rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        padding: '0.5rem 0.75rem',
-                        cursor: 'pointer',
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.375rem',
-                      }}
-                    >
-                      <Info size={15} /> DETALHES
-                    </button>
-                    <button
-                      onClick={() => handleLink(academy)}
-                      disabled={linking === academy.professorUid}
-                      style={{
-                        background: linking === academy.professorUid ? '#333' : '#CC0000',
-                        border: 'none',
-                        color: '#FFFFFF',
-                        fontFamily: 'Barlow Condensed, sans-serif',
-                        fontWeight: 700,
-                        fontSize: '0.8125rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        padding: '0.5rem 0.75rem',
-                        cursor: linking === academy.professorUid ? 'not-allowed' : 'pointer',
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.375rem',
-                      }}
-                    >
-                      {linking === academy.professorUid ? 'VINCULANDO...' : <><LinkIcon size={15} /> VINCULAR</>}
-                    </button>
-                    {academy.trialRequestsEnabled !== false && (
-                      <button
-                        type="button"
-                        onClick={() => handleTrialRequest(academy)}
-                        disabled={requestingTrial === academy.professorUid}
-                        style={{
-                          gridColumn: '1 / -1',
-                          background: requestingTrial === academy.professorUid ? '#1A1A1A' : '#0D9E6E',
-                          border: 'none',
-                          color: '#03140D',
-                          fontFamily: 'Barlow Condensed, sans-serif',
-                          fontWeight: 900,
-                          fontSize: '0.8125rem',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.08em',
-                          padding: '0.625rem 0.75rem',
-                          cursor: requestingTrial === academy.professorUid ? 'not-allowed' : 'pointer',
-                          width: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.375rem',
-                          opacity: requestingTrial === academy.professorUid ? 0.65 : 1,
-                        }}
-                      >
-                        {requestingTrial === academy.professorUid ? 'SOLICITANDO...' : <><CalendarPlus size={15} /> AULA GRATIS</>}
-                      </button>
+                {/* Área clicável de info → abre detalhes */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedAcademy(academy)}
+                  style={{
+                    width: '100%',
+                    background: 'none',
+                    border: 'none',
+                    padding: '1rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    gap: '0.875rem',
+                    alignItems: 'center',
+                    textAlign: 'left',
+                  }}
+                >
+                  {/* Logo */}
+                  <div style={{ width: '52px', height: '52px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #CC0000', flexShrink: 0, background: '#1A0000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {academy.academyLogoUrl ? (
+                      <img src={academy.academyLogoUrl} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <School size={24} style={{ color: '#CC0000' }} />
                     )}
                   </div>
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.0625rem', textTransform: 'uppercase', color: '#FFFFFF', letterSpacing: '0.03em', marginBottom: '0.2rem', lineHeight: 1.15 }}>
+                      {academy.academyName || 'Academia sem nome'}
+                    </p>
+                    {academy.distanceKm !== null && academy.distanceKm !== undefined ? (
+                      <span style={{ display: 'inline-block', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#0DFF9A', border: '1px solid #0D9E6E', padding: '0.1rem 0.35rem', marginBottom: '0.3rem' }}>
+                        {formatDistance(academy.distanceKm)}
+                      </span>
+                    ) : academy.locationScore > 0 && (
+                      <span style={{ display: 'inline-block', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#0D9E6E', border: '1px solid #0D9E6E', padding: '0.1rem 0.35rem', marginBottom: '0.3rem' }}>
+                        MESMA REGIAO
+                      </span>
+                    )}
+                    {(academy.academyCity || academy.academyState) && (
+                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#888', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <MapPin size={13} style={{ color: '#666', flexShrink: 0 }} />
+                        <span>{[academy.academyCity, academy.academyState].filter(Boolean).join(' - ')}</span>
+                      </p>
+                    )}
+                  </div>
+                  <Info size={16} style={{ color: '#444', flexShrink: 0 }} />
+                </button>
+
+                {/* Botões de ação — largura total, separados da área de info */}
+                <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid #1A1A1A' }}>
+                  {academy.trialRequestsEnabled !== false && (
+                    <button
+                      type="button"
+                      onClick={() => handleTrialRequest(academy)}
+                      disabled={requestingTrial === academy.professorUid}
+                      style={{
+                        background: requestingTrial === academy.professorUid ? '#1A1A1A' : '#0D9E6E',
+                        border: 'none',
+                        borderBottom: '1px solid #1A1A1A',
+                        color: requestingTrial === academy.professorUid ? '#555' : '#03140D',
+                        fontFamily: 'Barlow Condensed, sans-serif',
+                        fontWeight: 900,
+                        fontSize: '1rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        padding: '0.875rem 1rem',
+                        minHeight: '52px',
+                        cursor: requestingTrial === academy.professorUid ? 'not-allowed' : 'pointer',
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        opacity: requestingTrial === academy.professorUid ? 0.65 : 1,
+                      }}
+                    >
+                      <CalendarPlus size={18} />
+                      {requestingTrial === academy.professorUid ? 'SOLICITANDO...' : 'AULA GRÁTIS'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleLink(academy)}
+                    disabled={linking === academy.professorUid}
+                    style={{
+                      background: linking === academy.professorUid ? '#1A1A1A' : '#CC0000',
+                      border: 'none',
+                      color: linking === academy.professorUid ? '#555' : '#FFFFFF',
+                      fontFamily: 'Barlow Condensed, sans-serif',
+                      fontWeight: 900,
+                      fontSize: '1rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      padding: '0.875rem 1rem',
+                      minHeight: '52px',
+                      cursor: linking === academy.professorUid ? 'not-allowed' : 'pointer',
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <LinkIcon size={18} />
+                    {linking === academy.professorUid ? 'VINCULANDO...' : 'VINCULAR À ACADEMIA'}
+                  </button>
                 </div>
               </div>
             ))}

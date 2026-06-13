@@ -1519,20 +1519,17 @@ function MensalidadesCard({ onOpen, userUid }: MensalidadesCardProps) {
     if (!userUid) return;
     const load = async () => {
       try {
-        const qPay = query(
-          collection(db, 'payments'),
-          where('studentUid', '==', userUid),
-          where('status', 'in', ['pending', 'overdue'])
-        );
-        const snap = await getDocs(qPay);
-        const now = new Date();
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = await api.payments.list({ studentUid: userUid }) as any[];
         let pending = 0, overdue = 0, nextDue: string | null = null, pixKey: string | null = null;
-        snap.docs.forEach(d => {
-          const p = d.data() as any;
-          const due = p.dueDate ? new Date(p.dueDate + 'T00:00:00') : null;
-          if (due && due < now) { overdue += p.amount || 0; }
-          else { pending += p.amount || 0; }
-          if (!nextDue && p.dueDate) { nextDue = p.dueDate; pixKey = p.pixKey || null; }
+        rows.forEach((p: any) => {
+          if (p.status === 'paid') return;
+          const isOverdue = p.status === 'overdue' || (p.status === 'pending' && p.dueDate && p.dueDate < today);
+          if (isOverdue) { overdue += Number(p.amount) || 0; }
+          else if (p.status === 'pending') {
+            pending += Number(p.amount) || 0;
+            if (!nextDue && p.dueDate) { nextDue = p.dueDate; pixKey = p.pixKey || null; }
+          }
         });
         setSummary({ pending, overdue, nextDue, pixKey });
       } catch { /* silencioso */ }

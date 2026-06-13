@@ -14,11 +14,11 @@ interface Payment {
   studentName: string;
   studentEmail: string;
   amount: number;
-  dueDate: { seconds: number };
-  paidAt: { seconds: number } | null;
+  dueDate: string | null;  // YYYY-MM-DD
+  paidAt: string | null;   // YYYY-MM-DD
   status: 'pending' | 'paid' | 'overdue' | 'suspended';
   pixLink?: string;
-  createdAt: { seconds: number };
+  createdAt: string | null;
 }
 
 interface Enrollment {
@@ -55,9 +55,11 @@ const STATUS_CONFIG = {
   suspended: { label: 'SUSPENSO',   color: '#888',    bg: '#111' },
 };
 
-function formatDate(ts: { seconds: number } | null): string {
+function formatDate(ts: string | null | undefined): string {
   if (!ts) return '—';
-  return new Date(ts.seconds * 1000).toLocaleDateString('pt-BR');
+  const d = new Date(`${ts}T00:00:00`);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('pt-BR');
 }
 
 function formatCurrency(val: number): string {
@@ -84,12 +86,12 @@ export default function MinhasMensalidades({ onBack }: Props) {
 
       const now = new Date();
       const rawPayments = await api.payments.list({ studentUid: user.uid }) as Payment[];
+      const today = now.toISOString().slice(0, 10);
       const payList = rawPayments
-        .sort((a, b) => ((b.dueDate as any)?.seconds || 0) - ((a.dueDate as any)?.seconds || 0))
+        .sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''))
         .map(p => {
-          if (p.status === 'pending' && p.dueDate) {
-            const due = new Date((p.dueDate as any).seconds * 1000);
-            if (due < now) p.status = 'overdue';
+          if (p.status === 'pending' && p.dueDate && p.dueDate < today) {
+            return { ...p, status: 'overdue' as const };
           }
           return p;
         });

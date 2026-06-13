@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
+import * as XLSX from 'xlsx';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import { BELT_COLORS, getLevelInfo, ACHIEVEMENTS, topTecnicas, calcStreak, LEVEL_COLORS, Training } from '@/lib/bjjrats-constants';
 import api, { type PaymentIntegrationSettings, type WhatsAppAutomationResult } from '@/lib/api';
@@ -683,12 +684,19 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     try {
       const today = new Date().toISOString().slice(0, 10);
       const allDocs: Payment[] = await api.payments.list({ professorUid: user.uid });
-      const docs = allDocs
-        .filter(p => p.month === month)
+      const filtered = allDocs
+        .filter(p => (p.month === month) || (p.dueDate?.slice(0, 7) === month))
         .map(data => {
           if (data.status === 'pending' && data.dueDate < today) data.status = 'overdue';
           return data;
         });
+      // Deduplicar: 1 cobrança por aluno por mês (a mais recente)
+      const byStudent = new Map<string, Payment>();
+      filtered.forEach(p => {
+        const existing = byStudent.get(p.studentUid);
+        if (!existing || (p.id > existing.id)) byStudent.set(p.studentUid, p);
+      });
+      const docs = Array.from(byStudent.values());
       docs.sort((a, b) => a.studentName.localeCompare(b.studentName));
       setPayments(docs);
       await loadEnrollments();
@@ -801,9 +809,14 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       } else {
         dueDate = `${y}-${String(m).padStart(2, '0')}-05`;
       }
-      const alreadyExists = existingPayments.some(p => p.enrollmentId === enr.id && p.month === month);
+      const alreadyExists = existingPayments.some(p =>
+        p.studentUid === enr.studentUid &&
+        (p.dueDate?.slice(0,7) === month || p.month === month)
+      );
       if (alreadyExists) continue;
-      const createdPayment = await api.payments.create({
+      let createdPayment: any;
+      try {
+        createdPayment = await api.payments.create({
         enrollmentId: enr.id,
         professorUid: user.uid,
         studentUid: enr.studentUid,
@@ -818,7 +831,11 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         notifiedOverdue: false,
         month,
         billingMode,
-      });
+        });
+      } catch (err: any) {
+        if (err?.status === 409 || err?.response?.status === 409) continue;
+        throw err;
+      }
       const dueDateFormatted = new Date(dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
       const paymentLink = createdPayment.paymentLink || createdPayment.pixLink;
       const paymentText = paymentLink && /^https?:\/\//.test(paymentLink)
@@ -892,9 +909,14 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     const existingPayments: Payment[] = await api.payments.list({ professorUid: user.uid });
     let created = 0;
     for (const item of toGenerate) {
-      const alreadyExists = existingPayments.some(p => p.enrollmentId === item.enrollmentId && p.month === paymentMonthFilter);
+      const alreadyExists = existingPayments.some(p =>
+        p.studentUid === item.studentUid &&
+        (p.dueDate?.slice(0,7) === paymentMonthFilter || p.month === paymentMonthFilter)
+      );
       if (alreadyExists) continue;
-      const createdPayment = await api.payments.create({
+      let createdPayment: any;
+      try {
+        createdPayment = await api.payments.create({
         enrollmentId: item.enrollmentId,
         professorUid: user.uid,
         studentUid: item.studentUid,
@@ -909,7 +931,11 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         notifiedOverdue: false,
         month: paymentMonthFilter,
         billingMode: item.billingMode,
-      });
+        });
+      } catch (err: any) {
+        if (err?.status === 409 || err?.response?.status === 409) continue;
+        throw err;
+      }
       const dueDateFormatted = new Date(item.dueDate + 'T00:00:00').toLocaleDateString('pt-BR');
       const paymentLink = createdPayment.paymentLink || createdPayment.pixLink;
       const paymentText = paymentLink && /^https?:\/\//.test(paymentLink)
@@ -941,9 +967,25 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         ...(receiptUrl ? { receiptUrl } : {}),
       });
       setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'paid', paidAt: today } : p));
-      toast.success('Pagamento confirmado!');
+
+      // Reativar matrícula suspensa por inadimplência automaticamente
+      const suspendedEnrollments = enrollments.filter(e =>
+        e.studentUid === payment.studentUid &&
+        e.status === 'suspended' &&
+        (!e.suspendReason || /inadimpl|pagamento|mensalidade|financ/i.test(e.suspendReason))
+      );
+      for (const enr of suspendedEnrollments) {
+        await api.enrollments.update(enr.id, { status: 'active', suspendReason: '' });
+        setEnrollments(prev => prev.map(e => e.id === enr.id ? { ...e, status: 'active', suspendReason: '' } : e));
+      }
+
+      if (suspendedEnrollments.length > 0) {
+        toast.success('Pagamento confirmado e matrícula reativada!');
+      } else {
+        toast.success('Pagamento confirmado!');
+      }
     } catch { toast.error('Erro ao confirmar pagamento'); }
-  }, []);
+  }, [enrollments]);
 
   const handleConfirmPaymentWithReceipt = useCallback(async () => {
     if (!showPaymentModal) return;
@@ -1719,10 +1761,11 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     color: isActive ? '#FFFFFF' : '#666',
                     fontFamily: 'Barlow Condensed, sans-serif',
                     fontWeight: 900,
-                    fontSize: '0.65rem',
+                    fontSize: '0.75rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.07em',
-                    padding: '0.5rem 0.25rem',
+                    padding: '0.625rem 0.25rem',
+                    minHeight: '44px',
                     cursor: 'pointer',
                     minWidth: 0,
                     borderRadius: '6px',
@@ -1745,13 +1788,13 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   style={{
-                    padding: '0.6rem 0.75rem',
+                    padding: '0.625rem 0.875rem',
                     background: isActive ? accentColor : '#111',
                     border: `1px solid ${isActive ? accentColor : '#2A2A2A'}`,
                     color: isActive ? '#FFFFFF' : '#888',
                     fontFamily: 'Barlow Condensed, sans-serif',
                     fontWeight: 900,
-                    fontSize: '0.68rem',
+                    fontSize: '0.8rem',
                     textTransform: 'uppercase',
                     letterSpacing: '0.05em',
                     cursor: 'pointer',
@@ -1760,7 +1803,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     alignItems: 'center',
                     gap: '0.4rem',
                     transition: 'all 0.15s',
-                    minHeight: '38px',
+                    minHeight: '44px',
                     borderRadius: '6px',
                     boxShadow: isActive ? `0 8px 22px ${accentColor}30` : 'none',
                   }}
@@ -2829,7 +2872,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               const icons: Record<FinancialSubTab, string> = { enrollments: '📝', payments: '💳', suspensions: '🚫', integrations: '🔌' };
               const isActive = financialSubTab === tab;
               return (
-                <button key={tab} onClick={() => setFinancialSubTab(tab)} style={{ flex: 1, padding: '0.75rem 0.25rem', background: 'transparent', border: 'none', borderBottom: isActive ? '2px solid #CC0000' : '2px solid transparent', color: isActive ? '#FFFFFF' : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                <button key={tab} onClick={() => setFinancialSubTab(tab)} style={{ flex: 1, padding: '0.75rem 0.25rem', minHeight: '56px', background: 'transparent', border: 'none', borderBottom: isActive ? '2px solid #CC0000' : '2px solid transparent', color: isActive ? '#FFFFFF' : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
                   <span>{icons[tab]}</span>
                   <span>{labels[tab]}</span>
                 </button>
@@ -2905,11 +2948,11 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', textTransform: 'uppercase' }}>VENCE DIA {enr.dueDay}</span>
                         <div style={{ display: 'flex', gap: '0.375rem' }}>
                           {enr.status === 'active' ? (
-                            <button onClick={() => { setShowSuspendModal(enr); setSuspendConfirmStep(1); setSuspendReason(''); }} style={{ background: 'transparent', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>SUSPENDER</button>
+                            <button onClick={() => { setShowSuspendModal(enr); setSuspendConfirmStep(1); setSuspendReason(''); }} style={{ background: 'transparent', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', minHeight: '40px', cursor: 'pointer' }}>SUSPENDER</button>
                           ) : enr.status === 'suspended' ? (
-                            <button onClick={() => handleReactivate(enr)} style={{ background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>REATIVAR</button>
+                            <button onClick={() => handleReactivate(enr)} style={{ background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', minHeight: '40px', cursor: 'pointer' }}>REATIVAR</button>
                           ) : null}
-                          <button onClick={() => handleDeleteEnrollment(enr)} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>EXCLUIR</button>
+                          <button onClick={() => handleDeleteEnrollment(enr)} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', minHeight: '40px', cursor: 'pointer' }}>EXCLUIR</button>
                         </div>
                       </div>
                       {enr.status === 'suspended' && enr.suspendReason && (
@@ -2956,8 +2999,8 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               {/* Filtros */}
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <input type="month" value={paymentMonthFilter} onChange={e => setPaymentMonthFilter(e.target.value)} style={{ background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', padding: '0.5rem', flex: 1, outline: 'none' }} />
-                <button onClick={handleOpenBillingReview} style={{ background: '#CC000022', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.625rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 REVISAR MÊS</button>
-                <button onClick={exportFinancialPDF} disabled={payments.length === 0} style={{ background: '#111', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.625rem', cursor: payments.length === 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: payments.length === 0 ? 0.4 : 1 }} title="Exportar relatório em PDF">📄 PDF</button>
+                <button onClick={handleOpenBillingReview} style={{ background: '#CC000022', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 0.75rem', minHeight: '44px', cursor: 'pointer', whiteSpace: 'nowrap' }}>📋 REVISAR MÊS</button>
+                <button onClick={exportFinancialPDF} disabled={payments.length === 0} style={{ background: '#111', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 0.75rem', minHeight: '44px', cursor: payments.length === 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: payments.length === 0 ? 0.4 : 1 }} title="Exportar relatório em PDF">📄 PDF</button>
               </div>
 
               {/* Filtro de status */}
@@ -2967,7 +3010,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                   const colors = { all: '#555', pending: '#FF8C00', paid: '#4CAF50', overdue: '#CC0000' };
                   const isActive = paymentStatusFilter === s;
                   return (
-                    <button key={s} onClick={() => setPaymentStatusFilter(s)} style={{ flex: 1, background: isActive ? colors[s] + '22' : 'transparent', border: `1px solid ${isActive ? colors[s] : '#2A2A2A'}`, color: isActive ? colors[s] : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.375rem 0.25rem', cursor: 'pointer' }}>{labels[s]}</button>
+                    <button key={s} onClick={() => setPaymentStatusFilter(s)} style={{ flex: 1, background: isActive ? colors[s] + '22' : 'transparent', border: `1px solid ${isActive ? colors[s] : '#2A2A2A'}`, color: isActive ? colors[s] : '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.625rem 0.25rem', minHeight: '44px', cursor: 'pointer' }}>{labels[s]}</button>
                   );
                 })}
               </div>
@@ -3017,9 +3060,9 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                       </div>
                       <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.625rem' }}>
                         {payment.status !== 'paid' ? (
-                          <button onClick={() => setShowPaymentModal(payment)} style={{ flex: 1, background: '#4CAF5022', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.375rem', cursor: 'pointer' }}>CONFIRMAR PAGAMENTO</button>
+                          <button onClick={() => setShowPaymentModal(payment)} style={{ flex: 1, background: '#4CAF5022', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 0.5rem', minHeight: '44px', cursor: 'pointer' }}>CONFIRMAR PAGAMENTO</button>
                         ) : (
-                          <button onClick={() => handleRevertPaid(payment)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.375rem', cursor: 'pointer' }}>ESTORNAR</button>
+                          <button onClick={() => handleRevertPaid(payment)} style={{ flex: 1, background: 'transparent', border: '1px solid #333', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 0.5rem', minHeight: '44px', cursor: 'pointer' }}>ESTORNAR</button>
                         )}
                         {paymentAccess && (
                           <button
@@ -3027,7 +3070,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                               if (paymentAccessIsUrl) window.open(paymentAccess, '_blank', 'noopener,noreferrer');
                               else navigator.clipboard.writeText(paymentAccess).then(() => toast.success('PIX copiado!'));
                             }}
-                            style={{ background: 'transparent', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.375rem 0.5rem', cursor: 'pointer' }}
+                            style={{ background: 'transparent', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 0.625rem', minHeight: '44px', cursor: 'pointer' }}
                           >
                             {paymentAccessIsUrl ? 'LINK' : 'PIX'}
                           </button>
@@ -3162,12 +3205,12 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', alignItems: 'flex-end' }}>
                           <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', color: isSuspended ? '#FF8C00' : '#4CAF50', border: `1px solid ${isSuspended ? '#FF8C00' : '#4CAF50'}`, padding: '0.15rem 0.4rem' }}>{isSuspended ? 'SUSPENSO' : 'ATIVO'}</span>
                           {isActive && (
-                            <button onClick={() => { setShowSuspendModal(enr); setSuspendConfirmStep(1); setSuspendReason(''); }} style={{ background: 'transparent', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>SUSPENDER</button>
+                            <button onClick={() => { setShowSuspendModal(enr); setSuspendConfirmStep(1); setSuspendReason(''); }} style={{ background: 'transparent', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', minHeight: '40px', cursor: 'pointer' }}>SUSPENDER</button>
                           )}
                           {isSuspended && (
-                            <button onClick={() => handleReactivate(enr)} style={{ background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>REATIVAR</button>
+                            <button onClick={() => handleReactivate(enr)} style={{ background: 'transparent', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', minHeight: '40px', cursor: 'pointer' }}>REATIVAR</button>
                           )}
-                          <button onClick={() => handleDeleteEnrollment(enr)} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>EXCLUIR</button>
+                          <button onClick={() => handleDeleteEnrollment(enr)} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', minHeight: '40px', cursor: 'pointer' }}>EXCLUIR</button>
                         </div>
                       </div>
                     </div>
@@ -4841,7 +4884,7 @@ function FrequenciaTab({ professorUid, accentColor }: { professorUid: string; ac
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 1.25rem', paddingBottom: '80px' }}>
       {/* Header */}
       <div style={{ background: '#111', border: `1px solid ${accentColor}33`, borderLeft: `3px solid ${accentColor}`, padding: '0.875rem 1rem' }}>
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', letterSpacing: '0.05em' }}>FREQUÊNCIA DA ACADEMIA</p>
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', letterSpacing: '0.05em' }}>FREQUÊNCIA</p>
         <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', marginTop: '0.2rem' }}>Heatmap de treinos registrados pelos alunos</p>
       </div>
 
@@ -5260,6 +5303,129 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
   );
 }
 
+// ── Funções de export da aba Receita ─────────────────────────────────────────
+function buildReceitaData(year: number, allPayments: any[], now: Date) {
+  const today = now.toISOString().slice(0, 10);
+  const currentMonth = now.toISOString().slice(0, 7);
+  const y = String(year);
+  return Array.from({ length: 12 }, (_, i) => {
+    const m = `${y}-${String(i + 1).padStart(2, '0')}`;
+    if (m > currentMonth) return { month: m, label: RELATORIO_MONTH_NAMES[i], cobrado: 0, recebido: 0, inadimplente: 0, hidden: true };
+    const mPayments = allPayments.filter((p: any) => (p.month || p.dueDate?.slice(0, 7)) === m);
+    // Deduplicar por aluno: 1 pagamento por aluno por mês (o mais recente)
+    const byStudent = new Map<string, any>();
+    mPayments.forEach((p: any) => {
+      const existing = byStudent.get(p.studentUid);
+      if (!existing || (p.createdAt || '') > (existing.createdAt || '')) {
+        byStudent.set(p.studentUid, p);
+      }
+    });
+    const dedupedPayments = Array.from(byStudent.values());
+    const cobrado = dedupedPayments.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+    const recebido = dedupedPayments.filter((p: any) => p.status === 'paid').reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+    const inadimplente = dedupedPayments
+      .filter((p: any) => p.status === 'overdue' || (p.status === 'pending' && p.dueDate && p.dueDate < today))
+      .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+    return { month: m, label: RELATORIO_MONTH_NAMES[i], cobrado, recebido, inadimplente };
+  });
+}
+
+function exportReceitaXLSX(year: number, allPayments: any[], alunos: RelatorioAluno[], now: Date) {
+  const data = buildReceitaData(year, allPayments, now).filter(d => !d.hidden);
+  const totalRecebido = data.reduce((s, d) => s + d.recebido, 0);
+  const totalCobrado = data.reduce((s, d) => s + d.cobrado, 0);
+  const totalInadimplente = data.reduce((s, d) => s + d.inadimplente, 0);
+
+  const rows = [
+    ['Mês', 'Cobrado (R$)', 'Recebido (R$)', 'Inadimplência (R$)'],
+    ...data.map(d => [d.label, d.cobrado, d.recebido, d.inadimplente]),
+    [],
+    ['TOTAL', totalCobrado, totalRecebido, totalInadimplente],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 18 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `Receita ${year}`);
+  XLSX.writeFile(wb, `receita-${year}.xlsx`);
+}
+
+function exportReceitaPDF(year: number, allPayments: any[], alunos: RelatorioAluno[], now: Date, profile: any) {
+  const data = buildReceitaData(year, allPayments, now).filter(d => !d.hidden);
+  const totalRecebido = data.reduce((s, d) => s + d.recebido, 0);
+  const totalCobrado = data.reduce((s, d) => s + d.cobrado, 0);
+  const totalInadimplente = data.reduce((s, d) => s + d.inadimplente, 0);
+
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  pdf.setFillColor(10, 10, 10); pdf.rect(0, 0, 210, 297, 'F');
+  // Header
+  pdf.setFillColor(204, 0, 0); pdf.rect(0, 0, 210, 18, 'F');
+  pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(12);
+  pdf.text('BJJRATS — RELATÓRIO DE RECEITA', 14, 11);
+  pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8);
+  pdf.text(`${profile?.academyName || profile?.displayName || 'Academia'} · ${year}`, 14, 16);
+
+  let cy = 28;
+  // Cards de totais
+  const cards = [
+    { label: 'TOTAL COBRADO', value: `R$ ${totalCobrado.toFixed(2)}`, color: [100, 100, 100] as [number,number,number] },
+    { label: 'RECEBIDO', value: `R$ ${totalRecebido.toFixed(2)}`, color: [76, 175, 80] as [number,number,number] },
+    { label: 'INADIMPLÊNCIA', value: `R$ ${totalInadimplente.toFixed(2)}`, color: [204, 0, 0] as [number,number,number] },
+  ];
+  const cardW = 56; const cardH = 16; const cardGap = 5; const cardX = 14;
+  cards.forEach((c, i) => {
+    const x = cardX + i * (cardW + cardGap);
+    pdf.setFillColor(20, 20, 20); pdf.rect(x, cy, cardW, cardH, 'F');
+    pdf.setDrawColor(...c.color); pdf.setLineWidth(0.5); pdf.rect(x, cy, cardW, cardH, 'S');
+    pdf.setTextColor(...c.color); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
+    pdf.text(c.value, x + cardW / 2, cy + 8, { align: 'center' });
+    pdf.setTextColor(150, 150, 150); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6);
+    pdf.text(c.label, x + cardW / 2, cy + 13, { align: 'center' });
+  });
+  cy += cardH + 10;
+
+  // Tabela
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7); pdf.setTextColor(150, 150, 150);
+  pdf.setFillColor(25, 25, 25); pdf.rect(14, cy, 182, 7, 'F');
+  pdf.setTextColor(200, 200, 200);
+  pdf.text('MÊS', 18, cy + 4.5);
+  pdf.text('COBRADO', 80, cy + 4.5, { align: 'right' });
+  pdf.text('RECEBIDO', 126, cy + 4.5, { align: 'right' });
+  pdf.text('INADIMPLÊNCIA', 182, cy + 4.5, { align: 'right' });
+  cy += 7;
+
+  data.forEach((d, i) => {
+    pdf.setFillColor(i % 2 === 0 ? 15 : 20, i % 2 === 0 ? 15 : 20, i % 2 === 0 ? 15 : 20);
+    pdf.rect(14, cy, 182, 7, 'F');
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8);
+    pdf.setTextColor(210, 210, 210); pdf.text(d.label, 18, cy + 4.5);
+    pdf.setTextColor(180, 180, 180); pdf.text(`R$ ${d.cobrado.toFixed(2)}`, 80, cy + 4.5, { align: 'right' });
+    pdf.setTextColor(76, 175, 80); pdf.text(`R$ ${d.recebido.toFixed(2)}`, 126, cy + 4.5, { align: 'right' });
+    if (d.inadimplente > 0) {
+      pdf.setTextColor(204, 0, 0); pdf.text(`R$ ${d.inadimplente.toFixed(2)}`, 182, cy + 4.5, { align: 'right' });
+    } else {
+      pdf.setTextColor(80, 80, 80); pdf.text('—', 182, cy + 4.5, { align: 'right' });
+    }
+    cy += 7;
+  });
+
+  // Linha de total
+  cy += 2;
+  pdf.setFillColor(30, 30, 30); pdf.rect(14, cy, 182, 8, 'F');
+  pdf.setDrawColor(80, 80, 80); pdf.setLineWidth(0.3); pdf.line(14, cy, 196, cy);
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8);
+  pdf.setTextColor(255, 255, 255); pdf.text('TOTAL', 18, cy + 5);
+  pdf.setTextColor(180, 180, 180); pdf.text(`R$ ${totalCobrado.toFixed(2)}`, 80, cy + 5, { align: 'right' });
+  pdf.setTextColor(76, 175, 80); pdf.text(`R$ ${totalRecebido.toFixed(2)}`, 126, cy + 5, { align: 'right' });
+  pdf.setTextColor(204, 0, 0); pdf.text(`R$ ${totalInadimplente.toFixed(2)}`, 182, cy + 5, { align: 'right' });
+
+  // Rodapé
+  pdf.setTextColor(80, 80, 80); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7);
+  pdf.text(`Gerado em ${new Date().toLocaleDateString('pt-BR')} via BJJRATS`, 105, 290, { align: 'center' });
+
+  pdf.save(`receita-${year}.pdf`);
+}
+
 // ── RelatoriosTab ─────────────────────────────────────────────────────────────
 // Relatórios mensais: alunos em atraso financeiro e baixa frequência
 // Avisos automaticos por atraso configuravel e incentivo de frequencia
@@ -5299,6 +5465,7 @@ function RelatoriosTab({
   autoSuspendAfterDays: number;
   onSuspend: (enrollmentId: string) => void;
 }) {
+  const now = new Date();
   const [alunos, setAlunos] = useState<RelatorioAluno[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState<Record<string, boolean>>({});
@@ -5312,8 +5479,8 @@ function RelatoriosTab({
   const [allAttendance, setAllAttendance] = useState<any[]>([]);
   const [loadingExtra, setLoadingExtra] = useState(false);
   const [sumidosDays, setSumidosDays] = useState(14);
+  const [receitaYear, setReceitaYear] = useState(now.getFullYear());
 
-  const now = new Date();
   const monthName = RELATORIO_MONTH_NAMES[now.getMonth()];
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -5923,22 +6090,46 @@ function RelatoriosTab({
           {/* ── RECEITA ACUMULADA ANUAL ── */}
           {subTab === 'receita' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <p style={{ ...S.label, color: '#666' }}>RECEITA MENSAL — {now.getFullYear()}</p>
+              {/* Cabeçalho com seletor de ano e botões de export */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <p style={{ ...S.label, color: '#666', margin: 0 }}>RECEITA MENSAL</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <button onClick={() => setReceitaYear(y => y - 1)} style={{ background: 'none', border: '1px solid #333', color: '#888', padding: '0.1rem 0.4rem', cursor: 'pointer', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem' }}>‹</button>
+                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.9rem', color: '#FFF', minWidth: '2.8rem', textAlign: 'center' }}>{receitaYear}</span>
+                    <button onClick={() => setReceitaYear(y => Math.min(y + 1, now.getFullYear()))} disabled={receitaYear >= now.getFullYear()} style={{ background: 'none', border: '1px solid #333', color: receitaYear >= now.getFullYear() ? '#333' : '#888', padding: '0.1rem 0.4rem', cursor: receitaYear >= now.getFullYear() ? 'not-allowed' : 'pointer', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem' }}>›</button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.375rem' }}>
+                  <button onClick={() => exportReceitaXLSX(receitaYear, allPayments, alunos, now)} style={{ background: '#111', border: '1px solid #4A90D9', color: '#4A90D9', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.4rem 0.6rem', cursor: 'pointer' }}>📊 EXCEL</button>
+                  <button onClick={() => exportReceitaPDF(receitaYear, allPayments, alunos, now, profile)} style={{ background: '#111', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.4rem 0.6rem', cursor: 'pointer' }}>📄 PDF</button>
+                </div>
+              </div>
               {loadingExtra ? (
                 <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', textAlign: 'center', padding: '2rem' }}>Carregando...</p>
               ) : (() => {
-                const year = String(now.getFullYear());
-                const months = Array.from({ length: 12 }, (_,i) => `${year}-${String(i+1).padStart(2,'0')}`);
+                const year = String(receitaYear);
+                const today = now.toISOString().slice(0,10);
+                const currentMonth = now.toISOString().slice(0,7);
+                const allMonths = Array.from({ length: 12 }, (_,i) => `${year}-${String(i+1).padStart(2,'0')}`);
+                const months = allMonths.filter(m => m <= currentMonth);
                 const data = months.map(m => {
                   const mPayments = allPayments.filter((p:any) => (p.month || p.dueDate?.slice(0,7)) === m);
-                  const cobrado = mPayments.reduce((s:number,p:any) => s + (Number(p.amount)||0), 0);
-                  const recebido = mPayments.filter((p:any)=>p.status==='paid').reduce((s:number,p:any) => s + (Number(p.amount)||0), 0);
-                  const inadimplente = mPayments.filter((p:any)=>p.status==='overdue').reduce((s:number,p:any) => s + (Number(p.amount)||0), 0);
+                  // Deduplicar por aluno: 1 pagamento por aluno por mês (o mais recente)
+                  const byStudent = new Map<string,any>();
+                  mPayments.forEach((p:any) => {
+                    const existing = byStudent.get(p.studentUid);
+                    if (!existing || (p.createdAt||'') > (existing.createdAt||'')) byStudent.set(p.studentUid, p);
+                  });
+                  const deduped = Array.from(byStudent.values());
+                  const cobrado = deduped.reduce((s:number,p:any) => s + (Number(p.amount)||0), 0);
+                  const recebido = deduped.filter((p:any)=>p.status==='paid').reduce((s:number,p:any) => s + (Number(p.amount)||0), 0);
+                  const inadimplente = deduped.filter((p:any)=>p.status==='overdue' || (p.status==='pending' && p.dueDate && p.dueDate < today)).reduce((s:number,p:any) => s + (Number(p.amount)||0), 0);
                   return { month: m, label: RELATORIO_MONTH_NAMES[parseInt(m.slice(5))-1].slice(0,3).toUpperCase(), cobrado, recebido, inadimplente };
                 });
                 const maxVal = Math.max(...data.map(d => d.cobrado), 1);
                 const totalRecebido = data.reduce((s,d) => s + d.recebido, 0);
-                const totalCobrado = data.reduce((s,d) => s + d.cobrado, 0);
+                const totalInadimplente = data.reduce((s,d) => s + d.inadimplente, 0);
                 return (
                   <>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -5947,7 +6138,7 @@ function RelatoriosTab({
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#555', textTransform: 'uppercase' }}>RECEBIDO NO ANO</p>
                       </div>
                       <div style={{ flex: 1, background: '#111', border: '1px solid #CC000033', padding: '0.75rem', textAlign: 'center' }}>
-                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#CC0000' }}>R$ {(totalCobrado - totalRecebido).toFixed(2)}</p>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#CC0000' }}>R$ {totalInadimplente.toFixed(2)}</p>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#555', textTransform: 'uppercase' }}>INADIMPLÊNCIA</p>
                       </div>
                     </div>
