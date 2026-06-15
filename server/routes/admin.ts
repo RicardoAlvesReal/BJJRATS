@@ -18,12 +18,28 @@ function canManage(actorRole: string, targetRole: string): boolean {
   return (ROLE_HIERARCHY[actorRole] ?? 0) > (ROLE_HIERARCHY[targetRole] ?? 0);
 }
 
+function toBoolean(value: unknown) {
+  return value === true || value === 'true' || value === '1' || value === 1;
+}
+
+function normalizeAssignableRole(role: unknown): string {
+  if (role === 'admin') return 'academy';
+  if (role === 'superadmin' || role === 'academy' || role === 'professor' || role === 'student') return role;
+  return 'student';
+}
+
+function normalizePlanRole(role: unknown): 'academy' | 'professor' | 'student' | null {
+  if (role === 'admin') return 'academy';
+  if (role === 'academy' || role === 'professor' || role === 'student') return role;
+  return null;
+}
+
 // ─── GET /api/admin/users ─────────────────────────────────────────────────────
 // Lista usuários com role abaixo do solicitante
 router.get(
   '/users',
   requireAuth,
-  requireRole('superadmin', 'admin', 'professor'),
+  requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const actorRole = req.userRole!;
     const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
@@ -35,6 +51,7 @@ router.get(
         name:        users.name,
         email:       users.email,
         role:        users.role,
+        isAcademyAdmin: users.isAcademyAdmin,
         belt:        users.belt,
         stripes:     users.stripes,
         academyId:   users.academyId,
@@ -83,7 +100,7 @@ router.get(
 router.post(
   '/users',
   requireAuth,
-  requireRole('superadmin', 'admin', 'professor'),
+  requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const actorRole = req.userRole!;
     const {
@@ -91,14 +108,17 @@ router.post(
       role = 'student',
       belt = 'Branca',
       ...rest
-    } = req.body as Record<string, string>;
+    } = req.body as Record<string, unknown>;
+    const requestedAcademy = role === 'academy' || role === 'admin' || toBoolean(rest.isAcademyAdmin);
+    const normalizedRole = requestedAcademy ? 'academy' : normalizeAssignableRole(role);
+    const isAcademyAdmin = normalizedRole === 'academy';
 
     if (!name || !email || !password) {
       res.status(400).json({ error: 'name, email e password são obrigatórios' });
       return;
     }
 
-    if (!canManage(actorRole, role)) {
+    if (!canManage(actorRole, normalizedRole)) {
       res.status(403).json({ error: `Você não pode criar usuários com role "${role}"` });
       return;
     }
@@ -106,7 +126,7 @@ router.post(
     const existing = await db
       .select({ uid: users.uid })
       .from(users)
-      .where(eq(users.email, email.toLowerCase()))
+      .where(eq(users.email, String(email).toLowerCase()))
       .limit(1);
 
     if (existing.length) {
@@ -115,28 +135,29 @@ router.post(
     }
 
     const uid          = nanoid();
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(String(password), 10);
 
     await db.insert(users).values({
       uid,
-      name,
-      email:          email.toLowerCase(),
+      name:           String(name),
+      email:          String(email).toLowerCase(),
       passwordHash,
-      belt,
-      role,
-      academy:        rest.academy        || '',
-      academyId:      rest.academyId || (actorRole !== 'superadmin' ? req.userId! : null),
-      professor:      rest.professor      || '',
-      academyName:    rest.academyName    || null,
-      academyAddress: rest.academyAddress || null,
-      academyCity:    rest.academyCity    || null,
-      academyState:   rest.academyState   || null,
-      academyCnpj:    rest.academyCnpj    || null,
-      academyCep:     rest.academyCep     || null,
-      academyNumber:  rest.academyNumber  || null,
-      academyNeighborhood: rest.academyNeighborhood || null,
-      academyComplement:    rest.academyComplement   || null,
-      phone:          rest.phone          || null,
+      belt:           String(belt || 'Branca'),
+      role:           normalizedRole,
+      isAcademyAdmin,
+      academy:        rest.academy ? String(rest.academy) : '',
+      academyId:      rest.academyId ? String(rest.academyId) : null,
+      professor:      rest.professor ? String(rest.professor) : '',
+      academyName:    rest.academyName ? String(rest.academyName) : null,
+      academyAddress: rest.academyAddress ? String(rest.academyAddress) : null,
+      academyCity:    rest.academyCity ? String(rest.academyCity) : null,
+      academyState:   rest.academyState ? String(rest.academyState) : null,
+      academyCnpj:    rest.academyCnpj ? String(rest.academyCnpj) : null,
+      academyCep:     rest.academyCep ? String(rest.academyCep) : null,
+      academyNumber:  rest.academyNumber ? String(rest.academyNumber) : null,
+      academyNeighborhood: rest.academyNeighborhood ? String(rest.academyNeighborhood) : null,
+      academyComplement:    rest.academyComplement ? String(rest.academyComplement) : null,
+      phone:          rest.phone ? String(rest.phone) : null,
       subscriptionExempt: true,
     });
 
@@ -150,7 +171,7 @@ router.post(
 router.patch(
   '/users/:uid',
   requireAuth,
-  requireRole('superadmin', 'admin'),
+  requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const actorRole = req.userRole!;
     const { uid } = req.params;
@@ -181,11 +202,13 @@ router.patch(
       updates.passwordHash = await bcrypt.hash(password as string, 10);
     }
     if (newRole) {
-      if (!canManage(actorRole, newRole as string)) {
+      const normalizedNewRole = normalizeAssignableRole(newRole);
+      if (!canManage(actorRole, normalizedNewRole)) {
         res.status(403).json({ error: `Você não pode atribuir o role "${newRole}"` });
         return;
       }
-      updates.role = newRole;
+      updates.role = normalizedNewRole;
+      updates.isAcademyAdmin = normalizedNewRole === 'academy';
     }
 
     await db.update(users).set(updates).where(eq(users.uid, uid));
@@ -198,7 +221,7 @@ router.patch(
 router.delete(
   '/users/:uid',
   requireAuth,
-  requireRole('superadmin', 'admin'),
+  requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const actorRole = req.userRole!;
     const { uid } = req.params;
@@ -237,7 +260,7 @@ router.delete(
 router.get(
   '/stats',
   requireAuth,
-  requireRole('superadmin', 'admin'),
+  requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const actorRole = req.userRole!;
     const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
@@ -371,7 +394,7 @@ router.get(
 router.get(
   '/crm',
   requireAuth,
-  requireRole('superadmin', 'admin'),
+  requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const actorRole = req.userRole!;
     const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
@@ -722,7 +745,7 @@ router.get(
 router.get(
   '/community/stats',
   requireAuth,
-  requireRole('superadmin', 'admin'),
+  requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const [postCount, eventCount, challengeCount, commentCount, topPosters] = await Promise.all([
       db.select({ count: sql<number>`count(*)` }).from(posts),
@@ -831,8 +854,13 @@ router.post(
       res.status(400).json({ error: 'name, slug, price e roleAssigned são obrigatórios' });
       return;
     }
+    const normalizedRoleAssigned = normalizePlanRole(roleAssigned);
+    if (!normalizedRoleAssigned) {
+      res.status(400).json({ error: 'roleAssigned invalido' });
+      return;
+    }
     const id = nanoid();
-    await db.insert(plans).values({ id, name, slug, description, price, roleAssigned, features: features || [], trialDays: trialDays ?? 0 });
+    await db.insert(plans).values({ id, name, slug, description, price, roleAssigned: normalizedRoleAssigned, features: features || [], trialDays: trialDays ?? 0 });
     const [plan] = await db.select().from(plans).where(eq(plans.id, id)).limit(1);
     res.status(201).json(plan);
   }
@@ -856,7 +884,14 @@ router.put(
     if (slug !== undefined) updates.slug = slug;
     if (description !== undefined) updates.description = description;
     if (price !== undefined) updates.price = price;
-    if (roleAssigned !== undefined) updates.roleAssigned = roleAssigned;
+    if (roleAssigned !== undefined) {
+      const normalizedRoleAssigned = normalizePlanRole(roleAssigned);
+      if (!normalizedRoleAssigned) {
+        res.status(400).json({ error: 'roleAssigned invalido' });
+        return;
+      }
+      updates.roleAssigned = normalizedRoleAssigned;
+    }
     if (features !== undefined) updates.features = features;
     if (trialDays !== undefined) updates.trialDays = trialDays;
     if (isActive !== undefined) updates.isActive = isActive;

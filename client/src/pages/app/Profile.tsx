@@ -674,7 +674,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
       <div className="bjj-header">
         <h1 className="bjj-header-title">MEU PERFIL</h1>
         <div className="flex gap-2 items-center">
-          {(profile?.role === 'superadmin' || profile?.role === 'admin') && (
+          {profile?.role === 'superadmin' && (
             <a href="/admin" className="text-[0.65rem] font-bold uppercase tracking-[0.05em] px-2.5 py-1.5 rounded border border-[#CC0000] bg-[#1A0000] text-[#CC0000] no-underline flex items-center gap-1 font-['Barlow_Condensed']">⚙️ ADMIN</a>
           )}
           {onOpenProfessorPanel && (

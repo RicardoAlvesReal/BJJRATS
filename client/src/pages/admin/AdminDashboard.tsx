@@ -10,6 +10,7 @@ import { COLORS, FONTS } from '@/lib/design';
 interface Stats {
   total: number;
   superadmin: number;
+  academy: number;
   admin: number;
   professor: number;
   student: number;
@@ -17,6 +18,7 @@ interface Stats {
 
 const ROLE_LABEL: Record<string, string> = {
   superadmin: 'Super Admin',
+  academy:    'Academia',
   admin:      'Academia',
   professor:  'Professor',
   student:    'Aluno',
@@ -24,6 +26,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 const ROLE_COLOR: Record<string, string> = {
   superadmin: '#CC0000',
+  academy:    '#E87722',
   admin:      '#E87722',
   professor:  '#3B82F6',
   student:    '#22C55E',
@@ -57,13 +60,13 @@ export default function AdminDashboard() {
         api.admin.listUsers(),
         api.admin.getStats(days || undefined),
       ]);
-      const s: Stats = { total: users.length, superadmin: 0, admin: 0, professor: 0, student: 0 };
+      const s: Stats = { total: users.length, superadmin: 0, academy: 0, admin: 0, professor: 0, student: 0 };
       for (const u of users) {
         const r = u.role as keyof Stats;
         if (r in s) s[r] = (s[r] as number) + 1;
       }
       setStats(s);
-      setAcademias(users.filter(u => u.role === 'admin' && (u.academyName || u.academy)).length);
+      setAcademias(users.filter(u => (u.role === 'academy' || u.role === 'admin' || u.isAcademyAdmin) && (u.academyName || u.academy)).length);
       setRecent([...users].sort((a, b) =>
         new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
       ).slice(0, 5));
@@ -144,7 +147,7 @@ export default function AdminDashboard() {
         {isSuperAdmin ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
             <StatCard label="Total" value={stats?.total ?? 0} color="#FFF" />
-            <StatCard label="Admins" value={stats?.admin ?? 0} color="#E87722" />
+            <StatCard label="Superadmins" value={stats?.superadmin ?? 0} color="#CC0000" />
             <StatCard label="Academias" value={academias} color="#E87722" />
             <StatCard label="Professores" value={stats?.professor ?? 0} color="#3B82F6" />
             <StatCard label="Alunos" value={stats?.student ?? 0} color="#22C55E" />

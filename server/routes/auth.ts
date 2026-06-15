@@ -14,43 +14,62 @@ function toNullableNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toBoolean(value: unknown) {
+  return value === true || value === 'true' || value === '1' || value === 1;
+}
+
+function normalizePublicRole(role: unknown): 'student' | 'professor' | 'academy' {
+  if (role === 'academy' || role === 'admin') return 'academy';
+  if (role === 'professor') return 'professor';
+  return 'student';
+}
+
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { name, email, password, role = 'student', belt = 'Branca', ...rest } = req.body as Record<string, string>;
+  const { name, email, password, role = 'student', belt = 'Branca', ...rest } = req.body as Record<string, unknown>;
   if (!name || !email || !password) {
-    res.status(400).json({ error: 'name, email e password são obrigatórios' });
+    res.status(400).json({ error: 'name, email e password sao obrigatorios' });
     return;
   }
-  const existing = await db.select({ uid: users.uid }).from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+
+  const requestedAcademy = role === 'academy' || role === 'admin' || toBoolean(rest.isAcademyAdmin);
+  const normalizedRole = requestedAcademy ? 'academy' : normalizePublicRole(role);
+  const isAcademyAdmin = normalizedRole === 'academy';
+  const normalizedEmail = String(email).toLowerCase();
+
+  const existing = await db.select({ uid: users.uid }).from(users).where(eq(users.email, normalizedEmail)).limit(1);
   if (existing.length) {
-    res.status(409).json({ error: 'E-mail já cadastrado' });
+    res.status(409).json({ error: 'E-mail ja cadastrado' });
     return;
   }
+
   const uid = nanoid();
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(String(password), 10);
   await db.insert(users).values({
     uid,
-    name,
-    email: email.toLowerCase(),
+    name: String(name),
+    email: normalizedEmail,
     passwordHash,
-    belt,
-    role,
-    academy:       rest.academy        || '',
-    academyId:     rest.academyId      || null,
-    professor:     rest.professor      || '',
-    dob:           rest.dob            || null,
-    sex:           rest.sex            || null,
-    weightKg:      rest.weightKg       || null,
-    heightCm:      rest.heightCm       || null,
-    bjjSince:      rest.bjjSince       || null,
-    stripes:       Number(rest.stripes) || 0,
-    academyName:   rest.academyName    || null,
-    academyAddress:rest.academyAddress || null,
-    academyCity:   rest.academyCity    || null,
-    academyState:  rest.academyState   || null,
-    academyLatitude:  toNullableNumber(rest.academyLatitude),
+    belt: String(belt || 'Branca'),
+    role: normalizedRole,
+    isAcademyAdmin,
+    academy: String(rest.academy || ''),
+    academyId: rest.academyId ? String(rest.academyId) : null,
+    professor: String(rest.professor || ''),
+    dob: rest.dob ? String(rest.dob) : null,
+    sex: rest.sex ? String(rest.sex) : null,
+    weightKg: rest.weightKg ? String(rest.weightKg) : null,
+    heightCm: rest.heightCm ? String(rest.heightCm) : null,
+    bjjSince: rest.bjjSince ? String(rest.bjjSince) : null,
+    stripes: Number(rest.stripes) || 0,
+    academyName: rest.academyName ? String(rest.academyName) : null,
+    academyAddress: rest.academyAddress ? String(rest.academyAddress) : null,
+    academyCity: rest.academyCity ? String(rest.academyCity) : null,
+    academyState: rest.academyState ? String(rest.academyState) : null,
+    academyLatitude: toNullableNumber(rest.academyLatitude),
     academyLongitude: toNullableNumber(rest.academyLongitude),
   });
+
   const [user] = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
   const token = signToken(uid, user.role ?? 'student', user.communityModerator ?? false);
   res.status(201).json({ token, user: sanitize(user) });
@@ -60,17 +79,17 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   const { email, password } = req.body as { email: string; password: string };
   if (!email || !password) {
-    res.status(400).json({ error: 'email e password são obrigatórios' });
+    res.status(400).json({ error: 'email e password sao obrigatorios' });
     return;
   }
   const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
   if (!user) {
-    res.status(401).json({ error: 'Credenciais inválidas' });
+    res.status(401).json({ error: 'Credenciais invalidas' });
     return;
   }
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
-    res.status(401).json({ error: 'Credenciais inválidas' });
+    res.status(401).json({ error: 'Credenciais invalidas' });
     return;
   }
   const token = signToken(user.uid, user.role ?? 'student', user.communityModerator ?? false);
@@ -80,19 +99,23 @@ router.post('/login', async (req, res) => {
 // GET /api/auth/me
 router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   const [user] = await db.select().from(users).where(eq(users.uid, req.userId!)).limit(1);
-  if (!user) { res.status(404).json({ error: 'Usuário não encontrado' }); return; }
+  if (!user) {
+    res.status(404).json({ error: 'Usuario nao encontrado' });
+    return;
+  }
   res.json(sanitize(user));
 });
 
-// POST /api/auth/reset-password  (stub — implementar via emailService)
+// POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
   const { email } = req.body as { email: string };
-  if (!email) { res.status(400).json({ error: 'email é obrigatório' }); return; }
-  // TODO: gerar token temporário e enviar por e-mail
-  res.json({ message: 'Se o e-mail existir, um link de redefinição será enviado.' });
+  if (!email) {
+    res.status(400).json({ error: 'email e obrigatorio' });
+    return;
+  }
+  res.json({ message: 'Se o e-mail existir, um link de redefinicao sera enviado.' });
 });
 
-// Não expõe passwordHash ao cliente
 function sanitize(user: typeof users.$inferSelect) {
   const { passwordHash: _, ...safe } = user as any;
   return safe;

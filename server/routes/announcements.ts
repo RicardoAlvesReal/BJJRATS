@@ -43,7 +43,7 @@ function audienceAllowed(audience: string | null | undefined, role?: string | nu
   const value = audience || 'all';
   if (value === 'all') return true;
   if (value === 'students') return role === 'student';
-  if (value === 'professors') return role === 'professor' || role === 'admin' || role === 'superadmin';
+  if (value === 'professors') return role === 'professor' || role === 'academy' || role === 'admin' || role === 'superadmin';
   return true;
 }
 
@@ -317,7 +317,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     }
 
     const role = author.role || req.userRole || 'student';
-    const isAcademy = role === 'admin' || !!author.isAcademyAdmin;
+    const isAcademy = role === 'academy' || role === 'admin' || !!author.isAcademyAdmin;
     const audience = AUDIENCES.has(String(req.body.audience || '')) ? String(req.body.audience) : 'all';
     let scope = 'global';
     let targetAcademyId: string | undefined;

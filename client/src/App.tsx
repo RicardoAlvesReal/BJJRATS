@@ -65,7 +65,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     );
   }
   if (!user) return <Redirect to="/login" />;
-  if (user.role === 'superadmin' || user.role === 'admin') return <Redirect to="/admin" />;
+  if (user.role === 'superadmin') return <Redirect to="/admin" />;
   if (!hasAccess) return <Redirect to="/pricing" />;
   return <Component />;
 }
@@ -74,14 +74,14 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Redirect to="/admin/login" />;
-  if (user.role !== 'superadmin' && user.role !== 'admin') return <Redirect to="/app" />;
+  if (user.role !== 'superadmin') return <Redirect to="/app" />;
   return <Component />;
 }
 
 function PublicRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user) return <Redirect to={user.role === 'superadmin' || user.role === 'admin' ? '/admin' : '/app'} />;
+  if (user) return <Redirect to={user.role === 'superadmin' ? '/admin' : '/app'} />;
   return <Component />;
 }
 

@@ -146,8 +146,8 @@ export default function Academy() {
   const { user, profile, refreshProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<AcademyTab>('feed');
   const [showSearch, setShowSearch] = useState(false);
-  // isAdmin = professor (role='professor' OU isAcademyAdmin=true)
-  const isAdmin = profile?.isAcademyAdmin === true || profile?.role === 'professor';
+  // isAdmin = dono de academia/professor com permissao de gestao
+  const isAdmin = profile?.role === 'academy' || profile?.isAcademyAdmin === true || profile?.role === 'professor';
   // Professor usa seu próprio UID como academyId; aluno usa o academyId do perfil
   const academyId = isAdmin ? (user?.uid || null) : (profile?.academyId || null);
 

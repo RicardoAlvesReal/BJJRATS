@@ -78,7 +78,7 @@ function buildAcademySuggestions(users: UserProfile[], profile?: UserProfile | n
   });
 
   users
-    .filter(data => data.role === 'admin' || data.role === 'professor' || data.isAcademyAdmin)
+    .filter(data => data.role === 'academy' || data.role === 'admin' || data.role === 'professor' || data.isAcademyAdmin)
     .forEach(data => {
       const academyName = data.academyName || data.academy;
       addSuggestion(suggestions, {

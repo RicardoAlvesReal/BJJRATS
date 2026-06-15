@@ -29,9 +29,9 @@ function sanitizeName(name: string): string {
 }
 
 /** Mapeia role para pasta raiz */
-function roleFolderName(role: string): string {
+function roleFolderName(role: string, isAcademyAdmin = false): string {
+  if (role === 'academy' || role === 'admin' || role === 'superadmin' || isAcademyAdmin) return 'academias';
   if (role === 'professor') return 'professores';
-  if (role === 'admin' || role === 'superadmin') return 'academias';
   return 'alunos';
 }
 
@@ -45,13 +45,13 @@ const storage = multer.diskStorage({
 
       // Busca nome do usuário no banco para criar pasta legível
       const [user] = await db
-        .select({ name: users.name })
+        .select({ name: users.name, isAcademyAdmin: users.isAcademyAdmin })
         .from(users)
         .where(eq(users.uid, userId))
         .limit(1);
 
       const folderName = sanitizeName(user?.name ?? userId);
-      const roleFolder = roleFolderName(userRole);
+      const roleFolder = roleFolderName(userRole, user?.isAcademyAdmin === true);
 
       // uploads/{alunos|professores|academias}/{nome}/{categoria}/
       const dir = path.join(UPLOADS_DIR, roleFolder, folderName, category);

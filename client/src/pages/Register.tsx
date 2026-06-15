@@ -20,17 +20,17 @@ const BELTS = [
   { value: 'Preta', label: 'Preta', color: '#111111' },
 ];
 
-type Role = 'student' | 'professor' | 'admin' | null;
+type Role = 'student' | 'professor' | 'academy' | null;
 
 // Aluno: 1,2,3 | Professor/Academia: 1,2,3,4,5
-const TOTAL_STEPS: Record<string, number> = { student: 3, professor: 5, admin: 5 };
+const TOTAL_STEPS: Record<string, number> = { student: 3, professor: 5, academy: 5 };
 
 const STEP_LABELS: Record<number, Record<string, string>> = {
-  1: { student: 'DADOS DE ACESSO', professor: 'DADOS DE ACESSO', admin: 'DADOS DE ACESSO' },
-  2: { student: 'TIPO DE PERFIL', professor: 'TIPO DE PERFIL', admin: 'TIPO DE PERFIL' },
-  3: { student: 'PERFIL DE LUTADOR', professor: 'PERFIL DE LUTADOR', admin: 'PERFIL DE LUTADOR' },
-  4: { professor: 'DADOS DA ACADEMIA', admin: 'DADOS DA ACADEMIA' },
-  5: { professor: 'IDENTIDADE VISUAL', admin: 'IDENTIDADE VISUAL' },
+  1: { student: 'DADOS DE ACESSO', professor: 'DADOS DE ACESSO', academy: 'DADOS DE ACESSO' },
+  2: { student: 'TIPO DE PERFIL', professor: 'TIPO DE PERFIL', academy: 'TIPO DE PERFIL' },
+  3: { student: 'PERFIL DE LUTADOR', professor: 'PERFIL DE LUTADOR', academy: 'PERFIL DE LUTADOR' },
+  4: { professor: 'DADOS DA ACADEMIA', academy: 'DADOS DA ACADEMIA' },
+  5: { professor: 'IDENTIDADE VISUAL', academy: 'IDENTIDADE VISUAL' },
 };
 
 export default function Register() {
@@ -194,7 +194,7 @@ export default function Register() {
   // ── Passo 3: Perfil atleta — avança ou finaliza (aluno) ───────────────────
   const handleStep3 = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (role === 'professor' || role === 'admin') {
+    if (role === 'professor' || role === 'academy') {
       setStep(4);
       return;
     }
@@ -265,7 +265,8 @@ export default function Register() {
         weightKg: form.weightKg,
         heightCm: form.heightCm,
         bjjSince: form.bjjSince,
-        role: role === 'admin' ? 'admin' : 'professor',
+        role: role === 'academy' ? 'academy' : 'professor',
+        isAcademyAdmin: role === 'academy',
         academyName: form.academyName,
         academyAddress: form.academyAddress,
         academyCity: form.academyCity,
@@ -297,7 +298,7 @@ export default function Register() {
         });
       }
 
-      const msg = role === 'admin' ? 'Academia cadastrada! Bem-vindo! 🏛️' : 'Academia cadastrada! Bem-vindo, Professor! 🏫';
+      const msg = role === 'academy' ? 'Academia cadastrada! Bem-vindo! 🏛️' : 'Academia cadastrada! Bem-vindo, Professor! 🏫';
       toast.success(msg);
       navigate('/app');
     } catch (err: any) {
@@ -426,7 +427,7 @@ export default function Register() {
           </button>
 
           {/* Card Academia */}
-          <button onClick={() => handleStep2('admin')} style={{ background: '#111', border: '2px solid #CC0000', padding: '1.5rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <button onClick={() => handleStep2('academy')} style={{ background: '#111', border: '2px solid #CC0000', padding: '1.5rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <div style={{ width: '56px', height: '56px', background: '#1A0000', border: '2px solid #CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🏛️</div>
               <div>
@@ -481,7 +482,7 @@ export default function Register() {
             </div>
 
             <div style={{ position: 'relative' }}>
-              <label className="bjj-label">Academia {role === 'student' ? '(opcional)' : role === 'professor' || role === 'admin' ? '(onde você treina)' : ''}</label>
+              <label className="bjj-label">Academia {role === 'student' ? '(opcional)' : role === 'professor' || role === 'academy' ? '(onde você treina)' : ''}</label>
               <input
                 className="bjj-input"
                 placeholder={role === 'student' ? 'Buscar academia (opcional)...' : 'Nome da sua academia'}
@@ -600,15 +601,15 @@ export default function Register() {
             </div>
 
             <button type="submit" disabled={loading}
-              style={{ background: role === 'professor' || role === 'admin' ? '#CC0000' : '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '0.5rem' }}>
-              {loading ? 'CRIANDO CONTA...' : role === 'professor' || role === 'admin' ? 'PRÓXIMO →' : 'ENTRAR NO TATAMI 🥋'}
+              style={{ background: role === 'professor' || role === 'academy' ? '#CC0000' : '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '0.5rem' }}>
+              {loading ? 'CRIANDO CONTA...' : role === 'professor' || role === 'academy' ? 'PRÓXIMO →' : 'ENTRAR NO TATAMI 🥋'}
             </button>
           </form>
         </div>
       )}
 
       {/* ── PASSO 4: Dados da Academia ── */}
-      {step === 4 && (role === 'professor' || role === 'admin') && (
+      {step === 4 && (role === 'professor' || role === 'academy') && (
         <div className="flex-1 px-6 py-8">
           <form onSubmit={handleStep4} className="flex flex-col gap-5">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1.1rem', textTransform: 'uppercase', color: '#888', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
@@ -680,7 +681,7 @@ export default function Register() {
       )}
 
       {/* ── PASSO 5: Logo + Foto ── */}
-      {step === 5 && (role === 'professor' || role === 'admin') && (
+      {step === 5 && (role === 'professor' || role === 'academy') && (
         <div className="flex-1 px-6 py-8">
           <form onSubmit={handleStep5} className="flex flex-col gap-6">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1.1rem', textTransform: 'uppercase', color: '#888', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>

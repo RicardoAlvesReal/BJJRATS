@@ -16,7 +16,8 @@ export interface RegisterData {
   weightKg?: string;
   heightCm?: string;
   bjjSince?: string;
-  role?: 'student' | 'professor' | 'admin';
+  role?: 'student' | 'professor' | 'academy' | 'admin';
+  isAcademyAdmin?: boolean;
   academyName?: string;
   academyAddress?: string;
   academyCity?: string;

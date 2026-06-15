@@ -99,7 +99,7 @@ export default function AdminUsers() {
 
   // Roles que este usuário pode criar/atribuir
   const creatableRoles = Object.entries(ROLE_HIERARCHY)
-    .filter(([, lvl]) => lvl < myLevel)
+    .filter(([role, lvl]) => role !== 'admin' && lvl < myLevel)
     .map(([r]) => r);
 
   const q = search.toLowerCase();
@@ -120,7 +120,8 @@ export default function AdminUsers() {
 
   const openEdit = (u: AdminUser) => {
     setEditTarget(u);
-    setForm({ name: u.name, email: u.email, password: '', role: u.role ?? 'student', belt: u.belt ?? 'Branca', phone: u.phone ?? '', academy: u.academy ?? '', academyName: u.academyName ?? '', academyAddress: u.academyAddress ?? '', academyCity: u.academyCity ?? '', academyState: u.academyState ?? '', academyCnpj: u.academyCnpj ?? '', academyCep: u.academyCep ?? '', academyNumber: u.academyNumber ?? '', academyNeighborhood: u.academyNeighborhood ?? '', academyComplement: u.academyComplement ?? '' });
+    const academyRole = u.role === 'academy' || u.role === 'admin' || u.isAcademyAdmin === true;
+    setForm({ name: u.name, email: u.email, password: '', role: academyRole ? 'academy' : u.role ?? 'student', belt: u.belt ?? 'Branca', phone: u.phone ?? '', academy: u.academy ?? '', academyName: u.academyName ?? '', academyAddress: u.academyAddress ?? '', academyCity: u.academyCity ?? '', academyState: u.academyState ?? '', academyCnpj: u.academyCnpj ?? '', academyCep: u.academyCep ?? '', academyNumber: u.academyNumber ?? '', academyNeighborhood: u.academyNeighborhood ?? '', academyComplement: u.academyComplement ?? '' });
     setError('');
     setModalOpen(true);
   };
@@ -143,6 +144,7 @@ export default function AdminUsers() {
         academyCnpj: form.academyCnpj, academyCep: form.academyCep, academyNumber: form.academyNumber,
         academyNeighborhood: form.academyNeighborhood, academyComplement: form.academyComplement,
         academy: form.academy,
+        isAcademyAdmin: form.role === 'academy',
       };
       if (editTarget) {
         const payload: Record<string, unknown> = { name: form.name, belt: form.belt, phone: form.phone, role: form.role, ...academyFields };
@@ -313,7 +315,7 @@ export default function AdminUsers() {
                 )}
               </select>
             </Field>
-            {form.role !== 'admin' && (
+            {form.role !== 'academy' && (
               <Field label="Faixa">
                 <select style={inputStyle} value={form.belt} onChange={(e) => setForm((f) => ({ ...f, belt: e.target.value }))}>
                   {BELTS.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -324,7 +326,7 @@ export default function AdminUsers() {
               <input style={inputStyle} value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
             </Field>
 
-            {form.role === 'admin' || form.role === 'professor' ? (
+            {form.role === 'academy' || form.role === 'professor' ? (
               <>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem', marginTop: '0.75rem', borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem' }}>DADOS DA ACADEMIA</p>
                 <Field label="Nome da Academia">
@@ -448,6 +450,7 @@ function Field({ label, children, required }: { label: string; children: React.R
 
 const ROLE_LABEL: Record<string, string> = {
   superadmin: 'Super Admin',
+  academy:    'Academia',
   admin:      'Academia',
   professor:  'Professor',
   student:    'Aluno',

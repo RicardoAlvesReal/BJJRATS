@@ -314,6 +314,7 @@ export const admin = {
     academyNumber?: string;
     academyNeighborhood?: string;
     academyComplement?: string;
+    isAcademyAdmin?: boolean;
   }) =>
     apiFetch<{ user: AdminUser }>('/api/admin/users', { method: 'POST', body: JSON.stringify(data) }),
 
@@ -796,7 +797,7 @@ export const publicApi = {
     return apiFetch<any[]>(`/api/public/professors${q}`);
   },
   searchAcademies: (search: string) => {
-    const q = search ? `?search=${encodeURIComponent(search)}&role=admin` : '?role=admin';
+    const q = search ? `?search=${encodeURIComponent(search)}&role=academy` : '?role=academy';
     return apiFetch<any[]>(`/api/public/professors${q}`);
   },
   trialTarget: (kind: 'academy' | 'professor', uid: string) =>

@@ -1,5 +1,5 @@
 // BJJRats — Painel de Controle / Admin Login
-// Área restrita: apenas superadmin e admin
+// Área restrita: apenas superadmin
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,7 +21,7 @@ export default function AdminLogin() {
     setLoading(true);
     try {
       const { token, user } = await api.auth.login(email, password);
-      if (!['superadmin', 'admin'].includes(user.role ?? '')) {
+      if (user.role !== 'superadmin') {
         toast.error('Acesso negado. Você não tem permissão para esta área.');
         return;
       }

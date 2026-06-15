@@ -3,9 +3,10 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change_me_in_production';
 
-// Hierarquia: superadmin > admin > professor > student
+// Hierarquia: superadmin > academy/admin legado > professor > student
 export const ROLE_HIERARCHY: Record<string, number> = {
   superadmin: 4,
+  academy:    3,
   admin:      3,
   professor:  2,
   student:    1,

@@ -75,7 +75,7 @@ export default function AppLayout() {
     await logout();
   };
 
-  const isProfessor = profile?.role === 'professor';
+  const isProfessor = profile?.role === 'professor' || profile?.role === 'academy' || profile?.role === 'admin' || profile?.isAcademyAdmin === true;
 
   // Professor vai direto para o painel de gestão
   useEffect(() => {

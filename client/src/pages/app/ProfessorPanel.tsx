@@ -593,7 +593,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [savingChallenge, setSavingChallenge] = useState(false);
 
   const accentColor = '#1A6ECC';
-  const isAcademyOwner = profile?.role === 'admin' || (profile as any)?.isAcademyAdmin === true;
+  const isAcademyOwner = profile?.role === 'academy' || profile?.role === 'admin' || (profile as any)?.isAcademyAdmin === true;
   // Professor vinculado a uma academia (academyId aponta para um admin acima dele)
   const isProfessorUnderAcademy = profile?.role === 'professor' && !!(profile as any)?.academyId;
 
@@ -1575,7 +1575,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
         }
       }
 
-      const publishAsAcademy = profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
+      const publishAsAcademy = profile.role === 'academy' || profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
       const publisherName = publishAsAcademy ? (profile.academyName || profile.name) : (profile.name || 'Professor');
       const publisherLogo = publishAsAcademy
         ? (profile.academyLogoUrl || (profile as any).academyLogo || '')
@@ -1628,7 +1628,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     if (!user || !profile || !eventForm.title.trim() || !eventForm.date) return;
     setSavingEvent(true);
     try {
-      const publishAsAcademy = profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
+      const publishAsAcademy = profile.role === 'academy' || profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
       const publisherName = publishAsAcademy ? (profile.academyName || profile.name) : (profile.name || 'Professor');
       const publisherLogo = publishAsAcademy
         ? (profile.academyLogoUrl || (profile as any).academyLogo || '')
@@ -1677,7 +1677,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     if (!user || !profile || !challengeForm.title.trim() || !challengeForm.goal || !challengeForm.startDate || !challengeForm.endDate) return;
     setSavingChallenge(true);
     try {
-      const publishAsAcademy = profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
+      const publishAsAcademy = profile.role === 'academy' || profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
       const publisherName = publishAsAcademy ? (profile.academyName || profile.name) : (profile.name || 'Professor');
       const publisherLogo = publishAsAcademy
         ? (profile.academyLogoUrl || (profile as any).academyLogo || '')
@@ -3856,7 +3856,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
               disabled={!trialRequestsEnabled || trialSettingSaving}
               onClick={() => {
                 if (!trialRequestsEnabled) return;
-                const trialPath = profile?.role === 'admin' || profile?.isAcademyAdmin ? 'academia' : 'professor';
+                const trialPath = profile?.role === 'academy' || profile?.role === 'admin' || profile?.isAcademyAdmin ? 'academia' : 'professor';
                 const url = `${window.location.origin}/trial/${trialPath}/${user?.uid}`;
                 navigator.clipboard.writeText(url);
                 toast.success('🔗 Link copiado! Compartilhe com interessados.');
@@ -4153,7 +4153,7 @@ function AvisosTab({ user, profile, accentColor }: { user: any; profile: any; ac
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ title: '', content: '', audience: 'all', urgent: false });
 
-  const isAcademy = profile?.role === 'admin' || profile?.isAcademyAdmin;
+  const isAcademy = profile?.role === 'academy' || profile?.role === 'admin' || profile?.isAcademyAdmin;
   const audienceOptions = isAcademy
     ? [
       { value: 'all', label: 'ALUNOS E PROFESSORES' },

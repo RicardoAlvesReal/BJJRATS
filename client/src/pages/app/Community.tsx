@@ -180,7 +180,7 @@ function AcademySearchByCity() {
     if (!term) { toast.error('Digite a cidade ou nome da academia'); return; }
     setLoading(true); setSearched(true);
     try {
-      const profs = await api.users.list({ role: 'admin' });
+      const profs = await api.users.list({ role: 'academy' });
       const all = profs.map(data => ({
         professorUid: data.uid,
         academyName: (data as any).academyName || (data as any).academy || '',
@@ -1654,7 +1654,7 @@ function LocalizarAcademiaTab() {
     const load = async () => {
       setLoading(true);
       try {
-        const profs = await api.users.list({ role: 'admin' });
+        const profs = await api.users.list({ role: 'academy' });
         const list: AcademyListing[] = profs
           .filter(p => (p as any).academyName || (p as any).academy)
           .map(p => ({

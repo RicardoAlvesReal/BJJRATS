@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, ilike, or, ne } from 'drizzle-orm';
+import { eq, and, ilike, or, ne, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { classSchedules, notifications, users } from '../db/schema.js';
@@ -11,9 +11,9 @@ const WEEKDAYS = ['Domingo', 'Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'S
 // GET /api/public/professors?search=term&role=professor
 router.get('/professors', async (req, res) => {
   const { search, role } = req.query as Record<string, string>;
-  const roleFilter = role === 'admin' ? eq(users.role, 'admin')
-    : role === 'professor' ? eq(users.role, 'professor')
-    : or(eq(users.role, 'professor'), eq(users.role, 'admin'));
+  const roleFilter = role === 'academy' || role === 'admin' ? or(eq(users.role, 'academy'), eq(users.role, 'admin'), eq(users.isAcademyAdmin, true))
+    : role === 'professor' ? and(eq(users.role, 'professor'), or(eq(users.isAcademyAdmin, false), isNull(users.isAcademyAdmin)))
+    : or(eq(users.role, 'professor'), eq(users.role, 'academy'), eq(users.role, 'admin'), eq(users.isAcademyAdmin, true));
   const conditions = [ne(users.role, 'superadmin'), roleFilter];
   if (search) {
     conditions.push(
@@ -36,6 +36,8 @@ router.get('/professors', async (req, res) => {
       academyLogoUrl: users.academyLogoUrl,
       professorPhotoUrl: users.professorPhotoUrl,
       trialRequestsEnabled: users.trialRequestsEnabled,
+      role: users.role,
+      isAcademyAdmin: users.isAcademyAdmin,
     })
     .from(users)
     .where(and(...conditions))

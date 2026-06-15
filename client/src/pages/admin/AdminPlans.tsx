@@ -6,6 +6,7 @@ import { ALL_FEATURES, type FeatureDef } from '@/lib/features';
 
 const ROLE_LABEL: Record<string, string> = {
   superadmin: 'Super Admin',
+  academy: 'Academia',
   admin: 'Academia',
   professor: 'Professor',
   student: 'Aluno',
@@ -60,7 +61,7 @@ export default function AdminPlans() {
       slug: p.slug,
       description: p.description ?? '',
       price: p.price,
-      roleAssigned: p.roleAssigned,
+      roleAssigned: p.roleAssigned === 'admin' ? 'academy' : p.roleAssigned,
       featureKeys: Array.isArray(p.features) ? p.features.filter(f => typeof f === 'string') : [],
       trialDays: p.trialDays ?? 0,
       isActive: p.isActive ?? true,
@@ -252,8 +253,8 @@ export default function AdminPlans() {
             <Field label="Role atribuída" required>
               <select style={inputStyle} value={form.roleAssigned} onChange={e => setForm(f => ({ ...f, roleAssigned: e.target.value }))}>
                 <option value="student">Aluno</option>
+                <option value="academy">Academia</option>
                 <option value="professor">Professor</option>
-                <option value="admin">Academia</option>
               </select>
             </Field>
             <Field label="Dias de teste grátis">

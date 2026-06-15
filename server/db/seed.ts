@@ -65,7 +65,7 @@ async function seed() {
       name: 'Professor Particular',
       description: 'Gerencie seus alunos com exclusividade e acompanhe o desenvolvimento de cada um.',
       price: 47.90,
-      roleAssigned: 'professor',
+      roleAssigned: 'academy',
       features: [
         'professor_panel',
         'student_management',
@@ -84,7 +84,7 @@ async function seed() {
       name: 'Academia',
       description: 'Gestão completa da sua academia com múltiplos professores, CRM e relatórios.',
       price: 97.90,
-      roleAssigned: 'admin',
+      roleAssigned: 'professor',
       features: [
         'admin_dashboard',
         'user_management',

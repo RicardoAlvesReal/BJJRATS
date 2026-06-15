@@ -29,7 +29,7 @@ export const users = pgTable('users', {
   lastTrainingDate: text('last_training_date'),
   athleteType:      text('athlete_type'),
   isAcademyAdmin:   boolean('is_academy_admin').default(false),
-  role:             text('role').default('student'),   // 'superadmin' | 'admin' | 'professor' | 'student'
+  role:             text('role').default('student'),   // superadmin|academy|professor|student ('admin' legado)
   communityModerator: boolean('community_moderator').default(false),
   trialEndsAt: timestamp('trial_ends_at'),
   trialRequestsEnabled: boolean('trial_requests_enabled').default(true),
@@ -67,7 +67,7 @@ export const plans = pgTable('plans', {
   slug:         text('slug').notNull().unique(),
   description:  text('description'),
   price:        real('price').notNull(),
-  roleAssigned: text('role_assigned').notNull(),       // admin|professor|student
+  roleAssigned: text('role_assigned').notNull(),       // academy|professor|student ('admin' legado)
   features:     jsonb('features').default([]),
   trialDays:    integer('trial_days').default(0),
   isActive:     boolean('is_active').default(true),
