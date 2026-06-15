@@ -8,6 +8,7 @@ import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import { BELT_COLORS, getLevelInfo, ACHIEVEMENTS, topTecnicas, calcStreak, LEVEL_COLORS, Training } from '@/lib/bjjrats-constants';
+import { formatCep, getEventAddressLabel, getEventGoogleMapsUrl, getEventLocationLabel, getEventMapEmbedUrl, getEventMapDestination, getEventWazeUrl } from '@/lib/eventLocation';
 import api, { type PaymentIntegrationSettings, type WhatsAppAutomationResult } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -23,11 +24,14 @@ import {
   CreditCard,
   Crown,
   DollarSign,
+  ExternalLink,
   Flame,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Medal,
   MessageSquare,
+  Navigation,
   Newspaper,
   ShieldCheck,
   Sparkles,
@@ -75,11 +79,41 @@ interface AcademyEvent {
   date: string;
   time?: string;
   location?: string;
+  locationCep?: string;
+  locationAddress?: string;
+  locationNumber?: string;
+  locationNeighborhood?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationLatitude?: number | null;
+  locationLongitude?: number | null;
   slots?: number;
   price?: string;
   registrations?: string[];
+  registrationNames?: Record<string, string>;
+  registrationBelts?: Record<string, string>;
+  registrationsClosed?: boolean;
   createdAtStr?: string;
 }
+
+const EMPTY_EVENT_FORM = {
+  title: '',
+  description: '',
+  type: 'outro',
+  date: '',
+  time: '',
+  location: '',
+  locationCep: '',
+  locationAddress: '',
+  locationNumber: '',
+  locationNeighborhood: '',
+  locationCity: '',
+  locationState: '',
+  locationLatitude: null as number | null,
+  locationLongitude: null as number | null,
+  slots: '',
+  price: '',
+};
 
 interface Challenge {
   id: string;
@@ -580,8 +614,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [events, setEvents] = useState<AcademyEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [showNewEvent, setShowNewEvent] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', type: 'outro', date: '', time: '', location: '', slots: '', price: '' });
+  const [eventForm, setEventForm] = useState(EMPTY_EVENT_FORM);
+  const [fetchingEventCep, setFetchingEventCep] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<{ name: string; cep: string; address: string; number: string; neighborhood: string; city: string; state: string; label: string }[]>([]);
 
   // ── Desafios ──────────────────────────────────────────────────────────────
   const [challenges, setChallenges] = useState<Challenge[]>([]);
@@ -642,6 +678,57 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       } finally {
         setFetchingCep(false);
       }
+    }
+  };
+
+  const loadLocationSuggestions = useCallback(async () => {
+    if (locationSuggestions.length > 0) return; // já carregou
+    try {
+      const academies = await api.public.searchAcademies('');
+      const items = (academies as any[])
+        .map(p => ({
+          name: (p.academyName || p.name || '').trim(),
+          cep: p.academyCep || '',
+          address: p.academyAddress || '',
+          number: p.academyNumber || '',
+          neighborhood: p.academyNeighborhood || '',
+          city: p.academyCity || '',
+          state: p.academyState || '',
+          label: (p.academyCity && p.academyState ? `${p.academyCity} - ${p.academyState}` : p.academyCity || ''),
+        }))
+        .filter(p => p.name)
+        .filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i);
+      setLocationSuggestions(items);
+    } catch { /* silencia — o campo ainda funciona sem sugestões */ }
+  }, [locationSuggestions.length]);
+
+  const handleEventCepChange = async (raw: string) => {
+    const cep = raw.replace(/\D/g, '').slice(0, 8);
+    setEventForm(p => ({ ...p, locationCep: cep, locationLatitude: null, locationLongitude: null }));
+    if (cep.length !== 8) return;
+
+    setFetchingEventCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const data = await res.json();
+      if (data?.erro) {
+        toast.warning('CEP nao encontrado.');
+        return;
+      }
+      setEventForm(p => ({
+        ...p,
+        locationCep: cep,
+        locationAddress: data.logradouro || p.locationAddress,
+        locationNeighborhood: data.bairro || p.locationNeighborhood,
+        locationCity: data.localidade || p.locationCity,
+        locationState: data.uf || p.locationState,
+        locationLatitude: null,
+        locationLongitude: null,
+      }));
+    } catch {
+      toast.warning('Nao foi possivel buscar o CEP. Preencha o endereco manualmente.');
+    } finally {
+      setFetchingEventCep(false);
     }
   };
   const [uploadingAcademyPhoto, setUploadingAcademyPhoto] = useState(false);
@@ -1625,7 +1712,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   }, [user]);
 
   const handleSaveEvent = async () => {
-    if (!user || !profile || !eventForm.title.trim() || !eventForm.date) return;
+    if (!user || !profile || !eventForm.title.trim() || !eventForm.date || !eventForm.description.trim() || !eventForm.slots || !eventForm.time || !eventForm.type) return;
     setSavingEvent(true);
     try {
       const publishAsAcademy = profile.role === 'academy' || profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
@@ -1633,6 +1720,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
       const publisherLogo = publishAsAcademy
         ? (profile.academyLogoUrl || (profile as any).academyLogo || '')
         : ((profile as any).professorPhotoUrl || profile.photo || '');
+      const eventAddressLabel = getEventAddressLabel(eventForm);
       const newEvent = await api.events.create({
         authorUid: user.uid,
         academyId: user.uid,
@@ -1643,17 +1731,22 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
         type: eventForm.type,
         date: eventForm.date,
         time: eventForm.time || null,
-        location: eventForm.location.trim() || null,
+        location: eventForm.location.trim() || eventAddressLabel || null,
+        locationCep: eventForm.locationCep.replace(/\D/g, '') || null,
+        locationAddress: eventForm.locationAddress.trim() || null,
+        locationNumber: eventForm.locationNumber.trim() || null,
+        locationNeighborhood: eventForm.locationNeighborhood.trim() || null,
+        locationCity: eventForm.locationCity.trim() || null,
+        locationState: eventForm.locationState.trim() || null,
+        locationLatitude: eventForm.locationLatitude,
+        locationLongitude: eventForm.locationLongitude,
         slots: eventForm.slots ? parseInt(eventForm.slots) : null,
-        price: eventForm.price.trim() || null,
+        price: (eventForm.price === '' || Number(eventForm.price) === 0) ? 'Gratuito' : `R$ ${Number(eventForm.price).toFixed(2)}`,
         registrations: [],
         createdAtStr: new Date().toLocaleDateString('pt-BR'),
       });
       toast.success('Evento criado!');
-      const shareUrl = `${window.location.origin}/evento/${newEvent.id}`;
-      await navigator.clipboard.writeText(shareUrl).catch(() => {});
-      toast.info('Link do evento copiado!');
-      setEventForm({ title: '', description: '', type: 'outro', date: '', time: '', location: '', slots: '', price: '' });
+      setEventForm(EMPTY_EVENT_FORM);
       setShowNewEvent(false);
       loadEvents();
     } catch { toast.error('Erro ao criar evento'); } finally { setSavingEvent(false); }
@@ -1697,9 +1790,6 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
         createdAtStr: new Date().toLocaleDateString('pt-BR'),
       });
       toast.success('Desafio criado!');
-      const shareUrl = `${window.location.origin}/desafio/${newChallenge.id}`;
-      await navigator.clipboard.writeText(shareUrl).catch(() => {});
-      toast.info('Link do desafio copiado!');
       setChallengeForm({ title: '', description: '', goal: '', goalType: 'trainings', startDate: '', endDate: '', xpReward: '50' });
       setShowNewChallenge(false);
       loadChallenges();
@@ -1877,6 +1967,9 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
       : posts.filter(post => getProfessorPostType(post) === filter.value).length;
     return acc;
   }, {});
+  const eventAddressPreview = getEventAddressLabel(eventForm);
+  const eventLocationPreview = getEventLocationLabel(eventForm);
+  const eventHasMapPreview = Boolean(eventAddressPreview || eventForm.location.trim());
 
   const handleGroupSelect = (groupId: PanelGroup) => {
     setActiveTabGroup(groupId);
@@ -2702,7 +2795,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
             {showNewEvent && (
               <div style={{ background: '#111', border: `1px solid ${accentColor}`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF' }}>NOVO EVENTO</p>
-                {[{ k: 'title', l: 'TÍTULO *', ph: 'Ex: Open Match Interno' }, { k: 'description', l: 'DESCRIÇÃO', ph: 'Detalhes do evento...' }, { k: 'location', l: 'LOCAL', ph: 'Ex: Academia Templo' }, { k: 'slots', l: 'VAGAS', ph: 'Ex: 30' }, { k: 'price', l: 'VALOR', ph: 'Ex: Gratuito ou R$ 50' }].map(f => (
+                {[{ k: 'title', l: 'TÍTULO *', ph: 'Ex: Open Match Interno' }, { k: 'description', l: 'DESCRIÇÃO *', ph: 'Detalhes do evento...' }].map(f => (
                   <div key={f.k}>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{f.l}</p>
                     <input type="text" value={(eventForm as Record<string,string>)[f.k]} onChange={e => setEventForm(prev => ({ ...prev, [f.k]: e.target.value }))}
@@ -2710,6 +2803,126 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                       style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
                   </div>
                 ))}
+                {/* Vagas e Valor — campos numéricos */}
+                <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>VAGAS *</p>
+                    <input type="number" min={1} step={1} value={eventForm.slots} onChange={e => setEventForm(prev => ({ ...prev, slots: e.target.value }))}
+                      placeholder="Ex: 30"
+                      style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>VALOR (R$) — deixe 0 para gratuito</p>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: '#666', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', pointerEvents: 'none' }}>R$</span>
+                      <input type="number" min={0} step={0.01} value={eventForm.price} onChange={e => setEventForm(prev => ({ ...prev, price: e.target.value }))}
+                        placeholder="0,00"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem 0.625rem 2.2rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    {(eventForm.price === '' || Number(eventForm.price) === 0) && (
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#25D366', marginTop: '0.25rem', letterSpacing: '0.04em' }}>✓ GRATUITO</p>
+                    )}
+                  </div>
+                </div>
+                <div style={{ border: '1px solid #1E1E1E', background: '#0D0D0D', padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <MapPin size={15} style={{ color: accentColor }} />
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em' }}>LOCAL DO EVENTO</p>
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>NOME DO LOCAL</p>
+                    <input type="text" list="event-location-suggestions" value={eventForm.location}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const match = locationSuggestions.find(s => s.name === val);
+                        if (match) {
+                          setEventForm(prev => ({
+                            ...prev,
+                            location: val,
+                            locationCep: match.cep.replace(/\D/g, ''),
+                            locationAddress: match.address || prev.locationAddress,
+                            locationNumber: match.number || prev.locationNumber,
+                            locationNeighborhood: match.neighborhood || prev.locationNeighborhood,
+                            locationCity: match.city || prev.locationCity,
+                            locationState: match.state || prev.locationState,
+                            locationLatitude: null,
+                            locationLongitude: null,
+                          }));
+                        } else {
+                          setEventForm(prev => ({ ...prev, location: val }));
+                        }
+                      }}
+                      onFocus={loadLocationSuggestions}
+                      placeholder="Ex: Academia Templo, Ginasio Municipal"
+                      style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    <datalist id="event-location-suggestions">
+                      {locationSuggestions.map((s, i) => (
+                        <option key={i} value={s.name}>{s.label ? `${s.name} — ${s.label}` : s.name}</option>
+                      ))}
+                    </datalist>
+                  </div>
+                  <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.45fr) minmax(0, 1fr)', gap: '0.625rem' }}>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>CEP</p>
+                      <div style={{ position: 'relative' }}>
+                        <input type="text" value={formatCep(eventForm.locationCep)} onChange={e => handleEventCepChange(e.target.value)} placeholder="00000-000" maxLength={9}
+                          style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${eventForm.locationCep.length === 8 ? accentColor : '#2A2A2A'}`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                        {fetchingEventCep && <span style={{ position: 'absolute', right: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: '#777', fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem' }}>buscando...</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>ENDERECO</p>
+                      <input type="text" value={eventForm.locationAddress} onChange={e => setEventForm(prev => ({ ...prev, locationAddress: e.target.value }))}
+                        placeholder="Rua / Avenida"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '0.45fr 1fr', gap: '0.625rem' }}>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>NUMERO</p>
+                      <input type="text" value={eventForm.locationNumber} onChange={e => setEventForm(prev => ({ ...prev, locationNumber: e.target.value }))}
+                        placeholder="123"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>BAIRRO</p>
+                      <input type="text" value={eventForm.locationNeighborhood} onChange={e => setEventForm(prev => ({ ...prev, locationNeighborhood: e.target.value }))}
+                        placeholder="Bairro"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                  <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 0.35fr', gap: '0.625rem' }}>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>CIDADE</p>
+                      <input type="text" value={eventForm.locationCity} onChange={e => setEventForm(prev => ({ ...prev, locationCity: e.target.value }))}
+                        placeholder="Cidade"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>UF</p>
+                      <input type="text" value={eventForm.locationState} onChange={e => setEventForm(prev => ({ ...prev, locationState: e.target.value.toUpperCase().slice(0, 2) }))}
+                        placeholder="SP" maxLength={2}
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box', textTransform: 'uppercase' }} />
+                    </div>
+                  </div>
+                  {eventHasMapPreview && (
+                    <div style={{ border: '1px solid #222', background: '#080808', overflow: 'hidden' }}>
+                      <iframe
+                        title="Mapa do evento"
+                        src={getEventMapEmbedUrl(eventForm)}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        style={{ width: '100%', height: '180px', border: 'none', display: 'block', background: '#0A0A0A' }}
+                      />
+                      <div style={{ padding: '0.625rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.625rem', borderTop: '1px solid #1A1A1A' }}>
+                        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#777', lineHeight: 1.35, margin: 0 }}>{eventLocationPreview}</p>
+                        <a href={getEventGoogleMapsUrl(eventForm)} target="_blank" rel="noreferrer" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.35rem', color: accentColor, textDecoration: 'none', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase' }}>
+                          <Navigation size={14} /> MAPS
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'flex', gap: '0.625rem' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>DATA *</p>
@@ -2717,13 +2930,13 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                       style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${eventForm.date ? accentColor : '#2A2A2A'}`, color: eventForm.date ? '#FFF' : '#666', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box', colorScheme: 'dark' }} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>HORÁRIO</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>HORÁRIO *</p>
                     <input type="time" value={eventForm.time} onChange={e => setEventForm(prev => ({ ...prev, time: e.target.value }))}
                       style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
                   </div>
                 </div>
                 <div>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>TIPO</p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>TIPO *</p>
                   <select value={eventForm.type} onChange={e => setEventForm(prev => ({ ...prev, type: e.target.value }))}
                     style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }}>
                     {[['competicao', '🏆 COMPETIÇÃO'], ['seminario', '📚 SEMINÁRIO'], ['aula_especial', '🥋 AULA ESPECIAL'], ['open_match', '⚔️ OPEN MATCH'], ['outro', '📅 OUTRO']].map(([v, l]) => (
@@ -2732,11 +2945,11 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: '0.625rem' }}>
-                  <button onClick={() => { setShowNewEvent(false); setEventForm({ title: '', description: '', type: 'outro', date: '', time: '', location: '', slots: '', price: '' }); }}
+                  <button onClick={() => { setShowNewEvent(false); setEventForm(EMPTY_EVENT_FORM); }}
                     style={{ flex: 1, background: 'none', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer' }}>CANCELAR</button>
-                  <button onClick={handleSaveEvent} disabled={savingEvent || !eventForm.title.trim() || !eventForm.date}
-                    style={{ flex: 2, background: savingEvent || !eventForm.title.trim() || !eventForm.date ? '#333' : accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer' }}>
-                    {savingEvent ? 'SALVANDO...' : '📅 CRIAR + COPIAR LINK'}
+                  <button onClick={handleSaveEvent} disabled={savingEvent || !eventForm.title.trim() || !eventForm.date || !eventForm.description.trim() || !eventForm.slots || !eventForm.time || !eventForm.type}
+                    style={{ flex: 2, background: savingEvent || !eventForm.title.trim() || !eventForm.date || !eventForm.description.trim() || !eventForm.slots || !eventForm.time || !eventForm.type ? '#333' : accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer' }}>
+                    {savingEvent ? 'SALVANDO...' : '📅 CRIAR EVENTO'}
                   </button>
                 </div>
               </div>
@@ -2824,7 +3037,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                     style={{ flex: 1, background: 'none', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer' }}>CANCELAR</button>
                   <button onClick={handleSaveChallenge} disabled={savingChallenge || !challengeForm.title.trim() || !challengeForm.goal || !challengeForm.startDate || !challengeForm.endDate}
                     style={{ flex: 2, background: savingChallenge || !challengeForm.title.trim() || !challengeForm.goal || !challengeForm.startDate || !challengeForm.endDate ? '#333' : accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer' }}>
-                    {savingChallenge ? 'SALVANDO...' : '⭐ CRIAR + COPIAR LINK'}
+                    {savingChallenge ? 'SALVANDO...' : '⭐ CRIAR DESAFIO'}
                   </button>
                 </div>
               </div>
@@ -4377,12 +4590,13 @@ function EventCard({ ev, accentColor, professorProfile, onDelete }: {
       // Enviar notificacao in-app para cada inscrito
       const registrations = ev.registrations || [];
       const academyName = professorProfile?.academyName || professorProfile?.academy || 'Academia';
+      const locationLabel = getEventLocationLabel(ev);
       const notifPromises = registrations.map((uid: string) =>
         api.notifications.create({
           toUid: uid,
           type: 'event_confirmed',
-          message: `Inscrições encerradas para "${ev.title}"${ev.date ? ` em ${ev.date}` : ''}${ev.time ? ` às ${ev.time}` : ''}${ev.location ? ` — ${ev.location}` : ''}. Você está confirmado!`,
-          data: { eventId: ev.id, eventTitle: ev.title, eventDate: ev.date, eventTime: ev.time || '', eventLocation: ev.location || '', academyName },
+          message: `Inscrições encerradas para "${ev.title}"${ev.date ? ` em ${ev.date}` : ''}${ev.time ? ` às ${ev.time}` : ''}${locationLabel ? ` — ${locationLabel}` : ''}. Você está confirmado!`,
+          data: { eventId: ev.id, eventTitle: ev.title, eventDate: ev.date, eventTime: ev.time || '', eventLocation: locationLabel, academyName },
           read: false,
         })
       );
@@ -4396,6 +4610,8 @@ function EventCard({ ev, accentColor, professorProfile, onDelete }: {
   };
 
   const isClosed = (ev as any).registrationsClosed === true;
+  const locationLabel = getEventLocationLabel(ev);
+  const hasMap = Boolean(locationLabel);
 
   return (
     <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -4411,7 +4627,20 @@ function EventCard({ ev, accentColor, professorProfile, onDelete }: {
           )}
         </div>
       </div>
-      {ev.location && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888' }}>📍 {ev.location}</p>}
+      {locationLabel && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888' }}>📍 {locationLabel}</p>
+          <div style={{ border: '1px solid #1E1E1E', background: '#080808', overflow: 'hidden' }}>
+            <iframe
+              title={`Mapa de ${ev.title}`}
+              src={getEventMapEmbedUrl(ev)}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              style={{ width: '100%', height: '150px', border: 'none', display: 'block', background: '#0A0A0A' }}
+            />
+          </div>
+        </div>
+      )}
       {ev.description && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#666', lineHeight: 1.4 }}>{ev.description}</p>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555' }}>{(ev.registrations ?? []).length} INSCRITO{(ev.registrations ?? []).length !== 1 ? 'S' : ''}{ev.slots ? ` / ${ev.slots} VAGAS` : ''}</span>
@@ -4424,6 +4653,12 @@ function EventCard({ ev, accentColor, professorProfile, onDelete }: {
             >
               {closing ? '...' : '✓ ENCERRAR'}
             </button>
+          )}
+          {hasMap && (
+            <a href={getEventGoogleMapsUrl(ev)} target="_blank" rel="noreferrer"
+              style={{ background: '#101821', border: `1px solid ${accentColor}55`, color: accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <Navigation size={13} /> MAPS
+            </a>
           )}
           <button onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/evento/${ev.id}`).catch(() => {}); toast.success('Link copiado!'); }}
             style={{ background: '#1A1A1A', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer' }}>

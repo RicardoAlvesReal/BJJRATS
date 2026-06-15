@@ -137,9 +137,29 @@ export interface Event {
   id: string;
   title: string;
   description?: string;
+  type?: string;
   date: string;
+  time?: string;
   location?: string;
+  locationCep?: string;
+  locationAddress?: string;
+  locationNumber?: string;
+  locationNeighborhood?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationLatitude?: number | null;
+  locationLongitude?: number | null;
+  slots?: number;
+  price?: string;
+  duration?: string;
+  registrations?: string[];
+  registrationNames?: Record<string, string>;
+  registrationBelts?: Record<string, string>;
+  registrationsClosed?: boolean;
+  academyName?: string;
+  academyLogo?: string;
   academyId?: string;
+  authorUid?: string;
   createdByUid?: string;
   createdAt?: string;
 }
@@ -524,7 +544,10 @@ export const posts = {
 // ─── Events ───────────────────────────────────────────────────────────────────
 
 export const events = {
-  list: () => apiFetch<Event[]>('/api/events'),
+  list: (params: { academyId?: string; authorUid?: string } = {}) => {
+    const q = new URLSearchParams(params as Record<string, string>).toString();
+    return apiFetch<Event[]>(`/api/events${q ? `?${q}` : ''}`);
+  },
   get: (id: string) => apiFetch<Event>(`/api/events/${id}`),
   create: (data: Omit<Event, 'id' | 'createdAt'>) =>
     apiFetch<Event>('/api/events', { method: 'POST', body: JSON.stringify(data) }),

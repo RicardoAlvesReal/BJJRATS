@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import api from '@/lib/api';
 import { AcademyMap } from '@/components/AcademyMap';
+import { getEventLocationLabel, getEventMapEmbedUrl, getEventGoogleMapsUrl, getEventWazeUrl, getEventAddressLabel } from '@/lib/eventLocation';
 import { toast } from 'sonner';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import RankingList from '@/components/RankingList';
@@ -58,6 +59,14 @@ interface AcademyEvent {
   date: string;
   time?: string;
   location?: string;
+  locationCep?: string;
+  locationAddress?: string;
+  locationNumber?: string;
+  locationNeighborhood?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationLatitude?: number | null;
+  locationLongitude?: number | null;
   slots?: number | string;
   price?: string;
   registrations: string[];
@@ -1288,6 +1297,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                 const slots = ev.slots ? parseInt(String(ev.slots)) : null;
                 const registered = (ev.registrations || []).length;
                 const isFull = slots !== null && registered >= slots;
+                const locationLabel = getEventLocationLabel(ev);
 
                 return (
                   <div key={ev.id} style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: `3px solid ${color}`, padding: '1rem' }}>
@@ -1296,7 +1306,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFFFFF' }}>{ev.title}</p>
                         <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>
                           📅 {ev.date}{ev.time ? ` às ${ev.time}` : ''}
-                          {ev.location ? ` · 📍 ${ev.location}` : ''}
+                          {locationLabel ? ` · 📍 ${locationLabel}` : ''}
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexShrink: 0 }}>
@@ -1332,6 +1342,32 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', marginTop: '0.25rem' }}>
                         {registered} inscrito{registered !== 1 ? 's' : ''}{ev.price ? ` · ${ev.price}` : ''}
                       </p>
+                    )}
+
+                    {/* Mapa do evento */}
+                    {(getEventAddressLabel(ev) || ev.location) && (
+                      <div style={{ border: '1px solid #1E1E1E', overflow: 'hidden', marginTop: '0.625rem' }}>
+                        <iframe
+                          title={`Mapa — ${ev.title}`}
+                          src={getEventMapEmbedUrl(ev)}
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                          style={{ width: '100%', height: '160px', border: 'none', display: 'block', background: '#0A0A0A' }}
+                        />
+                        <div style={{ padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', borderTop: '1px solid #1A1A1A', background: '#0D0D0D' }}>
+                          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#666', margin: 0, lineHeight: 1.35, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getEventLocationLabel(ev)}</p>
+                          <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0 }}>
+                            <a href={getEventGoogleMapsUrl(ev)} target="_blank" rel="noreferrer"
+                              style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', border: '1px solid #1A6ECC', color: '#1A6ECC', textDecoration: 'none', letterSpacing: '0.04em', background: '#1A6ECC11' }}>
+                              MAPS
+                            </a>
+                            <a href={getEventWazeUrl(ev)} target="_blank" rel="noreferrer"
+                              style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', border: '1px solid #33CCFF', color: '#33CCFF', textDecoration: 'none', letterSpacing: '0.04em', background: '#33CCFF11' }}>
+                              WAZE
+                            </a>
+                          </div>
+                        </div>
+                      </div>
                     )}
 
                     {/* Botão inscrição */}

@@ -10,6 +10,7 @@ import api from '@/lib/api';
 import { toast } from 'sonner';
 import AcademySearch from './AcademySearch';
 import RankingList from '@/components/RankingList';
+import { getEventLocationLabel } from '@/lib/eventLocation';
 
 type AcademyTab = 'feed' | 'events' | 'challenges' | 'members' | 'ranking' | 'horarios' | 'financeiro';
 
@@ -61,6 +62,14 @@ interface AcademyEvent {
   registrationBelts?: Record<string, string>; // uid -> faixa
   slots?: number;
   location?: string;
+  locationCep?: string;
+  locationAddress?: string;
+  locationNumber?: string;
+  locationNeighborhood?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationLatitude?: number | null;
+  locationLongitude?: number | null;
   price?: string;
 }
 
@@ -761,6 +770,7 @@ export default function Academy() {
               const regs = event.registrations || [];
               const isRegistered = user ? regs.includes(user.uid) : false;
               const isFull = event.slots ? regs.length >= event.slots : false;
+              const locationLabel = getEventLocationLabel(event);
               const handleToggleRegistration = async () => {
                 if (!user || !profile) return;
                 if (isRegistered) {
@@ -788,7 +798,7 @@ export default function Academy() {
                   </div>
                   <h3 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFFFFF', margin: 0 }}>{event.title}</h3>
                   {event.description && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', lineHeight: 1.5, margin: 0 }}>{event.description}</p>}
-                  {event.location && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', color: '#555', margin: 0 }}>📍 {event.location}</p>}
+                  {locationLabel && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', color: '#555', margin: 0 }}>📍 {locationLabel}</p>}
                   {event.duration && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', color: '#555', margin: 0 }}>⏱ {event.duration}</p>}
                   {event.price && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', color: '#888', margin: 0 }}>💰 {event.price}</p>}
 

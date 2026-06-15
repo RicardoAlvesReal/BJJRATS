@@ -1,0 +1,17 @@
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "type" text DEFAULT 'outro';
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "slots" integer;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "price" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "duration" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "academy_name" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "academy_logo" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "registration_names" jsonb DEFAULT '{}'::jsonb;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "registration_belts" jsonb DEFAULT '{}'::jsonb;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "registrations_closed" boolean DEFAULT false;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_cep" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_address" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_number" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_neighborhood" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_city" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_state" text;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_latitude" real;
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "location_longitude" real;
