@@ -71,7 +71,8 @@ router.get('/schedules', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/schedules', requireAuth, async (req: AuthRequest, res) => {
   const id = nanoid();
-  const [row] = await db.insert(classSchedules).values({ id, professorUid: req.userId!, ...req.body }).returning();
+  const academyId = req.body.academyId ?? req.userId!;
+  const [row] = await db.insert(classSchedules).values({ id, professorUid: req.userId!, academyId, ...req.body }).returning();
   res.status(201).json(row);
 });
 

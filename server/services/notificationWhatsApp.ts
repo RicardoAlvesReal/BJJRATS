@@ -13,9 +13,13 @@ export type WhatsAppAutomationResult = {
 
 type NotificationLike = {
   toUid: string;
+  title?: string | null;
   fromName?: string | null;
   type?: string | null;
-  message: string;
+  message?: string | null;
+  body?: string | null;
+  content?: string | null;
+  data?: unknown;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -28,6 +32,7 @@ const TYPE_LABELS: Record<string, string> = {
   event_confirmed: 'Evento confirmado',
   enrollment: 'Matricula',
   enrollment_accepted: 'Matricula aceita',
+  enrollment_reactivated: 'Matricula reativada',
   enrollment_rejected: 'Solicitacao recusada',
   promotion: 'Promocao',
 };
@@ -41,11 +46,33 @@ function labelFromType(type?: string | null) {
   return TYPE_LABELS[type] || type.replace(/_/g, ' ').toUpperCase();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function cleanText(value: unknown) {
+  return typeof value === 'string'
+    ? value.replace(/<[^>]*>/g, '').replace(/\s+\n/g, '\n').trim()
+    : '';
+}
+
+function notificationDataText(notification: NotificationLike, key: string) {
+  return isRecord(notification.data) ? cleanText(notification.data[key]) : '';
+}
+
 function buildMessage(notification: NotificationLike, senderName?: string | null) {
-  const title = labelFromType(notification.type);
-  const message = String(notification.message || '').replace(/<[^>]*>/g, '').trim();
+  const title = cleanText(notification.title)
+    || notificationDataText(notification, 'title')
+    || labelFromType(notification.type);
+  const message = cleanText(notification.message)
+    || cleanText(notification.body)
+    || cleanText(notification.content)
+    || notificationDataText(notification, 'message')
+    || notificationDataText(notification, 'body')
+    || notificationDataText(notification, 'content')
+    || 'Voce recebeu uma nova notificacao no BJJRats.';
   const source = notification.fromName || senderName;
-  return `*${title}*\n\n${message}${source ? `\n\nEnviado por: ${source}` : ''}`.trim();
+  return [`*${title}*`, message, source ? `Enviado por: ${source}` : ''].filter(Boolean).join('\n\n').trim();
 }
 
 export async function ensureWhatsAppSenderConnected(sourceUid: string) {

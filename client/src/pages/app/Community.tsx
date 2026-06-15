@@ -104,8 +104,40 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   open_match: '#CC0000', outro: '#555',
 };
 const POST_TYPE_COLORS: Record<string, string> = {
-  geral: '#555', aviso: '#CC8800', novidade: '#0D9E6E', resultado: '#CC0000',
+  geral: '#555', aviso: '#CC8800', novidade: '#0D9E6E', resultado: '#CC0000', duvida: '#1A6ECC', treino: '#7A5CFF',
 };
+const POST_TYPE_LABELS: Record<string, string> = {
+  geral: 'GERAL',
+  aviso: 'AVISO',
+  novidade: 'NOVIDADE',
+  resultado: 'RESULTADO',
+  duvida: 'DUVIDA',
+  treino: 'TREINO',
+};
+const COMMUNITY_POST_TYPE_OPTIONS = [
+  { id: 'geral', label: 'GERAL', color: POST_TYPE_COLORS.geral },
+  { id: 'duvida', label: 'DUVIDA', color: POST_TYPE_COLORS.duvida },
+  { id: 'novidade', label: 'NOVIDADE', color: POST_TYPE_COLORS.novidade },
+  { id: 'resultado', label: 'RESULTADO', color: POST_TYPE_COLORS.resultado },
+  { id: 'aviso', label: 'AVISO', color: POST_TYPE_COLORS.aviso },
+];
+const COMMUNITY_POST_FILTERS = [
+  { id: 'all', label: 'TODOS', color: '#777' },
+  ...COMMUNITY_POST_TYPE_OPTIONS,
+];
+
+function getCommunityPostType(post: Pick<CommunityPost, 'type' | 'trainingData'>): string {
+  const category = post.type || post.trainingData?.category;
+  return typeof category === 'string' && category.trim() ? category.trim() : 'geral';
+}
+
+function normalizeCommunityPost(post: Record<string, any>): CommunityPost {
+  return {
+    ...post,
+    type: getCommunityPostType(post as CommunityPost),
+    isAcademyPost: false,
+  } as CommunityPost;
+}
 
 type Tab = 'conquistas' | 'feed' | 'ranking' | 'challenges' | 'events' | 'localize';
 
@@ -279,6 +311,8 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   const [newPostText, setNewPostText] = useState('');
   const [postingPost, setPostingPost] = useState(false);
   const [showNewPost, setShowNewPost] = useState(false);
+  const [newPostType, setNewPostType] = useState('geral');
+  const [postTypeFilter, setPostTypeFilter] = useState('all');
   const [newPostPhoto, setNewPostPhoto] = useState<File | null>(null);
   const [newPostPhotoPreview, setNewPostPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -385,7 +419,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
         const posts = await api.posts.list();
         const filtered = posts
           .filter(p => (p as any).feedTarget === 'community')
-          .map(p => ({ ...p, isAcademyPost: false } as CommunityPost));
+          .map(p => normalizeCommunityPost(p as Record<string, any>));
         setCommunityRawPosts(filtered);
       } catch (err) {
         console.error('[Community] Erro ao carregar posts:', err);
@@ -408,7 +442,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
       setCommunityRawPosts(
         posts
           .filter(p => (p as any).feedTarget === 'community')
-          .map(p => ({ ...p, isAcademyPost: false } as CommunityPost))
+          .map(p => normalizeCommunityPost(p as Record<string, any>))
       );
       toast.success('Feed atualizado!');
     } catch (err) {
@@ -627,6 +661,8 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
         authorPhotoURL: profile?.photo || null,
         text: newPostText.trim(),
         photoURL,
+        type: newPostType,
+        trainingData: { category: newPostType },
         feedTarget: 'community',
         likes: [],
       };
@@ -644,6 +680,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
         return [optimisticPost, ...prev];
       });
       setNewPostText('');
+      setNewPostType('geral');
       setNewPostPhoto(null);
       setNewPostPhotoPreview(null);
       setShowNewPost(false);
@@ -717,7 +754,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   );
 
   // Posts da comunidade (feedTarget='community') — independente da academia
-  const communityPosts = (communityRawPosts ?? []).sort((a, b) => {
+  const sortedCommunityPosts = [...(communityRawPosts ?? [])].sort((a, b) => {
     // Pinned posts first
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
@@ -727,6 +764,9 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
     };
     return getTime(b) - getTime(a);
   });
+  const communityPosts = postTypeFilter === 'all'
+    ? sortedCommunityPosts
+    : sortedCommunityPosts.filter(post => getCommunityPostType(post) === postTypeFilter);
 
 
 
@@ -878,6 +918,33 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                     className="bjj-input !bg-[#0A0A0A] !resize-none"
                 />
 
+                <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+                  {COMMUNITY_POST_TYPE_OPTIONS.map(type => {
+                    const active = newPostType === type.id;
+                    return (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => setNewPostType(type.id)}
+                        style={{
+                          border: `1px solid ${active ? type.color : '#2A2A2A'}`,
+                          background: active ? `${type.color}22` : '#0A0A0A',
+                          color: active ? type.color : '#777',
+                          padding: '0.35rem 0.55rem',
+                          fontFamily: 'Barlow Condensed, sans-serif',
+                          fontWeight: 900,
+                          fontSize: '0.65rem',
+                          textTransform: 'uppercase',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {type.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 {/* Preview da foto */}
                 {newPostPhotoPreview && (
                   <div style={{ position: 'relative' }}>
@@ -914,13 +981,41 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                   >
                     🖼️ {newPostPhoto ? 'FOTO ✓' : 'FOTO'}
                   </button>
-                  <button onClick={() => { setShowNewPost(false); setNewPostPhoto(null); setNewPostPhotoPreview(null); }}                     className="bjj-btn-ghost !border !border-[#2A2A2A] !text-[0.875rem]">CANCELAR</button>
+                  <button onClick={() => { setShowNewPost(false); setNewPostType('geral'); setNewPostPhoto(null); setNewPostPhotoPreview(null); }}                     className="bjj-btn-ghost !border !border-[#2A2A2A] !text-[0.875rem]">CANCELAR</button>
                   <button onClick={handleNewPost} disabled={postingPost || (!newPostText.trim() && !newPostPhoto)}                     className="bjj-btn-primary !flex-[2]">
                     {postingPost ? 'PUBLICANDO...' : 'PUBLICAR'}
                   </button>
                 </div>
               </div>
             )}
+
+            <div style={{ display: 'flex', gap: '0.375rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+              {COMMUNITY_POST_FILTERS.map(filter => {
+                const active = postTypeFilter === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    onClick={() => setPostTypeFilter(filter.id)}
+                    style={{
+                      flex: '0 0 auto',
+                      border: `1px solid ${active ? filter.color : '#242424'}`,
+                      background: active ? `${filter.color}24` : '#0A0A0A',
+                      color: active ? filter.color : '#666',
+                      padding: '0.4rem 0.625rem',
+                      fontFamily: 'Barlow Condensed, sans-serif',
+                      fontWeight: 900,
+                      fontSize: '0.68rem',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </div>
 
             {communityRawPosts === null ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
@@ -930,18 +1025,23 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                 {communityPosts.length === 0 ? (
                   <div className="bjj-card !text-center" style={{ padding: '2rem' }}>
                     <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📰</p>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM POST AINDA</p>
-                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#444', marginTop: '0.5rem' }}>Seja o primeiro a compartilhar algo!</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>{postTypeFilter === 'all' ? 'NENHUM POST AINDA' : 'NENHUM POST NESTA CATEGORIA'}</p>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#444', marginTop: '0.5rem' }}>{postTypeFilter === 'all' ? 'Seja o primeiro a compartilhar algo!' : 'Troque o filtro ou publique nessa categoria.'}</p>
                   </div>
                 ) : null}
                 {communityPosts.map((post) => {
                 const beltColor = BELT_COLORS[post.authorBelt] || '#FFFFFF';
                 const hasLiked = user && (post.likes || []).includes(user.uid);
                 const isOwn = user && (post.uid === user.uid || post.authorUid === user.uid);
-                const postTypeColor = post.type ? POST_TYPE_COLORS[post.type] || '#555' : '#555';
+                const postType = getCommunityPostType(post);
+                const postTypeColor = POST_TYPE_COLORS[postType] || '#555';
+                const postTypeLabel = POST_TYPE_LABELS[postType] || postType.toUpperCase();
+                const hasTrainingDetails = !!post.trainingData && (
+                  post.trainingData.sessionType || post.trainingData.duration || post.trainingData.xp || post.trainingData.date
+                );
 
                 return (
-                  <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} className="bjj-card">
+                  <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} className="bjj-card" style={{ borderLeft: `3px solid ${postTypeColor}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
                         <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: `2px solid ${beltColor}`, background: beltColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
@@ -964,6 +1064,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ border: `1px solid ${postTypeColor}`, background: `${postTypeColor}18`, color: postTypeColor, padding: '0.18rem 0.4rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', fontWeight: 900, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{postTypeLabel}</span>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#444' }}>{formatTimeAgo(post.createdAt)}</p>
                         {isSuperAdmin && (
                           <button onClick={() => handlePinPost(post)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', padding: '0.25rem', fontSize: '0.85rem' }}
@@ -993,7 +1094,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
 
                     {post.text && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#CCC', lineHeight: 1.6, marginBottom: '0.75rem', whiteSpace: 'pre-line' }}>{post.text}</p>}
                     {post.photoURL && <img src={post.photoURL} alt="" style={{ width: '100%', maxHeight: '300px', objectFit: 'cover', marginBottom: '0.75rem' }} />}
-                    {post.trainingData && (
+                    {hasTrainingDetails && (
                       <div className="bjj-card !bg-[#0A0A0A] !border-[#CC000033]" style={{ borderLeft: '3px solid #CC0000' }}>
                         <div style={{ display: 'flex', flex: 1, gap: '1rem', flexWrap: 'wrap' }}>
                           {[

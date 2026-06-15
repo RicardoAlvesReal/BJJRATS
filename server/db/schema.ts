@@ -41,14 +41,23 @@ export const users = pgTable('users', {
   academyLongitude: real('academy_longitude'),
   academyLogoUrl:   text('academy_logo_url'),
   academyCnpj:      text('academy_cnpj'),
-  academyCep:       text('academy_cep'),
-  academyNumber:    text('academy_number'),
-  academyNeighborhood:text('academy_neighborhood'),
-  academyComplement:text('academy_complement'),
-  professorPhotoUrl:text('professor_photo_url'),
-  savedAcademies:   jsonb('saved_academies').default([]),
-  savedProfessors:  jsonb('saved_professors').default([]),
-  createdAt:   timestamp('created_at').defaultNow(),
+  academyCep:           text('academy_cep'),
+  academyNumber:        text('academy_number'),
+  academyNeighborhood:  text('academy_neighborhood'),
+  academyComplement:    text('academy_complement'),
+  academyPhone:         text('academy_phone'),
+  academyInstagram:     text('academy_instagram'),
+  academyStyle:         text('academy_style'),
+  academyFranchise:     text('academy_franchise'),
+  academyMonthlyFee:    real('academy_monthly_fee'),
+  academyDailyFee:      real('academy_daily_fee'),
+  academyPixKey:        text('academy_pix_key'),
+  academyPhotoUrls:     jsonb('academy_photo_urls').default([]),
+  academyWaiverText:    text('academy_waiver_text'),
+  professorPhotoUrl:    text('professor_photo_url'),
+  savedAcademies:       jsonb('saved_academies').default([]),
+  savedProfessors:      jsonb('saved_professors').default([]),
+  createdAt:            timestamp('created_at').defaultNow(),
 });
 
 // ─── plans ─────────────────────────────────────────────────────────────────
@@ -253,11 +262,19 @@ export const classSchedules = pgTable('class_schedules', {
   id:          text('id').primaryKey(),
   academyId:   text('academy_id').notNull(),
   professorUid:text('professor_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
-  dayOfWeek:   integer('day_of_week'),               // 0=dom..6=sab
+  dayOfWeek:   integer('day_of_week'),               // 0=dom..6=sab (legacy)
   startTime:   text('start_time'),
   endTime:     text('end_time'),
   className:   text('class_name'),
   modality:    text('modality'),
+  // HorariosTab fields
+  days:        jsonb('days').$type<string[]>().default([]),
+  time:        text('time'),
+  type:        text('type'),
+  mode:        text('mode'),
+  publico:     text('publico'),
+  durationMin: integer('duration_min'),
+  notes:       text('notes'),
   createdAt:   timestamp('created_at').defaultNow(),
 });
 

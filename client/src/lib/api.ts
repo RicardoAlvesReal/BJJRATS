@@ -189,6 +189,8 @@ export interface Payment {
   paymentProvider?: 'manual' | 'asaas';
   asaasPaymentId?: string | null;
   asaasError?: string | null;
+  reactivatedEnrollments?: Array<{ id: string; studentUid?: string; status?: string }>;
+  suspendedEnrollments?: Array<{ id: string; studentUid?: string; status?: string }>;
   createdAt?: string;
 }
 
@@ -221,8 +223,17 @@ export interface ClassSchedule {
   id: string;
   academyId: string;
   professorUid: string;
-  weekday: string;
-  startTime: string;
+  // HorariosTab fields
+  days: string[];
+  time: string;
+  type: string;
+  mode: string;
+  publico: string;
+  durationMin: number;
+  notes?: string;
+  // legacy
+  weekday?: string;
+  startTime?: string;
   endTime?: string;
   title?: string;
 }
@@ -231,9 +242,20 @@ export interface Promotion {
   id: string;
   studentUid: string;
   professorUid: string;
-  toBelt: string;
-  toStripes: number;
+  studentName?: string;
+  fromBelt?: string;
+  toBelt?: string;
+  fromStripes?: number;
+  toStripes?: number;
+  previousBelt?: string;
+  previousStripes?: number;
+  newBelt?: string;
+  newStripes?: number;
+  notes?: string;
+  promotedBy?: string;
   promotedAt?: string;
+  promotedAtStr?: string;
+  createdAt?: string;
 }
 
 export interface Competition {

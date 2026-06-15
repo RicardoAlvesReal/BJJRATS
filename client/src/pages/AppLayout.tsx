@@ -160,7 +160,11 @@ export default function AppLayout() {
 
         const promoNotif = unread.find((n: any) => n.type === 'promotion');
         if (promoNotif) {
-          setPromotionNotif({ title: promoNotif.title, message: promoNotif.message, belt: promoNotif.belt });
+          setPromotionNotif({
+            title: promoNotif.title || 'PROMOCAO DE FAIXA',
+            message: promoNotif.message,
+            belt: promoNotif.belt || promoNotif.data?.belt || promoNotif.data?.newBelt || 'Branca',
+          });
           await api.notifications.markRead(promoNotif.id);
         }
 

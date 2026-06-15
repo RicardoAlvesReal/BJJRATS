@@ -161,7 +161,7 @@ export default function AcademySearch({ onBack, onLinked }: Props) {
     const seen = new Set<string>();
 
     return users
-      .filter(data => data.role === 'admin' || data.role === 'professor' || data.isAcademyAdmin)
+      .filter(data => data.role === 'admin' || data.isAcademyAdmin)
       .map(data => {
         const academyCity = data.academyCity || '';
         const academyState = data.academyState || '';

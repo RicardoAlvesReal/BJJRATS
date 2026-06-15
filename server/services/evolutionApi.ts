@@ -325,9 +325,9 @@ export async function deleteInstance(professorUid: string): Promise<void> {
 function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   if (!digits) return '';
-  if (digits.startsWith('55') && digits.length >= 12) return `${digits}@s.whatsapp.net`;
-  if (digits.length >= 10 && digits.length <= 11) return `55${digits}@s.whatsapp.net`;
-  return `${digits}@s.whatsapp.net`;
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
+  return digits;
 }
 
 export async function sendMessage(
@@ -337,8 +337,12 @@ export async function sendMessage(
 ): Promise<MessageSendResponse> {
   const instanceName = getInstanceName(professorUid);
   const number = formatPhone(phone);
+  const text = String(message || '').trim();
+  if (!number) throw new Error('Numero de WhatsApp invalido');
+  if (!text) throw new Error('Mensagem de WhatsApp vazia');
   return request<MessageSendResponse>('POST', `/message/sendText/${instanceName}`, {
     number,
-    text: message,
+    text,
+    textMessage: { text },
   });
 }

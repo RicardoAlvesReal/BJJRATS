@@ -27,7 +27,9 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
-    if (loading || !user) { setCheckingSub(false); return; }
+    if (loading) return;
+    if (!user) { setCheckingSub(false); return; }
+    setCheckingSub(true);
     const check = async () => {
       try {
         if (user.role === 'superadmin' || user.subscriptionExempt) {

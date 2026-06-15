@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { payments, users } from '../db/schema.js';
+import { enrollments, payments, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { applyAutomaticSuspensionsForProfessor } from '../services/financialAutomation.js';
+import { notifyEnrollmentsReactivated, notifyEnrollmentsSuspended } from '../services/enrollmentNotifications.js';
 import { getAsaasCredentials, getPaymentIntegration } from '../services/paymentIntegrations.js';
 import {
   createCustomer,
@@ -54,6 +55,53 @@ function serializePayment<T extends Record<string, unknown>>(payment: T) {
     pixKey: payment['pixKey'] ?? pixLink,
     paymentLink: pixLink,
   };
+}
+
+function isPaidPayment(payment: typeof payments.$inferSelect) {
+  return String(payment.status || '').toLowerCase() === 'paid' || Boolean(payment.paidAt);
+}
+
+async function reactivateSuspendedEnrollmentsForPaidPayment(payment: typeof payments.$inferSelect) {
+  if (!isPaidPayment(payment) || !payment.professorUid || !payment.studentUid) return [];
+
+  const rows = await db
+    .update(enrollments)
+    .set({ status: 'active' })
+    .where(and(
+      eq(enrollments.professorUid, payment.professorUid),
+      eq(enrollments.studentUid, payment.studentUid),
+      eq(enrollments.status, 'suspended'),
+    ))
+    .returning();
+
+  if (rows.length > 0) {
+    await notifyEnrollmentsReactivated(rows, payment.professorUid);
+  }
+
+  return rows;
+}
+
+async function suspendActiveEnrollmentsForRevertedPayment(
+  payment: typeof payments.$inferSelect,
+  previousPayment: typeof payments.$inferSelect,
+) {
+  if (!isPaidPayment(previousPayment) || isPaidPayment(payment) || !payment.professorUid || !payment.studentUid) return [];
+
+  const rows = await db
+    .update(enrollments)
+    .set({ status: 'suspended' })
+    .where(and(
+      eq(enrollments.professorUid, payment.professorUid),
+      eq(enrollments.studentUid, payment.studentUid),
+      eq(enrollments.status, 'active'),
+    ))
+    .returning();
+
+  if (rows.length > 0) {
+    await notifyEnrollmentsSuspended(rows, payment.professorUid, 'Pagamento estornado.');
+  }
+
+  return rows;
 }
 
 async function buildAsaasPaymentData(localPaymentId: string, data: Record<string, unknown>) {
@@ -180,11 +228,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const [existing] = await db.select({ professorUid: payments.professorUid }).from(payments).where(eq(payments.id, req.params.id)).limit(1);
+  const [existing] = await db.select().from(payments).where(eq(payments.id, req.params.id)).limit(1);
   if (!existing || existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const { id: _id, ...data } = normalizePaymentPayload(req.body);
   const [row] = await db.update(payments).set(data as any).where(eq(payments.id, req.params.id)).returning();
-  res.json(serializePayment(row));
+  const reactivatedEnrollments = await reactivateSuspendedEnrollmentsForPaidPayment(row);
+  const suspendedEnrollments = await suspendActiveEnrollmentsForRevertedPayment(row, existing);
+  res.json({ ...serializePayment(row), reactivatedEnrollments, suspendedEnrollments });
 });
 
 router.post('/asaas/webhook', async (req, res) => {
@@ -212,11 +262,14 @@ router.post('/asaas/webhook', async (req, res) => {
 
   switch (event.event) {
     case 'PAYMENT_CONFIRMED':
-    case 'PAYMENT_RECEIVED':
-      await db.update(payments)
+    case 'PAYMENT_RECEIVED': {
+      const [updatedPayment] = await db.update(payments)
         .set({ status: 'paid', paidAt: new Date() })
-        .where(eq(payments.id, localPayment.id));
+        .where(eq(payments.id, localPayment.id))
+        .returning();
+      if (updatedPayment) await reactivateSuspendedEnrollmentsForPaidPayment(updatedPayment);
       break;
+    }
     case 'PAYMENT_OVERDUE':
       await db.update(payments)
         .set({ status: 'overdue' })
@@ -224,11 +277,14 @@ router.post('/asaas/webhook', async (req, res) => {
       break;
     case 'PAYMENT_DELETED':
     case 'PAYMENT_REFUNDED':
-    case 'PAYMENT_CHARGEBACK_REQUESTED':
-      await db.update(payments)
+    case 'PAYMENT_CHARGEBACK_REQUESTED': {
+      const [updatedPayment] = await db.update(payments)
         .set({ status: 'pending' })
-        .where(eq(payments.id, localPayment.id));
+        .where(eq(payments.id, localPayment.id))
+        .returning();
+      if (updatedPayment) await suspendActiveEnrollmentsForRevertedPayment(updatedPayment, localPayment);
       break;
+    }
   }
 
   res.json({ received: true });

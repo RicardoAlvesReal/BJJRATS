@@ -54,6 +54,19 @@ interface Post {
   reactions?: Record<string, string[]>;
 }
 
+const PROFESSOR_POST_FILTERS = [
+  { value: 'all', label: 'TODOS' },
+  { value: 'geral', label: 'GERAL' },
+  { value: 'aviso', label: 'NOTIFICACAO' },
+  { value: 'novidade', label: 'NOVIDADE' },
+  { value: 'resultado', label: 'RESULTADO' },
+];
+
+function getProfessorPostType(post: Post) {
+  const type = post.type || (post as any).trainingData?.category || 'geral';
+  return typeof type === 'string' && type.trim() ? type.trim() : 'geral';
+}
+
 interface AcademyEvent {
   id: string;
   title: string;
@@ -132,11 +145,85 @@ interface Payment {
   paymentLink?: string;
   paymentProvider?: 'manual' | 'asaas';
   asaasError?: string | null;
+  reactivatedEnrollments?: Array<{ id: string; studentUid?: string; status?: string }>;
+  suspendedEnrollments?: Array<{ id: string; studentUid?: string; status?: string }>;
   notifiedDue?: boolean;
   notifiedOverdue?: boolean;
   professorUid?: string;
   receiptUrl?: string;
   month: string;   // YYYY-MM
+}
+
+type PaymentLike = {
+  id?: string;
+  studentUid?: string;
+  dueDate?: string;
+  createdAt?: string;
+  month?: string;
+  status?: string;
+  paidAt?: string | null;
+};
+
+function isFinancialPaymentPaid(payment: PaymentLike) {
+  return payment.status === 'paid' || Boolean(payment.paidAt);
+}
+
+function paymentCompetencyMonth(payment: PaymentLike) {
+  return payment.month || payment.dueDate?.slice(0, 7) || '';
+}
+
+function paymentDateTime(value?: string | null) {
+  if (!value) return 0;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
+  const time = new Date(normalized).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function shouldReplaceFinancialPayment(current: PaymentLike, candidate: PaymentLike) {
+  const currentPaid = isFinancialPaymentPaid(current);
+  const candidatePaid = isFinancialPaymentPaid(candidate);
+  if (candidatePaid !== currentPaid) return candidatePaid;
+
+  const candidateDue = paymentDateTime(candidate.dueDate);
+  const currentDue = paymentDateTime(current.dueDate);
+  if (candidateDue !== currentDue) return candidateDue > currentDue;
+
+  const candidateCreated = paymentDateTime(candidate.createdAt);
+  const currentCreated = paymentDateTime(current.createdAt);
+  if (candidateCreated !== currentCreated) return candidateCreated > currentCreated;
+
+  return String(candidate.id || '') > String(current.id || '');
+}
+
+function currentEffectivePaymentsByStudent<T extends PaymentLike>(rows: T[], now = new Date()) {
+  const paidCompetencies = new Set<string>();
+  for (const payment of rows) {
+    const key = `${payment.studentUid || ''}:${paymentCompetencyMonth(payment)}`;
+    if (payment.studentUid && paymentCompetencyMonth(payment) && isFinancialPaymentPaid(payment)) {
+      paidCompetencies.add(key);
+    }
+  }
+
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const byStudent = new Map<string, T>();
+
+  for (const payment of rows) {
+    if (!payment.studentUid || !payment.dueDate) continue;
+    const competency = paymentCompetencyMonth(payment);
+    const key = `${payment.studentUid}:${competency}`;
+    if (paidCompetencies.has(key) && !isFinancialPaymentPaid(payment)) continue;
+
+    const due = new Date(`${payment.dueDate.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(due.getTime()) || due.getTime() > today.getTime()) continue;
+
+    const current = byStudent.get(payment.studentUid);
+    if (!current || shouldReplaceFinancialPayment(current, payment)) {
+      byStudent.set(payment.studentUid, payment);
+    }
+  }
+
+  return byStudent;
 }
 
 interface Props {
@@ -281,7 +368,18 @@ function WhatsAppTab() {
     }
   }, [expireConnectionAttempt]);
 
-  useEffect(() => { loadStatus(); }, [loadStatus]);
+  // Carrega status ao montar e recarrega quando a aba/janela volta ao foco
+  useEffect(() => {
+    loadStatus();
+    const onFocus = () => { if (!polling) loadStatus(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !polling) loadStatus();
+    });
+    return () => {
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [loadStatus, polling]);
 
   useEffect(() => {
     if (!polling || !attemptStartedAt) return;
@@ -472,6 +570,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [showNewPost, setShowNewPost] = useState(false);
   const [postText, setPostText] = useState('');
   const [postType, setPostType] = useState('geral');
+  const [postFilter, setPostFilter] = useState('all');
   const [postPhoto, setPostPhoto] = useState<File | null>(null);
   const [postPhotoPreview, setPostPhotoPreview] = useState<string | null>(null);
   const [savingPost, setSavingPost] = useState(false);
@@ -494,14 +593,57 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [savingChallenge, setSavingChallenge] = useState(false);
 
   const accentColor = '#1A6ECC';
+  const isAcademyOwner = profile?.role === 'admin' || (profile as any)?.isAcademyAdmin === true;
+  // Professor vinculado a uma academia (academyId aponta para um admin acima dele)
+  const isProfessorUnderAcademy = profile?.role === 'professor' && !!(profile as any)?.academyId;
 
   // ── Dados da Academia (diretório) ────────────────────────────────────────
   const [showAcademyForm, setShowAcademyForm] = useState(false);
   const [academyFormData, setAcademyFormData] = useState({
-    city: '', state: '', address: '', phone: '', instagram: '', style: '',
+    cep: '', city: '', state: '', address: '', phone: '', instagram: '', style: '',
     franchise: '', monthlyFee: '', dailyFee: '', pixKey: '', photoUrls: [] as string[],
   });
+  const [fetchingCep, setFetchingCep] = useState(false);
   const [savingAcademyData, setSavingAcademyData] = useState(false);
+  const [confirmClearAddress, setConfirmClearAddress] = useState(false);
+  const [clearingAddress, setClearingAddress] = useState(false);
+
+  const handleClearAddress = async () => {
+    if (!user) return;
+    setClearingAddress(true);
+    try {
+      await api.users.update(user.uid, {
+        academyCep: null, academyCity: null, academyState: null, academyAddress: null,
+      });
+      toast.success('Local de atendimento removido.');
+      setConfirmClearAddress(false);
+    } catch { toast.error('Erro ao remover local.'); }
+    finally { setClearingAddress(false); }
+  };
+
+  const handleCepChange = async (raw: string) => {
+    const cep = raw.replace(/\D/g, '').slice(0, 8);
+    setAcademyFormData(p => ({ ...p, cep }));
+    if (cep.length === 8) {
+      setFetchingCep(true);
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const data = await res.json();
+        if (!data.erro) {
+          setAcademyFormData(p => ({
+            ...p,
+            city: data.localidade || p.city,
+            state: data.uf || p.state,
+            address: [data.logradouro, data.bairro].filter(Boolean).join(', ') || p.address,
+          }));
+        }
+      } catch {
+        // silencia erro de rede — usuário pode preencher manualmente
+      } finally {
+        setFetchingCep(false);
+      }
+    }
+  };
   const [uploadingAcademyPhoto, setUploadingAcademyPhoto] = useState(false);
   const [uploadingProfessorPhoto, setUploadingProfessorPhoto] = useState(false);
   const academyPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -519,6 +661,30 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [waiverLoading, setWaiverLoading] = useState(false);
   const [savingWaiver, setSavingWaiver] = useState(false);
   const [showWaiverEditor, setShowWaiverEditor] = useState(false);
+
+  const DEFAULT_WAIVER = `TERMO DE RESPONSABILIDADE E MATRÍCULA
+
+Ao realizar a matrícula ou solicitar participação em aulas, o aluno (ou responsável legal, no caso de menores de idade) declara estar ciente e de acordo com as seguintes condições:
+
+1. RISCOS DA ATIVIDADE
+O Jiu-Jitsu é uma arte marcial de contato que envolve riscos inerentes à prática, como quedas, torções e contato físico. O aluno declara estar em condições físicas adequadas para a prática e assume os riscos decorrentes.
+
+2. RESPONSABILIDADE
+A academia e o professor ficam isentos de responsabilidade por lesões decorrentes de acidentes durante os treinos, desde que não haja negligência comprovada por parte dos instrutores.
+
+3. SAÚDE
+O aluno declara não possuir contraindicação médica para a prática de atividades físicas de alto impacto. Recomenda-se avaliação médica prévia.
+
+4. CONDUTA
+O aluno compromete-se a respeitar colegas, professores e as regras da academia, seguindo as normas de higiene, pontualidade e disciplina exigidas.
+
+5. IMAGEM
+O aluno autoriza o uso de sua imagem em fotos e vídeos produzidos durante os treinos para fins de divulgação nas redes sociais da academia, podendo revogar essa autorização a qualquer momento mediante solicitação.
+
+6. PAGAMENTOS
+O aluno compromete-se a manter os pagamentos em dia conforme o plano escolhido. O não pagamento poderá resultar na suspensão do acesso às aulas.
+
+Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreendido e concordado com todos os termos acima.`;
 
   const handleSyncAcademyId = useCallback(async () => {
     if (!user) return;
@@ -694,7 +860,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       const byStudent = new Map<string, Payment>();
       filtered.forEach(p => {
         const existing = byStudent.get(p.studentUid);
-        if (!existing || (p.id > existing.id)) byStudent.set(p.studentUid, p);
+        if (!existing || shouldReplaceFinancialPayment(existing, p)) byStudent.set(p.studentUid, p);
       });
       const docs = Array.from(byStudent.values());
       docs.sort((a, b) => a.studentName.localeCompare(b.studentName));
@@ -961,7 +1127,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const handleMarkPaid = useCallback(async (payment: Payment, receiptUrl?: string) => {
     try {
       const today = new Date().toISOString().slice(0, 10);
-      await api.payments.update(payment.id, {
+      const updatedPayment = await api.payments.update(payment.id, {
         status: 'paid',
         paidAt: today,
         ...(receiptUrl ? { receiptUrl } : {}),
@@ -969,23 +1135,18 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'paid', paidAt: today } : p));
 
       // Reativar matrícula suspensa por inadimplência automaticamente
-      const suspendedEnrollments = enrollments.filter(e =>
-        e.studentUid === payment.studentUid &&
-        e.status === 'suspended' &&
-        (!e.suspendReason || /inadimpl|pagamento|mensalidade|financ/i.test(e.suspendReason))
-      );
-      for (const enr of suspendedEnrollments) {
-        await api.enrollments.update(enr.id, { status: 'active', suspendReason: '' });
-        setEnrollments(prev => prev.map(e => e.id === enr.id ? { ...e, status: 'active', suspendReason: '' } : e));
+      const reactivatedIds = new Set((updatedPayment.reactivatedEnrollments || []).map(enr => enr.id));
+      if (reactivatedIds.size > 0) {
+        setEnrollments(prev => prev.map(enr => reactivatedIds.has(enr.id) ? { ...enr, status: 'active', suspendReason: '' } : enr));
       }
 
-      if (suspendedEnrollments.length > 0) {
+      if (reactivatedIds.size > 0) {
         toast.success('Pagamento confirmado e matrícula reativada!');
       } else {
         toast.success('Pagamento confirmado!');
       }
     } catch { toast.error('Erro ao confirmar pagamento'); }
-  }, [enrollments]);
+  }, []);
 
   const handleConfirmPaymentWithReceipt = useCallback(async () => {
     if (!showPaymentModal) return;
@@ -1007,9 +1168,13 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     try {
       const today = new Date().toISOString().slice(0, 10);
       const dueStatus = payment.dueDate < today ? 'overdue' : 'pending';
-      await api.payments.update(payment.id, { status: dueStatus, paidAt: null });
+      const updatedPayment = await api.payments.update(payment.id, { status: dueStatus, paidAt: null }) as Payment;
       setPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: dueStatus, paidAt: null } : p));
-      toast.success('Pagamento estornado');
+      const suspendedIds = new Set((updatedPayment.suspendedEnrollments || []).map(enr => enr.id));
+      if (suspendedIds.size > 0) {
+        setEnrollments(prev => prev.map(enr => suspendedIds.has(enr.id) ? { ...enr, status: 'suspended', suspendReason: 'Pagamento estornado' } : enr));
+      }
+      toast.success(suspendedIds.size > 0 ? 'Pagamento estornado e matrícula suspensa!' : 'Pagamento estornado');
     } catch { toast.error('Erro ao estornar'); }
   }, []);
 
@@ -1410,15 +1575,21 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         }
       }
 
-      const newPost = await api.posts.create({
+      const publishAsAcademy = profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
+      const publisherName = publishAsAcademy ? (profile.academyName || profile.name) : (profile.name || 'Professor');
+      const publisherLogo = publishAsAcademy
+        ? (profile.academyLogoUrl || (profile as any).academyLogo || '')
+        : ((profile as any).professorPhotoUrl || profile.photo || '');
+
+      await api.posts.create({
         uid: user.uid,
         authorUid: user.uid,
         academyId: user.uid,
         authorName: profile.name,
         authorPhotoURL: profile.photo || null,
         authorBelt: (profile as any).belt || 'Preta',
-        academyName: profile.academyName || '',
-        academyLogo: profile.academyLogoUrl || (profile as any).academyLogo || '',
+        academyName: publisherName,
+        academyLogo: publisherLogo,
         text: postText.trim(),
         type: postType,
         photoURL,
@@ -1429,9 +1600,6 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
         createdAtStr: new Date().toLocaleDateString('pt-BR'),
       });
       toast.success('Post publicado!');
-      const shareUrl = `${window.location.origin}/post/${newPost.id}`;
-      await navigator.clipboard.writeText(shareUrl).catch(() => {});
-      toast.info('Link copiado para a área de transferência!');
       setPostText(''); setPostType('geral'); setPostPhoto(null); setPostPhotoPreview(null); setShowNewPost(false);
       loadPosts();
     } catch (err) {
@@ -1460,11 +1628,16 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     if (!user || !profile || !eventForm.title.trim() || !eventForm.date) return;
     setSavingEvent(true);
     try {
+      const publishAsAcademy = profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
+      const publisherName = publishAsAcademy ? (profile.academyName || profile.name) : (profile.name || 'Professor');
+      const publisherLogo = publishAsAcademy
+        ? (profile.academyLogoUrl || (profile as any).academyLogo || '')
+        : ((profile as any).professorPhotoUrl || profile.photo || '');
       const newEvent = await api.events.create({
         authorUid: user.uid,
         academyId: user.uid,
-        academyName: profile.academyName || '',
-        academyLogo: profile.academyLogoUrl || (profile as any).academyLogo || '',
+        academyName: publisherName,
+        academyLogo: publisherLogo,
         title: eventForm.title.trim(),
         description: eventForm.description.trim() || null,
         type: eventForm.type,
@@ -1504,11 +1677,16 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
     if (!user || !profile || !challengeForm.title.trim() || !challengeForm.goal || !challengeForm.startDate || !challengeForm.endDate) return;
     setSavingChallenge(true);
     try {
+      const publishAsAcademy = profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
+      const publisherName = publishAsAcademy ? (profile.academyName || profile.name) : (profile.name || 'Professor');
+      const publisherLogo = publishAsAcademy
+        ? (profile.academyLogoUrl || (profile as any).academyLogo || '')
+        : ((profile as any).professorPhotoUrl || profile.photo || '');
       const newChallenge = await api.challenges.create({
         authorUid: user.uid,
         academyId: user.uid,
-        academyName: profile.academyName || '',
-        academyLogo: profile.academyLogoUrl || (profile as any).academyLogo || '',
+        academyName: publisherName,
+        academyLogo: publisherLogo,
         title: challengeForm.title.trim(),
         description: challengeForm.description.trim() || null,
         goal: parseInt(challengeForm.goal),
@@ -1633,10 +1811,27 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const dojoProgress = dojoPower % 1000;
   const dojoProgressPercent = Math.min(100, Math.round((dojoProgress / 1000) * 100));
   const professorDisplayPhoto = profile?.professorPhotoUrl || profile?.photo || '';
-  const headerAcademyLogo = profile?.academyLogoUrl || (profile as any)?.academyLogo || '';
+  const headerAcademyLogo = isAcademyOwner ? (profile?.academyLogoUrl || (profile as any)?.academyLogo || '') : '';
   const headerIdentityImage = headerAcademyLogo || professorDisplayPhoto;
   const headerIdentityIsProfessorPhoto = !headerAcademyLogo && !!professorDisplayPhoto;
-  const academyDisplayName = profile?.academyName || 'Professor Particular';
+  const academyDisplayName = isAcademyOwner ? (profile?.academyName || 'Academia') : (profile?.name || 'Professor Particular');
+  const directoryPanelTitle = isAcademyOwner ? 'DADOS DA ACADEMIA' : 'LOCAL DE ATENDIMENTO';
+  const directoryPanelSubtitle = isAcademyOwner ? 'Apareca no diretorio de academias da comunidade' : 'Mostre onde voce atende como professor particular';
+  const directoryEmptyText = isAcademyOwner
+    ? 'Nenhum dado cadastrado. Clique em EDITAR para aparecer no diretorio.'
+    : 'Nenhum local cadastrado. Clique em EDITAR para mostrar onde voce atende.';
+  const directoryAddressLabel = isAcademyOwner ? 'ENDERECO DA ACADEMIA' : 'LOCAL / ENDERECO DE ATENDIMENTO';
+  const directoryInstagramPlaceholder = isAcademyOwner ? '@academia' : '@professor';
+  const directoryStyleLabel = isAcademyOwner ? 'LINHA DE TREINO' : 'LINHA DE TREINO';
+  const directoryFranchiseLabel = isAcademyOwner ? 'FRANQUIA / EQUIPE' : 'EQUIPE / AFILIACAO';
+  const directoryMonthlyLabel = isAcademyOwner ? 'MENSALIDADE (R$)' : 'PLANO MENSAL (R$)';
+  const directoryDailyLabel = isAcademyOwner ? 'DIARIA (R$)' : 'AULA AVULSA (R$)';
+  const directoryPhotoLabel = isAcademyOwner ? 'FOTOS DA ACADEMIA' : 'FOTOS DO LOCAL';
+  const directoryPhotoHint = isAcademyOwner
+    ? 'Selecione varias fotos de uma vez. Aparecerao na galeria da academia no diretorio.'
+    : 'Selecione fotos do local onde atende. Elas ajudam alunos a reconhecer o espaco.';
+  const directorySaveLabel = isAcademyOwner ? 'SALVAR E PUBLICAR NO DIRETORIO' : 'SALVAR LOCAL DE ATENDIMENTO';
+  const directorySaveToast = isAcademyOwner ? 'Dados da academia atualizados!' : 'Local de atendimento atualizado!';
   const commandStatus = overduePaymentCount > 0
     ? { label: 'ATENCAO', color: '#CC0000', icon: Flame }
     : totalAttentionCount > 0
@@ -1673,6 +1868,15 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
       onClick: () => { setActiveTabGroup('gestao'); setActiveTab('horarios'); },
     },
   ];
+  const filteredPosts = postFilter === 'all'
+    ? posts
+    : posts.filter(post => getProfessorPostType(post) === postFilter);
+  const postFilterCounts = PROFESSOR_POST_FILTERS.reduce<Record<string, number>>((acc, filter) => {
+    acc[filter.value] = filter.value === 'all'
+      ? posts.length
+      : posts.filter(post => getProfessorPostType(post) === filter.value).length;
+    return acc;
+  }, {});
 
   const handleGroupSelect = (groupId: PanelGroup) => {
     setActiveTabGroup(groupId);
@@ -2046,57 +2250,102 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               </div>
             )}
 
-            {/* Dados da Academia no Diretório */}
+            {/* Perfil no diretório */}
             <div style={{ background: '#111', border: `1px solid ${accentColor}22`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF' }}>📍 DADOS DA ACADEMIA</p>
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.2rem' }}>Apareça no diretório da comunidade</p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF' }}>{directoryPanelTitle}</p>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.2rem' }}>{isProfessorUnderAcademy ? 'Gerenciado pela academia. Edite pelo painel da academia.' : directoryPanelSubtitle}</p>
                 </div>
-                <button
-                  onClick={() => {
-                    setAcademyFormData({
-                      city: (profile as any)?.academyCity || '',
-                      state: (profile as any)?.academyState || '',
-                      address: (profile as any)?.academyAddress || '',
-                      phone: (profile as any)?.academyPhone || '',
-                      instagram: (profile as any)?.academyInstagram || '',
-                      style: (profile as any)?.academyStyle || '',
-                      franchise: (profile as any)?.academyFranchise || '',
-                      monthlyFee: (profile as any)?.academyMonthlyFee ? String((profile as any).academyMonthlyFee) : '',
-                      dailyFee: (profile as any)?.academyDailyFee ? String((profile as any).academyDailyFee) : '',
-                      pixKey: (profile as any)?.academyPixKey || '',
-                      photoUrls: (profile as any)?.academyPhotoUrls || [],
-                    });
-                    setShowAcademyForm(v => !v);
-                  }}
-                  style={{ background: showAcademyForm ? accentColor : 'transparent', border: `1px solid ${accentColor}`, color: showAcademyForm ? '#FFF' : accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.375rem 0.75rem', cursor: 'pointer' }}
-                >
-                  {showAcademyForm ? 'FECHAR' : 'EDITAR'}
-                </button>
+                {!isProfessorUnderAcademy && (
+                  <button
+                    onClick={() => {
+                      setAcademyFormData({
+                        cep: (profile as any)?.academyCep || '',
+                        city: (profile as any)?.academyCity || '',
+                        state: (profile as any)?.academyState || '',
+                        address: (profile as any)?.academyAddress || '',
+                        phone: (profile as any)?.academyPhone || '',
+                        instagram: (profile as any)?.academyInstagram || '',
+                        style: (profile as any)?.academyStyle || '',
+                        franchise: (profile as any)?.academyFranchise || '',
+                        monthlyFee: (profile as any)?.academyMonthlyFee ? String((profile as any).academyMonthlyFee) : '',
+                        dailyFee: (profile as any)?.academyDailyFee ? String((profile as any).academyDailyFee) : '',
+                        pixKey: (profile as any)?.academyPixKey || '',
+                        photoUrls: (profile as any)?.academyPhotoUrls || [],
+                      });
+                      setShowAcademyForm(v => !v);
+                    }}
+                    style={{ background: showAcademyForm ? accentColor : 'transparent', border: `1px solid ${accentColor}`, color: showAcademyForm ? '#FFF' : accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.375rem 0.75rem', cursor: 'pointer' }}
+                  >
+                    {showAcademyForm ? 'FECHAR' : 'EDITAR'}
+                  </button>
+                )}
               </div>
 
               {/* Info atual */}
               {!showAcademyForm && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
-                  {(profile as any)?.academyCity || (profile as any)?.academyState ? (
-                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #CC0000', color: '#CC0000', background: '#CC000015' }}>
-                      📍 {[(profile as any)?.academyCity, (profile as any)?.academyState].filter(Boolean).join(' — ')}
-                    </span>
-                  ) : (
-                    <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#444' }}>Nenhum dado cadastrado. Clique em EDITAR para aparecer no diretório.</span>
-                  )}
-                  {(profile as any)?.academyPhone && (
-                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>📱 {(profile as any)?.academyPhone}</span>
-                  )}
-                  {(profile as any)?.academyInstagram && (
-                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>📸 @{(profile as any)?.academyInstagram}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                    {(profile as any)?.academyCity || (profile as any)?.academyState ? (
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #CC0000', color: '#CC0000', background: '#CC000015' }}>
+                        📍 {[(profile as any)?.academyCity, (profile as any)?.academyState].filter(Boolean).join(' — ')}
+                      </span>
+                    ) : (
+                      <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#444' }}>{directoryEmptyText}</span>
+                    )}
+                    {(profile as any)?.academyPhone && (
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>📱 {(profile as any)?.academyPhone}</span>
+                    )}
+                    {(profile as any)?.academyInstagram && (
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>📸 @{(profile as any)?.academyInstagram}</span>
+                    )}
+                  </div>
+                  {((profile as any)?.academyCity || (profile as any)?.academyState) && !isProfessorUnderAcademy && (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {!confirmClearAddress ? (
+                        <button
+                          onClick={() => setConfirmClearAddress(true)}
+                          style={{ background: 'none', border: '1px solid #CC000044', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.625rem', cursor: 'pointer', letterSpacing: '0.05em' }}
+                        >
+                          🗑 EXCLUIR LOCAL
+                        </button>
+                      ) : (
+                        <>
+                          <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#888' }}>Confirmar exclusão?</span>
+                          <button
+                            onClick={handleClearAddress}
+                            disabled={clearingAddress}
+                            style={{ background: '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.625rem', cursor: clearingAddress ? 'default' : 'pointer', letterSpacing: '0.05em' }}
+                          >
+                            {clearingAddress ? 'REMOVENDO...' : 'SIM, EXCLUIR'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmClearAddress(false)}
+                            disabled={clearingAddress}
+                            style={{ background: 'none', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.625rem', cursor: 'pointer', letterSpacing: '0.05em' }}
+                          >
+                            CANCELAR
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
               {/* Formulário de edição */}
-              {showAcademyForm && (
+              {showAcademyForm && !isProfessorUnderAcademy && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                  <div>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>CEP</p>
+                    <div style={{ position: 'relative' }}>
+                      <input type="text" value={academyFormData.cep} onChange={e => handleCepChange(e.target.value)} placeholder="00000-000" maxLength={9}
+                        style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
+                      {fetchingCep && (
+                        <span style={{ position: 'absolute', right: '0.625rem', top: '50%', transform: 'translateY(-50%)', fontSize: '0.7rem', color: '#888', fontFamily: 'Barlow, sans-serif' }}>buscando...</span>
+                      )}
+                    </div>
+                  </div>
                   <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                     <div>
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>CIDADE *</p>
@@ -2113,7 +2362,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     </div>
                   </div>
                   <div>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>ENDEREÇO</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{directoryAddressLabel}</p>
                     <input type="text" value={academyFormData.address} onChange={e => setAcademyFormData(p => ({ ...p, address: e.target.value }))} placeholder="Rua, número, bairro"
                       style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                   </div>
@@ -2125,30 +2374,30 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     </div>
                     <div>
                       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>INSTAGRAM</p>
-                      <input type="text" value={academyFormData.instagram} onChange={e => setAcademyFormData(p => ({ ...p, instagram: e.target.value }))} placeholder="@academia"
+                      <input type="text" value={academyFormData.instagram} onChange={e => setAcademyFormData(p => ({ ...p, instagram: e.target.value }))} placeholder={directoryInstagramPlaceholder}
                         style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                   </div>
                   <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                     <div>
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>ESTILO / EQUIPE</p>
-                      <input type="text" value={academyFormData.style} onChange={e => setAcademyFormData(p => ({ ...p, style: e.target.value }))} placeholder="Ex: BJJ / MMA"
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{directoryStyleLabel}</p>
+                      <input type="text" value={academyFormData.style} onChange={e => setAcademyFormData(p => ({ ...p, style: e.target.value }))} placeholder="Ex: Gi, No-Gi, Competicao"
                         style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>FRANQUIA / EQUIPE</p>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{directoryFranchiseLabel}</p>
                       <input type="text" value={academyFormData.franchise} onChange={e => setAcademyFormData(p => ({ ...p, franchise: e.target.value }))} placeholder="Ex: Gracie Barra, Alliance"
                         style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                   </div>
                   <div className="prof-panel-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
                     <div>
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>MENSALIDADE (R$)</p>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{directoryMonthlyLabel}</p>
                       <input type="number" value={academyFormData.monthlyFee} onChange={e => setAcademyFormData(p => ({ ...p, monthlyFee: e.target.value }))} placeholder="0.00"
                         style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>DIÁRIA (R$)</p>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{directoryDailyLabel}</p>
                       <input type="number" value={academyFormData.dailyFee} onChange={e => setAcademyFormData(p => ({ ...p, dailyFee: e.target.value }))} placeholder="0.00"
                         style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${accentColor}44`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.5rem 0.625rem', outline: 'none', boxSizing: 'border-box' }} />
                     </div>
@@ -2159,7 +2408,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     </div>
                   </div>
                   <div>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>FOTOS DA ACADEMIA</p>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{directoryPhotoLabel}</p>
                     {/* Galeria de miniaturas */}
                     {academyFormData.photoUrls.length > 0 && (
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
@@ -2210,7 +2459,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                       <span style={{ fontSize: '1rem' }}>📷</span>
                       {uploadingAcademyPhoto ? 'ENVIANDO...' : `+ ADICIONAR FOTOS${academyFormData.photoUrls.length > 0 ? ` (${academyFormData.photoUrls.length} foto${academyFormData.photoUrls.length > 1 ? 's' : ''})` : ''}`}
                     </button>
-                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.65rem', color: '#444', marginTop: '0.2rem' }}>Selecione várias fotos de uma vez. Aparecerão na galeria da academia no diretório.</p>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.65rem', color: '#444', marginTop: '0.2rem' }}>{directoryPhotoHint}</p>
                   </div>
                   <button
                     disabled={savingAcademyData || !academyFormData.city || !academyFormData.state}
@@ -2219,6 +2468,7 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                       setSavingAcademyData(true);
                       try {
                         const updates = {
+                          academyCep: academyFormData.cep.replace(/\D/g, ''),
                           academyCity: academyFormData.city.trim(),
                           academyState: academyFormData.state,
                           academyAddress: academyFormData.address.trim(),
@@ -2232,14 +2482,14 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                           academyPhotoUrls: academyFormData.photoUrls,
                         };
                         await api.users.update(user.uid, updates);
-                        toast.success('Dados da academia atualizados!');
+                        toast.success(directorySaveToast);
                         setShowAcademyForm(false);
                       } catch { toast.error('Erro ao salvar dados.'); }
                       finally { setSavingAcademyData(false); }
                     }}
                     style={{ background: savingAcademyData || !academyFormData.city || !academyFormData.state ? '#333' : accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.75rem', cursor: savingAcademyData || !academyFormData.city || !academyFormData.state ? 'not-allowed' : 'pointer', width: '100%' }}
                   >
-                    {savingAcademyData ? 'SALVANDO...' : '✓ SALVAR E PUBLICAR NO DIRETÓRIO'}
+                    {savingAcademyData ? 'SALVANDO...' : directorySaveLabel}
                   </button>
                 </div>
               )}
@@ -2250,7 +2500,10 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF', margin: 0 }}>📄 CONTRATO / WAIVER</p>
                 <button
-                  onClick={() => { setShowWaiverEditor(!showWaiverEditor); }}
+                  onClick={() => {
+                    if (!showWaiverEditor && !waiverText) setWaiverText(DEFAULT_WAIVER);
+                    setShowWaiverEditor(!showWaiverEditor);
+                  }}
                   style={{ background: showWaiverEditor ? accentColor : 'transparent', border: `1px solid ${accentColor}`, color: showWaiverEditor ? '#FFF' : accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.375rem 0.75rem', cursor: 'pointer' }}
                 >
                   {showWaiverEditor ? 'FECHAR' : waiverText ? 'EDITAR' : 'CRIAR'}
@@ -2263,7 +2516,15 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
               )}
               {showWaiverEditor && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', margin: 0 }}>Este texto será exibido para o aluno ao fazer matrícula, aula avulsa ou aula experimental. O aluno deverá aceitar antes de prosseguir.</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', margin: 0 }}>Este texto será exibido para o aluno ao fazer matrícula ou aula experimental. O aluno deverá aceitar antes de prosseguir.</p>
+                    <button
+                      onClick={() => setWaiverText(DEFAULT_WAIVER)}
+                      style={{ flexShrink: 0, marginLeft: '0.75rem', background: 'none', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.25rem 0.625rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      ↩ USAR PADRÃO
+                    </button>
+                  </div>
                   <textarea
                     value={waiverText}
                     onChange={e => setWaiverText(e.target.value)}
@@ -2359,25 +2620,52 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
                     style={{ flex: 1, background: 'none', border: '1px solid #333', color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem', cursor: 'pointer' }}>CANCELAR</button>
                   <button onClick={handleSavePost} disabled={savingPost || !postText.trim()}
                     style={{ flex: 2, background: savingPost || !postText.trim() ? '#333' : accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: savingPost || !postText.trim() ? 'default' : 'pointer' }}>
-                    {savingPost ? 'PUBLICANDO...' : '📤 PUBLICAR + COPIAR LINK'}
+                    {savingPost ? 'PUBLICANDO...' : 'PUBLICAR'}
                   </button>
                 </div>
               </div>
             )}
 
             {/* Lista de posts */}
+            <div style={{ display: 'flex', gap: '0.375rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+              {PROFESSOR_POST_FILTERS.map(filter => {
+                const active = postFilter === filter.value;
+                return (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    onClick={() => setPostFilter(filter.value)}
+                    style={{
+                      flex: '0 0 auto',
+                      background: active ? accentColor + '22' : '#111',
+                      border: `1px solid ${active ? accentColor : '#2A2A2A'}`,
+                      color: active ? accentColor : '#666',
+                      fontFamily: 'Barlow Condensed, sans-serif',
+                      fontWeight: 900,
+                      fontSize: '0.68rem',
+                      textTransform: 'uppercase',
+                      padding: '0.4rem 0.625rem',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {filter.label} ({postFilterCounts[filter.value] || 0})
+                  </button>
+                );
+              })}
+            </div>
             {postsLoading && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', color: '#555', textTransform: 'uppercase', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>CARREGANDO...</p>}
-            {!postsLoading && posts.length === 0 && !showNewPost && (
+            {!postsLoading && filteredPosts.length === 0 && !showNewPost && (
               <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                 <p style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📡</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM POST AINDA</p>
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#444', marginTop: '0.5rem' }}>Publique novidades, notificações e resultados para seus alunos.</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>{posts.length === 0 ? 'NENHUM POST AINDA' : 'NENHUM POST NESTE FILTRO'}</p>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#444', marginTop: '0.5rem' }}>{posts.length === 0 ? 'Publique novidades, notificacoes e resultados para seus alunos.' : 'Escolha outro filtro para ver mais posts.'}</p>
               </div>
             )}
-            {posts.map(post => (
+            {filteredPosts.map(post => (
               <div key={post.id} style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ background: accentColor + '22', border: `1px solid ${accentColor}`, color: accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem' }}>{(post.type || 'geral').toUpperCase()}</span>
+                  <span style={{ background: accentColor + '22', border: `1px solid ${accentColor}`, color: accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem' }}>{getProfessorPostType(post).toUpperCase()}</span>
                   <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#444' }}>{post.createdAtStr}</span>
                 </div>
                 <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#CCC', lineHeight: 1.5 }}>{post.text}</p>
@@ -4206,15 +4494,15 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
     setMarkingPaid(payment.id);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      await api.payments.update(payment.id, {
+      const updatedPayment = await api.payments.update(payment.id, {
         status: 'paid', paidAt: today,
         ...(receiptUrl ? { receiptUrl } : {}),
-      });
+      }) as Payment;
       setMemberPayments(prev => prev.map(p => p.id === payment.id
         ? { ...p, status: 'paid', paidAt: today, ...(receiptUrl ? { receiptUrl } : {}) }
         : p
       ));
-      toast.success('Pagamento confirmado!');
+      toast.success((updatedPayment.reactivatedEnrollments || []).length > 0 ? 'Pagamento confirmado e matrícula reativada!' : 'Pagamento confirmado!');
     } catch { toast.error('Erro ao confirmar'); }
     finally { setMarkingPaid(null); }
   };
@@ -4308,13 +4596,17 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
         promotedBy: professorUid || 'professor',
       });
       // Notificação ao aluno
-      await api.notifications.create({
+      try {
+        await api.notifications.create({
         toUid: member.uid,
         type: 'promotion',
         message: `🏅 VOCÊ FOI PROMOVIDO! Parabéns! Você foi promovido para Faixa ${newBelt}${newStripes > 0 ? ` · ${newStripes}º grau` : ''}!`,
         data: { belt: newBelt, stripes: newStripes },
         read: false,
-      });
+        });
+      } catch (notificationError) {
+        console.warn('Promocao salva, mas a notificacao falhou', notificationError);
+      }
       onPromoted(member.uid, newBelt, newStripes);
       toast.success(`${member.name} promovido para Faixa ${newBelt}${newStripes > 0 ? ` · ${newStripes}º grau` : ''}! 🏅`);
       setShowPromotion(false);
@@ -5060,18 +5352,19 @@ interface ClassSchedule {
 }
 
 const HORARIOS_DAY_LABELS: Record<string, string> = {
-  seg: 'SEG', ter: 'TER', qua: 'QUA', qui: 'QUI', sex: 'SEX', sab: 'SÁB', dom: 'DOM',
+  seg: 'SEGUNDA-FEIRA', ter: 'TERÇA-FEIRA', qua: 'QUARTA-FEIRA', qui: 'QUINTA-FEIRA', sex: 'SEXTA-FEIRA', sab: 'SÁBADO', dom: 'DOMINGO',
 };
 const HORARIOS_ALL_DAYS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
 const CLASS_TYPES = ['Iniciante', 'Graduado', 'Geral', 'Competição', 'Open Match'];
 const CLASS_MODES = ['Gi', 'No-Gi'];
-const PUBLICO_TYPES = ['Misto', 'Feminino', 'Infantil (até 16 anos)'];
+const PUBLICO_TYPES = ['Misto', 'Masculino', 'Feminino', 'Infantil (até 16 anos)'];
 
 function HorariosTab({ professorUid, accentColor }: { professorUid: string; accentColor: string }) {
   const [schedules, setSchedules] = useState<ClassSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const emptyForm = { days: [] as string[], time: '', type: 'Geral', mode: 'Gi', publico: 'Misto', durationMin: 60, notes: '' };
@@ -5087,7 +5380,7 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
     setLoading(true);
     try {
       const list = await api.classes.listSchedules() as ClassSchedule[];
-      list.sort((a, b) => a.time.localeCompare(b.time));
+      list.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
       setSchedules(list);
     } catch {
       setSchedules([]);
@@ -5104,6 +5397,7 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
   const handleSave = async () => {
     if (!form.time || form.days.length === 0) return;
     setSaving(true);
+    setSaveError('');
     try {
       const data = { ...form, professorUid };
       if (editingId) {
@@ -5115,8 +5409,9 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
       setEditingId(null);
       setForm(emptyForm);
       await loadSchedules();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setSaveError(e?.message || 'Erro ao salvar horário');
     }
     setSaving(false);
   };
@@ -5136,7 +5431,7 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
   // Group by day for display
   const byDay: Record<string, ClassSchedule[]> = {};
   HORARIOS_ALL_DAYS.forEach(d => { byDay[d] = []; });
-  schedules.forEach(s => s.days.forEach(d => { if (byDay[d]) byDay[d].push(s); }));
+  schedules.forEach(s => (s.days ?? []).forEach(d => { if (byDay[d]) byDay[d].push(s); }));
 
   const typeColor: Record<string, string> = {
     'Iniciante': '#25D366', 'Graduado': '#4A90D9', 'Geral': '#CC0000', 'Competição': '#FFD700', 'Open Match': '#FF6B00',
@@ -5167,7 +5462,7 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
             <div key={day} style={{ background: '#111', border: '1px solid #1E1E1E' }}>
               <div style={{ background: '#1A1A1A', borderBottom: '1px solid #2A2A2A', padding: '0.5rem 0.875rem' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', color: accentColor, letterSpacing: '0.08em' }}>
-                  {HORARIOS_DAY_LABELS[day]}FEIRA
+                  {HORARIOS_DAY_LABELS[day]}
                 </p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
@@ -5296,6 +5591,7 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
             style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', padding: '0.75rem', background: (saving || !form.time || form.days.length === 0) ? '#333' : accentColor, border: 'none', color: '#FFF', cursor: 'pointer', letterSpacing: '0.08em' }}>
             {saving ? 'SALVANDO...' : editingId ? '✓ SALVAR ALTERAÇÕES' : '✓ ADICIONAR HORÁRIO'}
           </button>
+          {saveError && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#CC0000', marginTop: '0.25rem' }}>⚠ {saveError}</p>}
         </div>
       )}
 
@@ -5316,7 +5612,7 @@ function buildReceitaData(year: number, allPayments: any[], now: Date) {
     const byStudent = new Map<string, any>();
     mPayments.forEach((p: any) => {
       const existing = byStudent.get(p.studentUid);
-      if (!existing || (p.createdAt || '') > (existing.createdAt || '')) {
+      if (!existing || shouldReplaceFinancialPayment(existing, p)) {
         byStudent.set(p.studentUid, p);
       }
     });
@@ -5494,7 +5790,8 @@ function RelatoriosTab({
 
       // Buscar pagamentos pendentes/vencidos
       const paymentsData = await api.payments.list({ professorUid });
-      const payments = (paymentsData as any[]).filter((p: any) => ['pending', 'overdue'].includes(p.status));
+      const effectivePayments = Array.from(currentEffectivePaymentsByStudent(paymentsData as any[], now).values());
+      const payments = effectivePayments.filter((p: any) => ['pending', 'overdue'].includes(p.status));
 
       // Buscar treinos do mês atual via check-ins
       const monthStartStr = monthStart.toISOString().split('T')[0];
@@ -6119,7 +6416,7 @@ function RelatoriosTab({
                   const byStudent = new Map<string,any>();
                   mPayments.forEach((p:any) => {
                     const existing = byStudent.get(p.studentUid);
-                    if (!existing || (p.createdAt||'') > (existing.createdAt||'')) byStudent.set(p.studentUid, p);
+                    if (!existing || shouldReplaceFinancialPayment(existing, p)) byStudent.set(p.studentUid, p);
                   });
                   const deduped = Array.from(byStudent.values());
                   const cobrado = deduped.reduce((s:number,p:any) => s + (Number(p.amount)||0), 0);

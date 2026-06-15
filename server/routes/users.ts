@@ -60,8 +60,19 @@ router.patch('/:uid', requireAuth, async (req: AuthRequest, res) => {
     return;
   }
   const {
-    passwordHash: _ph, uid: _uid, email: _email, createdAt: _c, ...allowed
+    passwordHash: _ph, uid: _uid, email: _email, createdAt: _c, ...raw
   } = req.body;
+  // Filtra apenas colunas que existem no schema para evitar SET vazio
+  const validColumns = new Set(Object.keys(users));
+  const allowed = Object.fromEntries(
+    Object.entries(raw).filter(([k]) => validColumns.has(k))
+  );
+  if (Object.keys(allowed).length === 0) {
+    const [current] = await db.select().from(users).where(eq(users.uid, req.params.uid)).limit(1);
+    const { passwordHash: __, ...safe } = current as any;
+    res.json(safe);
+    return;
+  }
   await db.update(users).set(allowed).where(eq(users.uid, req.params.uid));
   const [updated] = await db.select().from(users).where(eq(users.uid, req.params.uid)).limit(1);
   const { passwordHash: __, ...safe } = updated as any;

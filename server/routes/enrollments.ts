@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { enrollments, notifications, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { notifyEnrollmentReactivated } from '../services/enrollmentNotifications.js';
 
 const router = Router();
 
@@ -213,6 +214,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 
   const [row] = await db.update(enrollments).set(data).where(eq(enrollments.id, req.params.id)).returning();
+  if (row && existing.status === 'suspended' && data.status === 'active') {
+    await notifyEnrollmentReactivated(row, req.userId!);
+  }
   res.json(row);
 });
 

@@ -9,8 +9,13 @@ const router = Router();
 
 // Mapeamento de campos: cliente usa nomes legados do Firestore; DB usa nomes do schema Drizzle
 function toClientPost(row: Record<string, any>) {
+  const trainingData = row.trainingData && typeof row.trainingData === 'object' && !Array.isArray(row.trainingData)
+    ? row.trainingData
+    : {};
+  const category = trainingData.category || row.category || (row.postType === 'training' ? 'treino' : 'geral');
   return {
     ...row,
+    type:          category,
     text:          row.content,
     photoURL:      row.mediaUrl,
     authorPhotoURL: row.authorPhoto,
@@ -20,13 +25,22 @@ function toClientPost(row: Record<string, any>) {
 }
 
 function fromClientPost(body: Record<string, any>) {
-  const { uid: _uid, text, photoURL, authorPhotoURL, feedTarget,
+  const { uid: _uid, text, photoURL, authorPhotoURL, feedTarget, type,
           createdAt: _ca, updatedAt: _ua, commentCount: _cc, ...rest } = body;
+  const trainingData = rest.trainingData && typeof rest.trainingData === 'object' && !Array.isArray(rest.trainingData)
+    ? rest.trainingData
+    : {};
+  const postCategory = typeof type === 'string' && type.trim() ? type.trim() : undefined;
+  delete rest.trainingData;
+
   return {
     ...(text           !== undefined && { content:     text }),
     ...(photoURL       !== undefined && { mediaUrl:    photoURL }),
     ...(authorPhotoURL !== undefined && { authorPhoto: authorPhotoURL }),
     ...(feedTarget     !== undefined && { postType:    feedTarget }),
+    ...((postCategory || Object.keys(trainingData).length > 0) && {
+      trainingData: postCategory ? { ...trainingData, category: postCategory } : trainingData,
+    }),
     ...rest,
   };
 }

@@ -1,7 +1,7 @@
-import { and, eq, not } from 'drizzle-orm';
+import { and, eq, gte } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { enrollments, notifications, payments, settings } from '../db/schema.js';
+import { classCheckIns, enrollments, notifications, payments, settings } from '../db/schema.js';
 import { sendNotificationWhatsApp } from './notificationWhatsApp.js';
 
 export const DEFAULT_AUTO_SUSPEND_AFTER_DAYS = 10;
@@ -46,6 +46,70 @@ function daysPastDue(value: unknown) {
   return Math.max(0, Math.floor((today.getTime() - dueDay.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
+function isPaidPayment(payment: typeof payments.$inferSelect) {
+  return String(payment.status || '').toLowerCase() === 'paid' || Boolean(payment.paidAt);
+}
+
+function paymentDueTime(payment: typeof payments.$inferSelect) {
+  const due = normalizePaymentDate(payment.dueDate);
+  return due instanceof Date && !Number.isNaN(due.getTime()) ? due.getTime() : 0;
+}
+
+function paymentCreatedTime(payment: typeof payments.$inferSelect) {
+  const created = normalizePaymentDate(payment.createdAt);
+  return created instanceof Date && !Number.isNaN(created.getTime()) ? created.getTime() : 0;
+}
+
+function paymentMonthKey(payment: typeof payments.$inferSelect) {
+  const due = normalizePaymentDate(payment.dueDate);
+  if (!(due instanceof Date) || Number.isNaN(due.getTime())) return null;
+  return `${payment.professorUid}:${payment.studentUid}:${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function isDueTodayOrPast(payment: typeof payments.$inferSelect) {
+  const due = normalizePaymentDate(payment.dueDate);
+  if (!(due instanceof Date) || Number.isNaN(due.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDay = new Date(due);
+  dueDay.setHours(0, 0, 0, 0);
+  return dueDay.getTime() <= today.getTime();
+}
+
+function isNewerPayment(candidate: typeof payments.$inferSelect, current: typeof payments.$inferSelect) {
+  const candidateDue = paymentDueTime(candidate);
+  const currentDue = paymentDueTime(current);
+  if (candidateDue !== currentDue) return candidateDue > currentDue;
+
+  const candidateCreated = paymentCreatedTime(candidate);
+  const currentCreated = paymentCreatedTime(current);
+  if (candidateCreated !== currentCreated) return candidateCreated > currentCreated;
+
+  return String(candidate.id) > String(current.id);
+}
+
+function effectiveDuePaymentsByStudent(rows: Array<typeof payments.$inferSelect>) {
+  const paidMonths = new Set<string>();
+  for (const payment of rows) {
+    const key = paymentMonthKey(payment);
+    if (key && isPaidPayment(payment)) paidMonths.add(key);
+  }
+
+  const byStudent = new Map<string, typeof payments.$inferSelect>();
+  for (const payment of rows) {
+    const key = paymentMonthKey(payment);
+    if (!key || paidMonths.has(key) && !isPaidPayment(payment)) continue;
+    if (!isDueTodayOrPast(payment)) continue;
+
+    const current = byStudent.get(payment.studentUid);
+    if (!current || isNewerPayment(payment, current)) {
+      byStudent.set(payment.studentUid, payment);
+    }
+  }
+
+  return byStudent;
+}
+
 export async function getAutoSuspendAfterDays(professorUid: string) {
   const [row] = await db.select().from(settings)
     .where(eq(settings.key, financialSettingsKey(professorUid)))
@@ -61,11 +125,11 @@ export async function applyAutomaticSuspensionsForProfessor(
   if (autoSuspendAfterDays <= 0) return { autoSuspendAfterDays, suspended: 0 };
 
   const rows = candidatePayments || await db.select().from(payments)
-    .where(and(eq(payments.professorUid, professorUid), not(eq(payments.status, 'paid'))));
+    .where(eq(payments.professorUid, professorUid));
 
   const oldestOverdueByStudent = new Map<string, { days: number; payment: typeof payments.$inferSelect }>();
-  for (const payment of rows) {
-    if (payment.status === 'paid') continue;
+  for (const payment of effectiveDuePaymentsByStudent(rows).values()) {
+    if (isPaidPayment(payment)) continue;
     const days = daysPastDue(payment.dueDate);
     if (days < autoSuspendAfterDays) continue;
     const current = oldestOverdueByStudent.get(payment.studentUid);
@@ -118,7 +182,7 @@ export async function applyAutomaticSuspensionsForProfessor(
 }
 
 export async function runAutomaticSuspensionSweep() {
-  const rows = await db.select().from(payments).where(not(eq(payments.status, 'paid')));
+  const rows = await db.select().from(payments);
   const byProfessor = new Map<string, Array<typeof payments.$inferSelect>>();
   const professorUids: string[] = [];
 
@@ -160,6 +224,10 @@ export function startFinancialAutomationJobs() {
       if (result.suspended > 0) {
         console.log(`[financial-automation] ${reason}: ${result.suspended} matricula(s) suspensa(s)`);
       }
+      const incentiveResult = await runLowFreqIncentiveSweep();
+      if (incentiveResult.sent > 0) {
+        console.log(`[financial-automation] ${reason}: ${incentiveResult.sent} incentivo(s) de frequencia enviado(s)`);
+      }
     } catch (err) {
       console.warn('[financial-automation] sweep failed', err);
     } finally {
@@ -172,4 +240,61 @@ export function startFinancialAutomationJobs() {
 
   const intervalTimer = setInterval(() => void run('interval'), intervalMs);
   intervalTimer.unref?.();
+}
+
+// ─── Low-frequency incentives ─────────────────────────────────────────────────
+export const DEFAULT_LOW_FREQ_THRESHOLD = 4;
+export const INCENTIVE_COOLDOWN_DAYS = 7;
+
+const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+export async function runLowFreqIncentiveSweep() {
+  const now = new Date();
+  const monthStartStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const cooldownSince = new Date(now.getTime() - INCENTIVE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+  const monthName = MONTH_NAMES[now.getMonth()];
+
+  // Active enrollments
+  const activeEnrollments = await db.select().from(enrollments).where(eq(enrollments.status, 'active'));
+
+  // Check-ins this month
+  const checkInsThisMonth = await db.select().from(classCheckIns).where(gte(classCheckIns.createdAt, new Date(monthStartStr)));
+  const checkInCountByStudent = new Map<string, number>();
+  for (const ci of checkInsThisMonth) {
+    checkInCountByStudent.set(ci.studentUid, (checkInCountByStudent.get(ci.studentUid) ?? 0) + 1);
+  }
+
+  // Recent incentive notifications (cooldown dedup)
+  const recentIncentives = await db.select({ fromUid: notifications.fromUid, toUid: notifications.toUid })
+    .from(notifications)
+    .where(and(eq(notifications.type, 'low_frequency'), gte(notifications.createdAt, cooldownSince)));
+  const recentSet = new Set(recentIncentives.map(n => `${n.fromUid}:${n.toUid}`));
+
+  let sent = 0;
+  for (const enr of activeEnrollments) {
+    const trainings = checkInCountByStudent.get(enr.studentUid) ?? 0;
+    if (trainings >= DEFAULT_LOW_FREQ_THRESHOLD) continue;
+
+    const key = `${enr.professorUid}:${enr.studentUid}`;
+    if (recentSet.has(key)) continue;
+
+    try {
+      const [notification] = await db.insert(notifications).values({
+        id: nanoid(),
+        toUid: enr.studentUid,
+        fromUid: enr.professorUid,
+        fromName: enr.professorName || enr.academyName || 'Professor',
+        type: 'low_frequency',
+        message: `Sentimos sua falta no tatame. Voce treinou ${trainings} vez${trainings !== 1 ? 'es' : ''} em ${monthName}. Que tal marcar presenca esta semana?`,
+        data: { trainingsCount: trainings, monthName, auto: true },
+        read: false,
+      }).returning();
+      await sendNotificationWhatsApp(notification, enr.professorUid);
+      sent++;
+    } catch (err) {
+      console.warn('[financial-automation] incentive notification failed', err);
+    }
+  }
+
+  return { sent };
 }
