@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import api from '@/lib/api';
 import { AcademyMap } from '@/components/AcademyMap';
-import { getEventLocationLabel, getEventMapEmbedUrl, getEventGoogleMapsUrl, getEventWazeUrl, getEventAddressLabel } from '@/lib/eventLocation';
+import { getEventLocationLabel, getEventMapEmbedUrl, getEventGoogleMapsUrl, getEventWazeUrl, getEventAddressLabel, formatCep } from '@/lib/eventLocation';
 import { toast } from 'sonner';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import RankingList from '@/components/RankingList';
@@ -125,10 +125,9 @@ const POST_TYPE_LABELS: Record<string, string> = {
 };
 const COMMUNITY_POST_TYPE_OPTIONS = [
   { id: 'geral', label: 'GERAL', color: POST_TYPE_COLORS.geral },
-  { id: 'duvida', label: 'DUVIDA', color: POST_TYPE_COLORS.duvida },
-  { id: 'novidade', label: 'NOVIDADE', color: POST_TYPE_COLORS.novidade },
-  { id: 'resultado', label: 'RESULTADO', color: POST_TYPE_COLORS.resultado },
-  { id: 'aviso', label: 'AVISO', color: POST_TYPE_COLORS.aviso },
+  { id: 'aviso', label: '⚠️ NOTIFICAÇÃO', color: POST_TYPE_COLORS.aviso },
+  { id: 'novidade', label: '🎉 NOVIDADE', color: POST_TYPE_COLORS.novidade },
+  { id: 'resultado', label: '🏆 RESULTADO', color: POST_TYPE_COLORS.resultado },
 ];
 const COMMUNITY_POST_FILTERS = [
   { id: 'all', label: 'TODOS', color: '#777' },
@@ -347,6 +346,70 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   // Eventos
   const [events, setEvents] = useState<AcademyEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
+
+  // ─── Criação de eventos/desafios (academy/admin) ──────────────────────────
+  const isAcademyManager = profile?.role === 'academy' || profile?.role === 'admin';
+
+  const EMPTY_EVENT_FORM = { title: '', description: '', type: 'outro', date: '', time: '', location: '', locationCep: '', locationAddress: '', locationNumber: '', locationNeighborhood: '', locationCity: '', locationState: '', locationLatitude: null as number | null, locationLongitude: null as number | null, slots: '', price: '' };
+  const [showNewEvent, setShowNewEvent] = useState(false);
+  const [eventForm, setEventForm] = useState(EMPTY_EVENT_FORM);
+  const [savingEvent, setSavingEvent] = useState(false);
+  const [fetchingEventCep, setFetchingEventCep] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<{ name: string; cep: string; address: string; number: string; neighborhood: string; city: string; state: string; label: string }[]>([]);
+
+  const EMPTY_CHALLENGE_FORM = { title: '', description: '', goal: '', goalType: 'trainings', startDate: '', endDate: '', xpReward: '50' };
+  const [showNewChallenge, setShowNewChallenge] = useState(false);
+  const [challengeForm, setChallengeForm] = useState(EMPTY_CHALLENGE_FORM);
+  const [savingChallenge, setSavingChallenge] = useState(false);
+
+  const loadLocationSuggestions = useCallback(async () => {
+    if (locationSuggestions.length > 0) return;
+    try {
+      const academies = await api.public.searchAcademies('');
+      const items = (academies as any[]).map(p => ({ name: (p.academyName || p.name || '').trim(), cep: p.academyCep || '', address: p.academyAddress || '', number: p.academyNumber || '', neighborhood: p.academyNeighborhood || '', city: p.academyCity || '', state: p.academyState || '', label: p.academyCity && p.academyState ? `${p.academyCity} - ${p.academyState}` : p.academyCity || '' })).filter(p => p.name).filter((p, i, arr) => arr.findIndex(x => x.name === p.name) === i);
+      setLocationSuggestions(items);
+    } catch { /* silencia */ }
+  }, [locationSuggestions.length]);
+
+  const handleEventCepChange = async (raw: string) => {
+    const cep = raw.replace(/\D/g, '').slice(0, 8);
+    setEventForm(p => ({ ...p, locationCep: cep }));
+    if (cep.length !== 8) return;
+    setFetchingEventCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const data = await res.json();
+      if (!data?.erro) setEventForm(p => ({ ...p, locationCep: cep, locationAddress: data.logradouro || p.locationAddress, locationNeighborhood: data.bairro || p.locationNeighborhood, locationCity: data.localidade || p.locationCity, locationState: data.uf || p.locationState }));
+    } catch { /* silencia */ } finally { setFetchingEventCep(false); }
+  };
+
+  const handleSaveEvent = async () => {
+    if (!user || !profile || !eventForm.title.trim() || !eventForm.date || !eventForm.description.trim() || !eventForm.slots || !eventForm.time || !eventForm.type) return;
+    setSavingEvent(true);
+    try {
+      const publisherName = (profile as any).academyName || profile.name;
+      const publisherLogo = (profile as any).academyLogoUrl || (profile as any).academyLogo || '';
+      await api.events.create({ authorUid: user.uid, academyId: user.uid, academyName: publisherName, academyLogo: publisherLogo, title: eventForm.title.trim(), description: eventForm.description.trim() || null, type: eventForm.type, date: eventForm.date, time: eventForm.time || null, location: eventForm.location.trim() || getEventAddressLabel(eventForm) || null, locationCep: eventForm.locationCep.replace(/\D/g, '') || null, locationAddress: eventForm.locationAddress.trim() || null, locationNumber: eventForm.locationNumber.trim() || null, locationNeighborhood: eventForm.locationNeighborhood.trim() || null, locationCity: eventForm.locationCity.trim() || null, locationState: eventForm.locationState.trim() || null, locationLatitude: null, locationLongitude: null, slots: eventForm.slots ? parseInt(eventForm.slots) : null, price: (eventForm.price === '' || Number(eventForm.price) === 0) ? 'Gratuito' : `R$ ${Number(eventForm.price).toFixed(2)}`, registrations: [], createdAtStr: new Date().toLocaleDateString('pt-BR') });
+      toast.success('Evento criado!');
+      setEventForm(EMPTY_EVENT_FORM);
+      setShowNewEvent(false);
+      loadEvents();
+    } catch { toast.error('Erro ao criar evento'); } finally { setSavingEvent(false); }
+  };
+
+  const handleSaveChallenge = async () => {
+    if (!user || !profile || !challengeForm.title.trim() || !challengeForm.goal || !challengeForm.startDate || !challengeForm.endDate) return;
+    setSavingChallenge(true);
+    try {
+      const publisherName = (profile as any).academyName || profile.name;
+      const publisherLogo = (profile as any).academyLogoUrl || (profile as any).academyLogo || '';
+      await api.challenges.create({ authorUid: user.uid, academyId: user.uid, academyName: publisherName, academyLogo: publisherLogo, title: challengeForm.title.trim(), description: challengeForm.description.trim() || null, goal: parseInt(challengeForm.goal), goalType: challengeForm.goalType, startDate: challengeForm.startDate, endDate: challengeForm.endDate, xpReward: parseInt(challengeForm.xpReward) || 50, createdAtStr: new Date().toLocaleDateString('pt-BR') });
+      toast.success('Desafio criado!');
+      setChallengeForm(EMPTY_CHALLENGE_FORM);
+      setShowNewChallenge(false);
+      loadChallenges();
+    } catch { toast.error('Erro ao criar desafio'); } finally { setSavingChallenge(false); }
+  };
 
   // ─── Loaders ────────────────────────────────────────────────────────────────
 
@@ -1203,6 +1266,63 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
         {/* ─── DESAFIOS TAB ─────────────────────────────────────────────────── */}
         {activeTab === 'challenges' && (
           <>
+            {/* Botão criar desafio — academia/admin */}
+            {isAcademyManager && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button onClick={() => setShowNewChallenge(v => !v)}
+                  style={{ background: showNewChallenge ? '#1A1A1A' : '#E87722', border: showNewChallenge ? '1px solid #333' : 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', cursor: 'pointer', width: '100%' }}>
+                  {showNewChallenge ? '✕ CANCELAR' : '+ NOVO DESAFIO'}
+                </button>
+                {showNewChallenge && (
+                  <div style={{ background: '#111', border: '1px solid #E87722', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {[{ k: 'title', l: 'TÍTULO *', ph: 'Ex: Desafio 30 Treinos' }, { k: 'description', l: 'DESCRIÇÃO', ph: 'Explique o desafio...' }].map(f => (
+                      <div key={f.k}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>{f.l}</p>
+                        <input type="text" value={(challengeForm as Record<string, string>)[f.k]} onChange={e => setChallengeForm(p => ({ ...p, [f.k]: e.target.value }))} placeholder={f.ph}
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: '0.625rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>META (TIPO)</p>
+                        <select value={challengeForm.goalType} onChange={e => setChallengeForm(p => ({ ...p, goalType: e.target.value }))}
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }}>
+                          <option value="trainings">Nº DE TREINOS</option>
+                          <option value="minutes">MINUTOS DE TREINO</option>
+                          <option value="xp">XP ACUMULADO</option>
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>META (VALOR) *</p>
+                        <input type="number" value={challengeForm.goal} onChange={e => setChallengeForm(p => ({ ...p, goal: e.target.value }))} placeholder="Ex: 30"
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.625rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>INÍCIO *</p>
+                        <input type="date" value={challengeForm.startDate} onChange={e => setChallengeForm(p => ({ ...p, startDate: e.target.value }))}
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>TÉRMINO *</p>
+                        <input type="date" value={challengeForm.endDate} onChange={e => setChallengeForm(p => ({ ...p, endDate: e.target.value }))}
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>RECOMPENSA XP</p>
+                      <input type="number" value={challengeForm.xpReward} onChange={e => setChallengeForm(p => ({ ...p, xpReward: e.target.value }))} placeholder="Ex: 100"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <button onClick={handleSaveChallenge} disabled={savingChallenge || !challengeForm.title.trim() || !challengeForm.goal || !challengeForm.startDate || !challengeForm.endDate}
+                      style={{ background: (savingChallenge || !challengeForm.title.trim() || !challengeForm.goal || !challengeForm.startDate || !challengeForm.endDate) ? '#333' : '#E87722', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem', cursor: 'pointer', width: '100%' }}>
+                      {savingChallenge ? 'SALVANDO...' : '⭐ CRIAR DESAFIO'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {challengesLoading ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
             ) : challenges.length === 0 ? (
@@ -1271,14 +1391,102 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
           {/* ─── EVENTOS TAB ────────────────────────────────────────────────── */}
         {activeTab === 'events' && (
           <>
-            {/* Botão criar evento — apenas professores */}
-            {profile?.role === 'professor' && (
-              <button
-                onClick={() => toast.info('Crie eventos pelo Painel do Professor → aba EVENTOS')}
-                style={{ background: '#CC000022', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.75rem', cursor: 'pointer', width: '100%' }}
-              >
-                + CRIAR EVENTO (via Painel do Professor)
-              </button>
+            {/* Botão criar evento — academia/admin */}
+            {isAcademyManager && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button onClick={() => setShowNewEvent(v => !v)}
+                  style={{ background: showNewEvent ? '#1A1A1A' : '#E87722', border: showNewEvent ? '1px solid #333' : 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', cursor: 'pointer', width: '100%' }}>
+                  {showNewEvent ? '✕ CANCELAR' : '+ NOVO EVENTO'}
+                </button>
+                {showNewEvent && (
+                  <div style={{ background: '#111', border: '1px solid #E87722', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {[{ k: 'title', l: 'TÍTULO *', ph: 'Ex: Open Match Interno' }, { k: 'description', l: 'DESCRIÇÃO *', ph: 'Detalhes do evento...' }].map(f => (
+                      <div key={f.k}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>{f.l}</p>
+                        <input type="text" value={(eventForm as Record<string, string>)[f.k]} onChange={e => setEventForm(p => ({ ...p, [f.k]: e.target.value }))} placeholder={f.ph}
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    ))}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>VAGAS *</p>
+                        <input type="number" min={1} value={eventForm.slots} onChange={e => setEventForm(p => ({ ...p, slots: e.target.value }))} placeholder="Ex: 30"
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>VALOR (R$)</p>
+                        <input type="number" min={0} step={0.01} value={eventForm.price} onChange={e => setEventForm(p => ({ ...p, price: e.target.value }))} placeholder="0 = gratuito"
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>NOME DO LOCAL</p>
+                      <input type="text" list="comm-event-location-suggestions" value={eventForm.location}
+                        onChange={e => { const val = e.target.value; const match = locationSuggestions.find(s => s.name === val); if (match) { setEventForm(p => ({ ...p, location: val, locationCep: match.cep.replace(/\D/g, ''), locationAddress: match.address || p.locationAddress, locationNumber: match.number || p.locationNumber, locationNeighborhood: match.neighborhood || p.locationNeighborhood, locationCity: match.city || p.locationCity, locationState: match.state || p.locationState })); } else { setEventForm(p => ({ ...p, location: val })); } }}
+                        onFocus={loadLocationSuggestions} placeholder="Ex: Academia Templo"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      <datalist id="comm-event-location-suggestions">
+                        {locationSuggestions.map((s, i) => <option key={i} value={s.name}>{s.label ? `${s.name} — ${s.label}` : s.name}</option>)}
+                      </datalist>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px,0.45fr) minmax(0,1fr)', gap: '0.625rem' }}>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>CEP</p>
+                        <div style={{ position: 'relative' }}>
+                          <input type="text" value={formatCep(eventForm.locationCep)} onChange={e => handleEventCepChange(e.target.value)} placeholder="00000-000" maxLength={9}
+                            style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${eventForm.locationCep.length === 8 ? '#E87722' : '#2A2A2A'}`, color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                          {fetchingEventCep && <span style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', color: '#777', fontSize: '0.7rem' }}>buscando...</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>ENDEREÇO</p>
+                        <input type="text" value={eventForm.locationAddress} onChange={e => setEventForm(p => ({ ...p, locationAddress: e.target.value }))} placeholder="Rua / Avenida"
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '0.45fr 1fr 0.35fr', gap: '0.625rem' }}>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Nº</p>
+                        <input type="text" value={eventForm.locationNumber} onChange={e => setEventForm(p => ({ ...p, locationNumber: e.target.value }))} placeholder="123"
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>CIDADE</p>
+                        <input type="text" value={eventForm.locationCity} onChange={e => setEventForm(p => ({ ...p, locationCity: e.target.value }))} placeholder="Cidade"
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>UF</p>
+                        <input type="text" value={eventForm.locationState} onChange={e => setEventForm(p => ({ ...p, locationState: e.target.value.toUpperCase().slice(0, 2) }))} placeholder="SP" maxLength={2}
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box', textTransform: 'uppercase' }} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.625rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>DATA *</p>
+                        <input type="date" value={eventForm.date} min={new Date().toISOString().split('T')[0]} onChange={e => setEventForm(p => ({ ...p, date: e.target.value }))}
+                          style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${eventForm.date ? '#E87722' : '#2A2A2A'}`, color: eventForm.date ? '#FFF' : '#666', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>HORÁRIO *</p>
+                        <input type="time" value={eventForm.time} onChange={e => setEventForm(p => ({ ...p, time: e.target.value }))}
+                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>TIPO *</p>
+                      <select value={eventForm.type} onChange={e => setEventForm(p => ({ ...p, type: e.target.value }))}
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }}>
+                        {[['competicao', '🏆 COMPETIÇÃO'], ['seminario', '📚 SEMINÁRIO'], ['aula_especial', '🥋 AULA ESPECIAL'], ['open_match', '⚔️ OPEN MATCH'], ['outro', '📅 OUTRO']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    </div>
+                    <button onClick={handleSaveEvent} disabled={savingEvent || !eventForm.title.trim() || !eventForm.date || !eventForm.description.trim() || !eventForm.slots || !eventForm.time}
+                      style={{ background: (savingEvent || !eventForm.title.trim() || !eventForm.date || !eventForm.description.trim() || !eventForm.slots || !eventForm.time) ? '#333' : '#E87722', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.75rem', cursor: 'pointer', width: '100%' }}>
+                      {savingEvent ? 'SALVANDO...' : '📅 CRIAR EVENTO'}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             {eventsLoading ? (

@@ -13,8 +13,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AppLayout from "./pages/AppLayout";
 import AdminLayout from "./pages/admin/AdminLayout";
-import AdminLogin from "./pages/admin/AdminLogin";
-import PublicPost from "./pages/public/PublicPost";
+import AdminLogin from "./pages/admin/AdminLogin";import AcademiaLayout from './pages/academia/AcademiaLayout';import PublicPost from "./pages/public/PublicPost";
 import PublicEvent from "./pages/public/PublicEvent";
 import PublicChallenge from './pages/public/PublicChallenge';
 import PublicTrial from './pages/public/PublicTrial';
@@ -66,6 +65,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
   if (!user) return <Redirect to="/login" />;
   if (user.role === 'superadmin') return <Redirect to="/admin" />;
+  if (user.role === 'admin' || user.role === 'academy') return <Redirect to="/academia" />;
   if (!hasAccess) return <Redirect to="/pricing" />;
   return <Component />;
 }
@@ -78,10 +78,18 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   return <Component />;
 }
 
+function AcademiaRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Redirect to="/login" />;
+  if (user.role !== 'academy' && user.role !== 'admin') return <Redirect to="/app" />;
+  return <Component />;
+}
+
 function PublicRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user) return <Redirect to={user.role === 'superadmin' ? '/admin' : '/app'} />;
+  if (user) return <Redirect to={user.role === 'superadmin' ? '/admin' : user.role === 'admin' || user.role === 'academy' ? '/academia' : '/app'} />;
   return <Component />;
 }
 
@@ -96,6 +104,7 @@ function Router() {
       <Route path="/app"   component={() => <ProtectedRoute component={AppLayout} />} />
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin" component={() => <AdminRoute     component={AdminLayout} />} />
+      <Route path="/academia" component={() => <AcademiaRoute component={AcademiaLayout} />} />
       <Route path="/post/:postId" component={PublicPost} />
       <Route path="/evento/:eventId" component={PublicEvent} />
       <Route path="/desafio/:challengeId" component={PublicChallenge} />

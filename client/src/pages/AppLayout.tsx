@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LayoutDashboard, CalendarCheck, School, GraduationCap, Users, Target, User } from 'lucide-react';
@@ -68,6 +68,7 @@ export default function AppLayout() {
   const [editExtraTraining, setEditExtraTraining] = useState<import('@/pages/app/NewTraining').ExtraTrainingData | null>(null);
   const [shareData, setShareData] = useState<ShareTrainingData | null>(null);
   const [showProfessorPanel, setShowProfessorPanel] = useState(false);
+  const professorPanelDismissedRef = useRef(false);
   const { profile, user, updateProfileData, logout } = useAuth();
 
   const handleLogout = async () => {
@@ -75,16 +76,26 @@ export default function AppLayout() {
     await logout();
   };
 
-  const isProfessor = profile?.role === 'professor' || profile?.role === 'academy' || profile?.role === 'admin' || profile?.isAcademyAdmin === true;
+  // Donos de academia (admin/academy) ficam na tela Academy com CRM
+  // Professores (professor / isAcademyAdmin) vão para o ProfessorPanel
+  const isAcademyOwner = profile?.role === 'academy' || profile?.role === 'admin';
+  const isProfessor = profile?.role === 'professor' || (profile?.isAcademyAdmin === true && !isAcademyOwner);
 
-  // Professor vai direto para o painel de gestão
+  // Professor vai direto para o painel de gestão (apenas na primeira carga, não após voltar)
   useEffect(() => {
-    if (isProfessor && profile) {
+    if (isProfessor && profile && !professorPanelDismissedRef.current) {
       setShowProfessorPanel(true);
     }
   }, [isProfessor, profile]);
 
-  const visibleTabs = isProfessor
+  // Dono de academia vai direto para a aba ACADEMIA
+  useEffect(() => {
+    if (isAcademyOwner && profile) {
+      setActiveTab('academy');
+    }
+  }, [isAcademyOwner, profile]);
+
+  const visibleTabs = (isProfessor || isAcademyOwner)
     ? TABS.filter(tab => tab.id !== 'professores' && tab.id !== 'goals')
     : TABS;
 
@@ -168,7 +179,7 @@ export default function AppLayout() {
           await api.notifications.markRead(promoNotif.id);
         }
 
-        if (!isProfessor) {
+        if (!isProfessor && !isAcademyOwner) {
           const reqNotif = unread.find((n: any) => n.type === 'request_approved' || n.type === 'request_rejected');
           if (reqNotif) {
             setRequestNotif({ title: reqNotif.title, message: reqNotif.message, approved: reqNotif.type === 'request_approved' });
@@ -261,7 +272,7 @@ export default function AppLayout() {
   if (showProfessorPanel) {
     return (
       <ProfessorPanel
-        onBack={() => setShowProfessorPanel(false)}
+        onBack={() => { professorPanelDismissedRef.current = true; setShowProfessorPanel(false); }}
         onLogout={isProfessor ? handleLogout : undefined}
         notificationSlot={<NotificationBell placement="inline" />}
       />
@@ -551,7 +562,7 @@ export default function AppLayout() {
             </div>
             <div>
               <p className="bjj-sidebar-name">{profile.name || 'Atleta'}</p>
-              {!isProfessor && <p className="bjj-sidebar-belt">{(profile as any).belt || 'Faixa Branca'}</p>}
+              {!isProfessor && !isAcademyOwner && <p className="bjj-sidebar-belt">{(profile as any).belt || 'Faixa Branca'}</p>}
             </div>
           </div>
         )}
