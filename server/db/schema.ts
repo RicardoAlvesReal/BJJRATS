@@ -274,6 +274,42 @@ export const academyRequests = pgTable('academy_requests', {
   createdAt:      timestamp('created_at').defaultNow(),
 });
 
+// ─── academy_professor_links ────────────────────────────────────────────────
+export const academyProfessorLinks = pgTable('academy_professor_links', {
+  id:            text('id').primaryKey(),
+  academyUid:    text('academy_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  professorUid:  text('professor_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  relationType:  text('relation_type').notNull().default('internal'), // internal|partner
+  status:        text('status').default('active'), // active|pending|rejected|removed
+  partnerRevenueSharePercent: real('partner_revenue_share_percent'),
+  partnerRevenueNotes: text('partner_revenue_notes'),
+  notes:         text('notes'),
+  createdByUid:  text('created_by_uid').references(() => users.uid, { onDelete: 'set null' }),
+  createdAt:     timestamp('created_at').defaultNow(),
+  updatedAt:     timestamp('updated_at').defaultNow(),
+}, (table) => [
+  uniqueIndex('idx_academy_professor_link').on(table.academyUid, table.professorUid),
+]);
+
+// ─── academy_student_professor_assignments ─────────────────────────────────
+export const academyStudentProfessorAssignments = pgTable('academy_student_professor_assignments', {
+  id:            text('id').primaryKey(),
+  academyUid:    text('academy_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  professorUid:  text('professor_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  studentUid:    text('student_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  relationType:  text('relation_type').notNull().default('internal'), // internal|partner
+  status:        text('status').default('active'), // active|pending|accepted|rejected|cancelled
+  studentName:   text('student_name'),
+  professorName: text('professor_name'),
+  notes:         text('notes'),
+  createdByUid:  text('created_by_uid').references(() => users.uid, { onDelete: 'set null' }),
+  decidedAt:     timestamp('decided_at'),
+  createdAt:     timestamp('created_at').defaultNow(),
+  updatedAt:     timestamp('updated_at').defaultNow(),
+}, (table) => [
+  uniqueIndex('idx_academy_student_professor_assignment').on(table.academyUid, table.professorUid, table.studentUid),
+]);
+
 // ─── class_schedules ─────────────────────────────────────────────────────────
 export const classSchedules = pgTable('class_schedules', {
   id:          text('id').primaryKey(),

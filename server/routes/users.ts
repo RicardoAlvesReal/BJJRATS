@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, ne, and, or, ilike, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
+import { academyProfessorLinks, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -73,6 +73,23 @@ router.patch('/:uid', requireAuth, async (req: AuthRequest, res) => {
   const allowed = Object.fromEntries(
     Object.entries(raw).filter(([k]) => validColumns.has(k))
   );
+
+  if (Object.prototype.hasOwnProperty.call(allowed, 'academyId')) {
+    const [internalLink] = await db.select({ id: academyProfessorLinks.id, academyUid: academyProfessorLinks.academyUid })
+      .from(academyProfessorLinks)
+      .where(and(
+        eq(academyProfessorLinks.professorUid, req.params.uid),
+        eq(academyProfessorLinks.relationType, 'internal'),
+        eq(academyProfessorLinks.status, 'active'),
+      ))
+      .limit(1);
+
+    if (internalLink && allowed.academyId !== internalLink.academyUid) {
+      res.status(403).json({ error: 'Professor vinculado pela academia nao pode se desvincular sozinho.' });
+      return;
+    }
+  }
+
   if (Object.keys(allowed).length === 0) {
     const [current] = await db.select().from(users).where(eq(users.uid, req.params.uid)).limit(1);
     const { passwordHash: __, ...safe } = current as any;

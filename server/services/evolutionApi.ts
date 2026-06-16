@@ -6,8 +6,8 @@ import QRCode from 'qrcode';
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
-function getInstanceName(professorUid: string): string {
-  return `bjjrats_${professorUid}`;
+function getInstanceName(professorUid: string, role?: string | null): string {
+  return role === 'academy' || role === 'admin' ? `bjjrats_academy_${professorUid}` : `bjjrats_${professorUid}`;
 }
 
 async function request<T = unknown>(
@@ -111,8 +111,9 @@ export interface MessageSendResponse {
 export async function createInstance(
   professorUid: string,
   options: { qrcode?: boolean } = {},
+  role?: string | null,
 ): Promise<InstanceCreateResponse> {
-  const instanceName = getInstanceName(professorUid);
+  const instanceName = getInstanceName(professorUid, role);
   return request<InstanceCreateResponse>('POST', '/instance/create', {
     instanceName,
     integration: 'WHATSAPP-BAILEYS',
@@ -143,14 +144,14 @@ export function formatPairingPhone(phone: string, countryCode?: string): string 
   return `${dialCode}${digits}`;
 }
 
-export async function getPairingCode(professorUid: string, phone: string, countryCode?: string): Promise<InstanceConnectResponse> {
-  const instanceName = getInstanceName(professorUid);
+export async function getPairingCode(professorUid: string, phone: string, countryCode?: string, role?: string | null): Promise<InstanceConnectResponse> {
+  const instanceName = getInstanceName(professorUid, role);
   const formattedPhone = formatPairingPhone(phone, countryCode);
   return request<InstanceConnectResponse>('GET', `/instance/connect/${instanceName}?number=${encodeURIComponent(formattedPhone)}`, undefined, 45000);
 }
 
-export async function connectInstance(professorUid: string): Promise<InstanceConnectResponse> {
-  const instanceName = getInstanceName(professorUid);
+export async function connectInstance(professorUid: string, role?: string | null): Promise<InstanceConnectResponse> {
+  const instanceName = getInstanceName(professorUid, role);
   return request<InstanceConnectResponse>('GET', `/instance/connect/${instanceName}`);
 }
 
@@ -193,12 +194,16 @@ export async function toConnectionPayload(source: unknown): Promise<WhatsAppConn
     'qrcode.base64',
     'qr.base64',
     'hash.qrcode.base64',
+    'instance.qrcode.base64',
+    'settings.qrcode.base64',
   ]);
   const qrCodeText = getStringPath(source, [
     'code',
     'qrcode.code',
     'qr.code',
     'hash.qrcode.code',
+    'pairingCode',
+    'hash.pairingCode',
   ]);
   const pairingCode = getStringPath(source, [
     'pairingCode',
@@ -231,6 +236,7 @@ export async function getPairingConnectionPayload(
   professorUid: string,
   phone: string,
   countryCode?: string,
+  role?: string | null,
 ): Promise<WhatsAppConnectionPayload> {
   let lastPayload: WhatsAppConnectionPayload = {
     qrcode: null,
@@ -239,7 +245,7 @@ export async function getPairingConnectionPayload(
   };
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const result = await getPairingCode(professorUid, phone, countryCode);
+    const result = await getPairingCode(professorUid, phone, countryCode, role);
     lastPayload = await toConnectionPayload(result);
     if (lastPayload.pairingCode) {
       return lastPayload;
@@ -254,13 +260,14 @@ export async function getCurrentConnectionPayload(
   professorUid: string,
   phone?: string,
   countryCode?: string,
+  role?: string | null,
 ): Promise<WhatsAppConnectionPayload> {
   const formattedPhone = phone ? formatPairingPhone(phone, countryCode) : '';
   if (formattedPhone.length >= 10) {
-    return getPairingConnectionPayload(professorUid, formattedPhone, countryCode);
+    return getPairingConnectionPayload(professorUid, formattedPhone, countryCode, role);
   }
 
-  const result = await connectInstance(professorUid);
+  const result = await connectInstance(professorUid, role);
   return toConnectionPayload(result);
 }
 
@@ -334,15 +341,31 @@ export async function sendMessage(
   professorUid: string,
   phone: string,
   message: string,
+  instanceNameHint?: string | null,
 ): Promise<MessageSendResponse> {
-  const instanceName = getInstanceName(professorUid);
   const number = formatPhone(phone);
   const text = String(message || '').trim();
   if (!number) throw new Error('Numero de WhatsApp invalido');
   if (!text) throw new Error('Mensagem de WhatsApp vazia');
-  return request<MessageSendResponse>('POST', `/message/sendText/${instanceName}`, {
-    number,
-    text,
-    textMessage: { text },
-  });
+
+  // Usa o hint se fornecido, senão tenta o nome padrão + academy
+  const names = instanceNameHint
+    ? [instanceNameHint]
+    : [getInstanceName(professorUid), getInstanceName(professorUid, 'academy')];
+
+  let lastError: Error | null = null;
+  for (const instanceName of Array.from(new Set(names))) {
+    try {
+      return await request<MessageSendResponse>('POST', `/message/sendText/${instanceName}`, {
+        number,
+        text,
+        textMessage: { text },
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (lastError.message.includes(' 404:')) continue;
+      throw lastError;
+    }
+  }
+  throw lastError || new Error('Nenhuma instancia WhatsApp encontrada');
 }

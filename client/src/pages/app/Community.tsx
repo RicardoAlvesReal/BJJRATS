@@ -74,6 +74,7 @@ interface AcademyEvent {
   registrationBelts?: Record<string, string>;
   academyId: string;
   academyName?: string;
+  creatorUid: string;
 }
 
 interface AcademyChallenge {
@@ -86,6 +87,7 @@ interface AcademyChallenge {
   endDate: string;
   xpReward: number;
   academyId: string;
+  creatorUid: string;
   // progresso calculado localmente
   myProgress?: number;
 }
@@ -140,10 +142,12 @@ function getCommunityPostType(post: Pick<CommunityPost, 'type' | 'trainingData'>
 }
 
 function normalizeCommunityPost(post: Record<string, any>): CommunityPost {
+  const hasAcademyLogo = !!(post.academyLogo || post.academyLogoUrl);
   return {
     ...post,
     type: getCommunityPostType(post as CommunityPost),
-    isAcademyPost: false,
+    isAcademyPost: hasAcademyLogo || post.role === 'academy' || post.role === 'admin',
+    academyLogo: post.academyLogo || post.academyLogoUrl || '',
   } as CommunityPost;
 }
 
@@ -292,6 +296,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   const { user, profile } = useAuth();
   const isSuperAdmin = user?.role === 'superadmin';
   const canModerate = isSuperAdmin || (profile as any)?.communityModerator === true;
+  const isProfessor = profile?.role === 'professor';
   const [activeTab, setActiveTab] = useState<Tab>('feed');
   const feedTopRef = useRef<HTMLDivElement>(null);
 
@@ -346,6 +351,42 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   // Eventos
   const [events, setEvents] = useState<AcademyEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
+
+  // ─── Filtro GPS ────────────────────────────────────────────────────────────
+  const [gpsEnabled, setGpsEnabled] = useState(false);
+  const [maxDistanceKm, setMaxDistanceKm] = useState(50);
+  const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+
+  const requestGps = () => {
+    if (!navigator.geolocation) { toast.error('Geolocalização não suportada'); return; }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setUserCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        setGpsEnabled(true);
+        setGpsLoading(false);
+      },
+      () => { toast.error('Permissão de localização negada'); setGpsLoading(false); },
+      { enableHighAccuracy: false, timeout: 10000 },
+    );
+  };
+
+  const getDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  const filterByDistance = <T extends { locationLatitude?: number | null; locationLongitude?: number | null }>(items: T[]): T[] => {
+    if (!gpsEnabled || !userCoords) return items;
+    return items.filter(item => {
+      if (item.locationLatitude == null || item.locationLongitude == null) return false;
+      return getDistanceKm(userCoords.latitude, userCoords.longitude, item.locationLatitude, item.locationLongitude) <= maxDistanceKm;
+    });
+  };
 
   // ─── Criação de eventos/desafios (academy/admin) ──────────────────────────
   const isAcademyManager = profile?.role === 'academy' || profile?.role === 'admin';
@@ -425,17 +466,9 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   const loadChallenges = useCallback(async () => {
     setChallengesLoading(true);
     try {
-      const academyId = profile?.academyId;
-      let challengeDocs: AcademyChallenge[] = [];
-
+      // Todos veem todos os desafios (aluno filtra por GPS no front)
       const allChallenges = await api.challenges.list();
-      if (academyId) {
-        challengeDocs = allChallenges
-          .filter(c => c.academyId === academyId)
-          .map(c => c as unknown as AcademyChallenge);
-      } else {
-        challengeDocs = allChallenges.map(c => c as unknown as AcademyChallenge);
-      }
+      let challengeDocs = allChallenges.map(c => c as unknown as AcademyChallenge);
 
       // Calcular progresso automático para cada desafio
       if (user && challengeDocs.length > 0) {
@@ -470,11 +503,9 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
     try {
-      const academyId = profile?.academyId;
+      // Todos veem todos os eventos (aluno filtra por GPS no front)
       const allEvents = await api.events.list();
-      let eventDocs: AcademyEvent[] = allEvents
-        .filter(e => !academyId || e.academyId === academyId)
-        .map(e => e as unknown as AcademyEvent);
+      let eventDocs: AcademyEvent[] = allEvents.map(e => e as unknown as AcademyEvent);
 
       // Ordenar por data
       eventDocs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -717,6 +748,24 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
     } catch { toast.error('Erro ao excluir desafio'); }
   };
 
+  const handleAcademyDeleteEvent = async (eventId: string) => {
+    if (!confirm('Excluir este evento?')) return;
+    try {
+      await api.events.delete(eventId);
+      setEvents(prev => prev.filter(e => e.id !== eventId));
+      toast.success('Evento excluído');
+    } catch { toast.error('Erro ao excluir evento'); }
+  };
+
+  const handleAcademyDeleteChallenge = async (challengeId: string) => {
+    if (!confirm('Excluir este desafio?')) return;
+    try {
+      await api.challenges.delete(challengeId);
+      setChallenges(prev => prev.filter(c => c.id !== challengeId));
+      toast.success('Desafio excluído');
+    } catch { toast.error('Erro ao excluir desafio'); }
+  };
+
   const handleNewPost = async () => {
     if (!user || (!newPostText.trim() && !newPostPhoto)) return;
     setPostingPost(true);
@@ -725,12 +774,14 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
       if (newPostPhoto) {
         photoURL = await api.upload.file(newPostPhoto, 'comunidade');
       }
+      const isAcademy = (profile as any)?.role === 'academy' || (profile as any)?.role === 'admin';
       const postData: any = {
         uid: user.uid,
         authorUid: user.uid,
-        authorName: profile?.name || 'Atleta',
+        authorName: isAcademy ? ((profile as any)?.academyName || profile?.name || 'Academia') : (profile?.name || 'Atleta'),
         authorBelt: (profile as any)?.belt || 'Branca',
-        authorPhotoURL: profile?.photo || null,
+        authorPhotoURL: isAcademy ? null : (profile?.photo || null),
+        academyLogo: isAcademy ? ((profile as any)?.academyLogoUrl || '') : '',
         text: newPostText.trim(),
         photoURL,
         type: newPostType,
@@ -1102,7 +1153,8 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                   </div>
                 ) : null}
                 {communityPosts.map((post) => {
-                const beltColor = BELT_COLORS[post.authorBelt] || '#FFFFFF';
+                const isAcademyPost = post.isAcademyPost || !!post.academyLogo;
+                const beltColor = isAcademyPost ? '#E87722' : (BELT_COLORS[post.authorBelt] || '#FFFFFF');
                 const hasLiked = user && (post.likes || []).includes(user.uid);
                 const isOwn = user && (post.uid === user.uid || post.authorUid === user.uid);
                 const postType = getCommunityPostType(post);
@@ -1116,23 +1168,30 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                   <div key={post.id} ref={(el) => { if (el) registerView(post.id); }} className="bjj-card" style={{ borderLeft: `3px solid ${postTypeColor}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                       <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: `2px solid ${beltColor}`, background: beltColor + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
-                          {post.authorPhotoURL ? (
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: `2px solid ${isAcademyPost ? '#E87722' : beltColor}`, background: isAcademyPost ? '#1A1A1A' : (beltColor + '20'), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                          {post.academyLogo ? (
+                            <img src={post.academyLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                          ) : post.authorPhotoURL ? (
                             <img src={post.authorPhotoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                           ) : (
-                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', color: beltColor }}>{(post.authorName || 'A').substring(0, 2).toUpperCase()}</span>
+                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', color: isAcademyPost ? '#E87722' : beltColor }}>{isAcademyPost ? 'AC' : (post.authorName || 'A').substring(0, 2).toUpperCase()}</span>
                           )}
                         </div>
                         <div>
                           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#FFFFFF' }}>
                             {post.authorName}
+                            {isAcademyPost && (
+                              <span style={{ color: '#E87722', fontSize: '0.55rem', marginLeft: '0.375rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>ACADEMIA</span>
+                            )}
                             {post.pinned && (
                               <span style={{ color: '#CC8800', fontSize: '0.65rem', marginLeft: '0.375rem', fontWeight: 700 }}>📌 FIXADO</span>
                             )}
                           </p>
-                          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: beltColor }}>
-                            {`Faixa ${post.authorBelt}`}
-                          </p>
+                          {!isAcademyPost && (
+                            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: beltColor }}>
+                              {`Faixa ${post.authorBelt}`}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -1349,11 +1408,11 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', marginTop: '0.2rem' }}>{ch.startDate} → {ch.endDate} · {daysLeft > 0 ? `${daysLeft} dias restantes` : 'Encerrado'}</p>
                       </div>
                       <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexShrink: 0 }}>
-                        {canModerate && (
-                          <button onClick={() => handleModDeleteChallenge(ch.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.85rem', padding: '0.1rem' }}
+                        {(canModerate || (isAcademyManager && ch.academyId === user?.uid) || (isProfessor && ch.creatorUid === user?.uid)) && (
+                          <button onClick={() => canModerate ? handleModDeleteChallenge(ch.id) : handleAcademyDeleteChallenge(ch.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.85rem', padding: '0.1rem' }}
                             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#CC0000'; }}
                             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#333'; }}
-                            title='Excluir desafio (moderação)'>
+                            title={canModerate ? 'Excluir desafio (moderação)' : 'Excluir desafio'}>
                             🚫
                           </button>
                         )}
@@ -1489,16 +1548,46 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
               </div>
             )}
 
+            {/* ─── Filtro GPS ────────────────────────────────────────────────── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.5rem 0' }}>
+              {!gpsEnabled ? (
+                <button onClick={requestGps} disabled={gpsLoading}
+                  style={{ background: '#1A1A1A', border: '1px solid #333', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.35rem 0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  {gpsLoading ? '📍 OBTENDO...' : '📍 FILTRAR POR DISTÂNCIA'}
+                </button>
+              ) : (
+                <>
+                  <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#E87722', textTransform: 'uppercase' }}>📍 ATÉ</span>
+                  {[5, 10, 25, 50, 100].map(km => (
+                    <button key={km} onClick={() => setMaxDistanceKm(km)}
+                      style={{ background: maxDistanceKm === km ? '#E87722' : '#1A1A1A', border: maxDistanceKm === km ? '1px solid #E87722' : '1px solid #333', color: maxDistanceKm === km ? '#FFF' : '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>
+                      {km}km
+                    </button>
+                  ))}
+                  <button onClick={() => setGpsEnabled(false)}
+                    style={{ background: 'none', border: '1px solid #333', color: '#555', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.55rem', padding: '0.25rem 0.5rem', cursor: 'pointer' }}>
+                    ✕
+                  </button>
+                </>
+              )}
+            </div>
+
             {eventsLoading ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
-            ) : events.length === 0 ? (
-              <div className="bjj-card !text-center" style={{ padding: '2rem' }}>
-                <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📅</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM EVENTO</p>
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#444', marginTop: '0.5rem' }}>Eventos criados por professores aparecerão aqui.</p>
-              </div>
-            ) : (
-              events.map(ev => {
+            ) : (() => {
+              const filteredEvents = filterByDistance(events);
+              if (filteredEvents.length === 0) return (
+                <div className="bjj-card !text-center" style={{ padding: '2rem' }}>
+                  <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📅</p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>
+                    {gpsEnabled ? 'NENHUM EVENTO PRÓXIMO' : 'NENHUM EVENTO'}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#444', marginTop: '0.5rem' }}>
+                    {gpsEnabled ? `Nenhum evento encontrado em um raio de ${maxDistanceKm}km.` : 'Eventos criados por professores aparecerão aqui.'}
+                  </p>
+                </div>
+              );
+              return filteredEvents.map(ev => {
                 const color = EVENT_TYPE_COLORS[ev.type] || '#CC0000';
                 const label = EVENT_TYPE_LABELS[ev.type] || 'EVENTO';
                 const isIn = user && (ev.registrations || []).includes(user.uid);
@@ -1518,11 +1607,11 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexShrink: 0 }}>
-                        {canModerate && (
-                          <button onClick={() => handleModDeleteEvent(ev.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.85rem', padding: '0.1rem' }}
+                        {(canModerate || (isAcademyManager && ev.academyId === user?.uid) || (isProfessor && ev.creatorUid === user?.uid)) && (
+                          <button onClick={() => canModerate ? handleModDeleteEvent(ev.id) : handleAcademyDeleteEvent(ev.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.85rem', padding: '0.1rem' }}
                             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#CC0000'; }}
                             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#333'; }}
-                            title='Excluir evento (moderação)'>
+                            title={canModerate ? 'Excluir evento (moderação)' : 'Excluir evento'}>
                             🚫
                           </button>
                         )}
@@ -1622,7 +1711,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                   </div>
                 );
               })
-            )}
+            })()}
           </>
         )}
 

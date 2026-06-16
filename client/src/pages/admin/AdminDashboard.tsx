@@ -56,21 +56,23 @@ export default function AdminDashboard() {
 
   const load = useCallback(async (days: number) => {
     try {
-      const [{ users }, statsData] = await Promise.all([
-        api.admin.listUsers(),
-        api.admin.getStats(days || undefined),
-      ]);
-      const s: Stats = { total: users.length, superadmin: 0, academy: 0, admin: 0, professor: 0, student: 0 };
-      for (const u of users) {
-        const r = u.role as keyof Stats;
-        if (r in s) s[r] = (s[r] as number) + 1;
+      if (isSuperAdmin) {
+        const [{ users }, statsData] = await Promise.all([
+          api.admin.listUsers(),
+          api.admin.getStats(days || undefined),
+        ]);
+        const s: Stats = { total: users.length, superadmin: 0, academy: 0, admin: 0, professor: 0, student: 0 };
+        for (const u of users) {
+          const r = u.role as keyof Stats;
+          if (r in s) s[r] = (s[r] as number) + 1;
+        }
+        setStats(s);
+        setAcademias(users.filter(u => (u.role === 'academy' || u.role === 'admin' || u.isAcademyAdmin) && (u.academyName || u.academy)).length);
+        setRecent([...users].sort((a, b) =>
+          new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+        ).slice(0, 5));
+        setAdminStats(statsData);
       }
-      setStats(s);
-      setAcademias(users.filter(u => (u.role === 'academy' || u.role === 'admin' || u.isAcademyAdmin) && (u.academyName || u.academy)).length);
-      setRecent([...users].sort((a, b) =>
-        new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
-      ).slice(0, 5));
-      setAdminStats(statsData);
     } catch {
       // silencioso
     } finally {

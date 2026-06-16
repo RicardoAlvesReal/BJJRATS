@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import { BELT_COLORS, getLevelInfo, ACHIEVEMENTS, topTecnicas, calcStreak, LEVEL_COLORS, Training } from '@/lib/bjjrats-constants';
 import { formatCep, getEventAddressLabel, getEventGoogleMapsUrl, getEventLocationLabel, getEventMapEmbedUrl, getEventMapDestination, getEventWazeUrl } from '@/lib/eventLocation';
-import api, { type PaymentIntegrationSettings, type WhatsAppAutomationResult } from '@/lib/api';
+import api, { type AcademyProfessorLink, type AcademyStudentProfessorAssignment, type PaymentIntegrationSettings, type WhatsAppAutomationResult } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import {
@@ -26,6 +26,7 @@ import {
   DollarSign,
   ExternalLink,
   Flame,
+  Handshake,
   LayoutDashboard,
   LogOut,
   MapPin,
@@ -592,6 +593,12 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+  const [partnerAssignments, setPartnerAssignments] = useState<AcademyStudentProfessorAssignment[]>([]);
+  const [partnerAssignmentsLoading, setPartnerAssignmentsLoading] = useState(false);
+  const [processingPartnerAssignment, setProcessingPartnerAssignment] = useState<string | null>(null);
+  const [partnerInvites, setPartnerInvites] = useState<AcademyProfessorLink[]>([]);
+  const [partnerInvitesLoading, setPartnerInvitesLoading] = useState(false);
+  const [processingPartnerInvite, setProcessingPartnerInvite] = useState<string | null>(null);
 
   // ── Solicitações de treino (QUERO TREINAR AQUI) ───────────────────────────
   const [trainRequests, setTrainRequests] = useState<TrainRequest[]>([]);
@@ -1633,6 +1640,62 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   };
 
   // ── Carregar Feed ──────────────────────────────────────────────────────────
+  const loadPartnerAssignments = useCallback(async () => {
+    if (!user || profile?.role !== 'professor') return;
+    setPartnerAssignmentsLoading(true);
+    try {
+      const rows = await api.academy.studentAssignments.mine();
+      setPartnerAssignments(rows);
+    } catch {
+      setPartnerAssignments([]);
+    } finally {
+      setPartnerAssignmentsLoading(false);
+    }
+  }, [user, profile?.role]);
+
+  useEffect(() => { loadPartnerAssignments(); }, [loadPartnerAssignments]);
+
+  const loadPartnerInvites = useCallback(async () => {
+    if (!user || profile?.role !== 'professor') return;
+    setPartnerInvitesLoading(true);
+    try {
+      const rows = await api.academy.professors.mine();
+      setPartnerInvites(rows);
+    } catch {
+      setPartnerInvites([]);
+    } finally {
+      setPartnerInvitesLoading(false);
+    }
+  }, [user, profile?.role]);
+
+  useEffect(() => { loadPartnerInvites(); }, [loadPartnerInvites]);
+
+  const handlePartnerAssignment = async (assignment: AcademyStudentProfessorAssignment, status: 'accepted' | 'rejected') => {
+    setProcessingPartnerAssignment(assignment.id);
+    try {
+      await api.academy.studentAssignments.respond(assignment.id, status);
+      setPartnerAssignments(prev => prev.map(item => item.id === assignment.id ? { ...item, status } : item));
+      toast.success(status === 'accepted' ? 'Indicacao aceita.' : 'Indicacao recusada.');
+    } catch {
+      toast.error('Erro ao responder indicacao.');
+    } finally {
+      setProcessingPartnerAssignment(null);
+    }
+  };
+
+  const handlePartnerInvite = async (invite: AcademyProfessorLink, status: 'accepted' | 'rejected') => {
+    setProcessingPartnerInvite(invite.id);
+    try {
+      await api.academy.professors.respond(invite.id, status);
+      setPartnerInvites(prev => prev.filter(item => item.id !== invite.id));
+      toast.success(status === 'accepted' ? 'Convite de parceria aceito.' : 'Convite de parceria recusado.');
+    } catch {
+      toast.error('Erro ao responder convite de parceria.');
+    } finally {
+      setProcessingPartnerInvite(null);
+    }
+  };
+
   const loadPosts = useCallback(async () => {
     if (!user) return;
     setPostsLoading(true);
@@ -1883,7 +1946,9 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
 
   const activeTabInfo = PANEL_TABS.find(tab => tab.id === activeTab) || PANEL_TABS[0];
   const activeGroupTabs = PANEL_TABS.filter(tab => tab.group === activeTabGroup);
-  const pendingJoinCount = joinRequests.filter(r => r.status === 'pending').length;
+  const pendingPartnerAssignments = partnerAssignments.filter(item => item.status === 'pending');
+  const pendingPartnerInvites = partnerInvites.filter(item => item.status === 'pending');
+  const pendingJoinCount = joinRequests.filter(r => r.status === 'pending').length + pendingPartnerAssignments.length + pendingPartnerInvites.length;
   const activeEnrollmentCount = enrollments.filter(e => e.status === 'active').length;
   const suspendedEnrollmentCount = enrollments.filter(e => e.status === 'suspended').length;
   const overduePaymentCount = payments.filter(p => p.status === 'overdue').length;
@@ -3139,7 +3204,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
             <div style={{ display: 'flex', borderBottom: '1px solid #1E1E1E' }}>
               {([
                 { id: 'list' as const, label: 'MEMBROS', icon: '👥' },
-                { id: 'requests' as const, label: joinRequests.length > 0 ? `PEDIDOS (${joinRequests.length})` : 'PEDIDOS', icon: '📩' },
+                { id: 'requests' as const, label: pendingJoinCount > 0 ? `PEDIDOS (${pendingJoinCount})` : 'PEDIDOS', icon: '📩' },
                 { id: 'ranking' as const, label: 'RANKING', icon: '🏆' },
               ]).map(t => (
                 <button
@@ -3212,14 +3277,64 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
             {/* Sub-aba: Pedidos */}
             {membersSubTab === 'requests' && (
               <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                {requestsLoading && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', color: '#555', textTransform: 'uppercase', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>CARREGANDO...</p>}
-                {!requestsLoading && joinRequests.length === 0 && (
+                {(requestsLoading || partnerAssignmentsLoading || partnerInvitesLoading) && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', color: '#555', textTransform: 'uppercase', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>CARREGANDO...</p>}
+                {!requestsLoading && !partnerAssignmentsLoading && !partnerInvitesLoading && joinRequests.length === 0 && pendingPartnerAssignments.length === 0 && pendingPartnerInvites.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
                     <p style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📩</p>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM PEDIDO PENDENTE</p>
                     <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#444', marginTop: '0.5rem', lineHeight: 1.5 }}>Quando um aluno solicitar ingresso na sua academia, aparecerá aqui para aprovação.</p>
                   </div>
                 )}
+                {pendingPartnerInvites.map(invite => {
+                  const isProc = processingPartnerInvite === invite.id;
+                  return (
+                    <div key={invite.id} style={{ background: '#171024', border: '1px solid #8B5CF655', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                        <div style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid #8B5CF6', background: '#8B5CF622', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Handshake size={22} color="#8B5CF6" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Convite de parceria</p>
+                          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#C4B5FD', marginTop: '0.25rem' }}>
+                            {invite.academyName || invite.academy || 'Academia'} quer adicionar voce como professor parceiro.
+                          </p>
+                          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#FFF', marginTop: '0.35rem', textTransform: 'uppercase' }}>
+                            Proposta: {Number(invite.partnerRevenueSharePercent ?? 50).toFixed(0)}% da mensalidade para voce
+                          </p>
+                          {invite.notes && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.68rem', color: '#A78BFA', marginTop: '0.25rem' }}>{invite.notes}</p>}
+                          {invite.partnerRevenueNotes && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.68rem', color: '#A78BFA', marginTop: '0.25rem' }}>{invite.partnerRevenueNotes}</p>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.625rem' }}>
+                        <button onClick={() => handlePartnerInvite(invite, 'rejected')} disabled={isProc} style={{ flex: 1, background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem', cursor: isProc ? 'not-allowed' : 'pointer', opacity: isProc ? 0.5 : 1 }}>RECUSAR</button>
+                        <button onClick={() => handlePartnerInvite(invite, 'accepted')} disabled={isProc} style={{ flex: 2, background: isProc ? '#333' : '#8B5CF6', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: isProc ? 'not-allowed' : 'pointer', opacity: isProc ? 0.7 : 1 }}>{isProc ? 'PROCESSANDO...' : 'ACEITAR PARCERIA'}</button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {pendingPartnerAssignments.map(assignment => {
+                  const isProc = processingPartnerAssignment === assignment.id;
+                  return (
+                    <div key={assignment.id} style={{ background: '#0A1424', border: '1px solid #1A6ECC55', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                        <div style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid #1A6ECC', background: '#1A6ECC22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Users size={22} color="#1A6ECC" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{assignment.studentName || 'Aluno indicado'}</p>
+                          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#9ABCE8', marginTop: '0.25rem' }}>
+                            Indicacao da academia {assignment.academyName || assignment.academy || 'parceira'}
+                          </p>
+                          {assignment.notes && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.68rem', color: '#6688AA', marginTop: '0.25rem' }}>{assignment.notes}</p>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.625rem' }}>
+                        <button onClick={() => handlePartnerAssignment(assignment, 'rejected')} disabled={isProc} style={{ flex: 1, background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.625rem', cursor: isProc ? 'not-allowed' : 'pointer', opacity: isProc ? 0.5 : 1 }}>RECUSAR</button>
+                        <button onClick={() => handlePartnerAssignment(assignment, 'accepted')} disabled={isProc} style={{ flex: 2, background: isProc ? '#333' : '#1A6ECC', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', padding: '0.625rem', cursor: isProc ? 'not-allowed' : 'pointer', opacity: isProc ? 0.7 : 1 }}>{isProc ? 'PROCESSANDO...' : 'ACEITAR INDICACAO'}</button>
+                      </div>
+                    </div>
+                  );
+                })}
                 {joinRequests.map(req => {
                   const bc = BELT_COLORS[req.studentBelt] || '#555';
                   const isProc = processingRequest === req.id;

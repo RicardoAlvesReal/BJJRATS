@@ -388,6 +388,71 @@ export const admin = {
   },
 };
 
+export interface AcademyProfessorLink {
+  id: string;
+  academyUid: string;
+  professorUid: string;
+  relationType: 'internal' | 'partner' | string;
+  status?: 'active' | 'pending' | 'rejected' | 'removed' | string;
+  partnerRevenueSharePercent?: number | null;
+  partnerRevenueNotes?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  professorName?: string | null;
+  professorEmail?: string | null;
+  professorPhone?: string | null;
+  professorPhoto?: string | null;
+  professorPhotoUrl?: string | null;
+  professorBelt?: string | null;
+  professorAcademyId?: string | null;
+  academyName?: string | null;
+  academy?: string | null;
+  academyLogoUrl?: string | null;
+  assignmentCounts?: Record<string, number>;
+}
+
+export interface AcademyStudentProfessorAssignment {
+  id: string;
+  academyUid: string;
+  professorUid: string;
+  studentUid: string;
+  relationType: 'internal' | 'partner' | string;
+  status?: 'active' | 'pending' | 'accepted' | 'rejected' | 'cancelled' | string;
+  studentName?: string | null;
+  professorName?: string | null;
+  academyName?: string | null;
+  academy?: string | null;
+  notes?: string | null;
+  decidedAt?: string | null;
+  createdAt?: string;
+}
+
+export const academy = {
+  getCrmData: () => apiFetch<CrmData>('/api/academy/crm'),
+  professors: {
+    list: () => apiFetch<AcademyProfessorLink[]>('/api/academy/professors'),
+    create: (data: { professorUid?: string; relationType: 'internal' | 'partner'; notes?: string; partnerRevenueSharePercent?: number; partnerRevenueNotes?: string; createAccount?: boolean; email?: string; name?: string; password?: string }) =>
+      apiFetch<AcademyProfessorLink>('/api/academy/professors', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { relationType?: 'internal' | 'partner'; status?: 'active' | 'removed'; notes?: string; partnerRevenueSharePercent?: number; partnerRevenueNotes?: string }) =>
+      apiFetch<AcademyProfessorLink>(`/api/academy/professors/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    mine: () => apiFetch<AcademyProfessorLink[]>('/api/academy/professor-invites/mine'),
+    respond: (id: string, status: 'accepted' | 'rejected') =>
+      apiFetch<AcademyProfessorLink>(`/api/academy/professors/${id}/respond`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  },
+  studentAssignments: {
+    list: (params: { professorUid?: string } = {}) => {
+      const q = new URLSearchParams(params as Record<string, string>).toString();
+      return apiFetch<AcademyStudentProfessorAssignment[]>(`/api/academy/student-assignments${q ? `?${q}` : ''}`);
+    },
+    create: (professorUid: string, data: { studentUid: string; notes?: string }) =>
+      apiFetch<AcademyStudentProfessorAssignment>(`/api/academy/professors/${professorUid}/assignments`, { method: 'POST', body: JSON.stringify(data) }),
+    mine: () => apiFetch<AcademyStudentProfessorAssignment[]>('/api/academy/student-assignments/mine'),
+    respond: (id: string, status: 'accepted' | 'rejected') =>
+      apiFetch<AcademyStudentProfessorAssignment>(`/api/academy/student-assignments/${id}/respond`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  },
+};
+
 export interface CrmData {
   revenue: {
     totalBilled: number;
@@ -904,6 +969,7 @@ const api = {
   competitions,
   upload,
   admin,
+  academy,
   announcements: announcementsApi,
   public: publicApi,
   whatsapp,

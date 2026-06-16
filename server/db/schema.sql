@@ -229,6 +229,44 @@ CREATE TABLE IF NOT EXISTS academy_requests (
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ─── academy_professor_links ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS academy_professor_links (
+  id             TEXT        PRIMARY KEY,
+  academy_uid    TEXT        NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  professor_uid  TEXT        NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  relation_type  TEXT        NOT NULL DEFAULT 'internal',
+  status         TEXT        DEFAULT 'active',
+  partner_revenue_share_percent REAL,
+  partner_revenue_notes TEXT,
+  notes          TEXT,
+  created_by_uid TEXT        REFERENCES users(uid) ON DELETE SET NULL,
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_academy_professor_link
+  ON academy_professor_links(academy_uid, professor_uid);
+
+-- ─── academy_student_professor_assignments ─────────────────────────────────
+CREATE TABLE IF NOT EXISTS academy_student_professor_assignments (
+  id             TEXT        PRIMARY KEY,
+  academy_uid    TEXT        NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  professor_uid  TEXT        NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  student_uid    TEXT        NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+  relation_type  TEXT        NOT NULL DEFAULT 'internal',
+  status         TEXT        DEFAULT 'active',
+  student_name   TEXT,
+  professor_name TEXT,
+  notes          TEXT,
+  created_by_uid TEXT        REFERENCES users(uid) ON DELETE SET NULL,
+  decided_at     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_academy_student_professor_assignment
+  ON academy_student_professor_assignments(academy_uid, professor_uid, student_uid);
+
 -- ─── class_schedules ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS class_schedules (
   id            TEXT        PRIMARY KEY,

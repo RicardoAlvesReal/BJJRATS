@@ -117,20 +117,22 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const [existing] = await db.select({ creatorUid: events.creatorUid }).from(events).where(eq(events.id, req.params.id)).limit(1);
+  const [existing] = await db.select({ creatorUid: events.creatorUid, academyId: events.academyId }).from(events).where(eq(events.id, req.params.id)).limit(1);
   if (!existing) { res.status(404).json({ error: 'Evento nao encontrado' }); return; }
   const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
-  if (!isModOrSuper && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  const isAcademyOwner = (req.userRole === 'academy' || req.userRole === 'admin') && existing.academyId === req.userId;
+  if (!isModOrSuper && !isAcademyOwner && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const data = normalizeEventPayload(req.body);
   const [row] = await db.update(events).set(data).where(eq(events.id, req.params.id)).returning();
   res.json(serializeEvent(row));
 });
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const [existing] = await db.select({ creatorUid: events.creatorUid }).from(events).where(eq(events.id, req.params.id)).limit(1);
+  const [existing] = await db.select({ creatorUid: events.creatorUid, academyId: events.academyId }).from(events).where(eq(events.id, req.params.id)).limit(1);
   if (!existing) { res.status(404).json({ error: 'Evento nao encontrado' }); return; }
   const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
-  if (!isModOrSuper && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  const isAcademyOwner = (req.userRole === 'academy' || req.userRole === 'admin') && existing.academyId === req.userId;
+  if (!isModOrSuper && !isAcademyOwner && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   await db.delete(events).where(eq(events.id, req.params.id));
   res.json({ success: true });
 });

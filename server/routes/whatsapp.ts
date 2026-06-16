@@ -11,8 +11,8 @@ const CONNECTION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 
 type WhatsAppInstanceRow = typeof whatsappInstances.$inferSelect;
 
-function getExpectedInstanceName(userId: string): string {
-  return `bjjrats_${userId}`;
+function getExpectedInstanceName(userId: string, role?: string | null): string {
+  return role === 'academy' || role === 'admin' ? `bjjrats_academy_${userId}` : `bjjrats_${userId}`;
 }
 
 function uniqueInstanceNames(...names: Array<string | null | undefined>): string[] {
@@ -77,7 +77,7 @@ router.get('/status', requireAuth, async (req: AuthRequest, res) => {
   const [instance] = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
-  const expectedInstanceName = getExpectedInstanceName(req.userId!);
+  const expectedInstanceName = getExpectedInstanceName(req.userId!, req.userRole);
 
   if (!instance) {
     try {
@@ -178,7 +178,7 @@ router.post('/connect', requireAuth, async (req: AuthRequest, res) => {
   }
 
   try {
-    const result = await evolution.createInstance(req.userId!);
+    const result = await evolution.createInstance(req.userId!, {}, req.userRole);
     const id = nanoid();
     await db.insert(whatsappInstances).values({
       id,
@@ -190,7 +190,9 @@ router.post('/connect', requireAuth, async (req: AuthRequest, res) => {
     let payload = await evolution.toConnectionPayload(result);
 
     if (!payload.qrcode) {
-      const qr = await evolution.connectInstance(req.userId!);
+      // Pequena pausa para a instância inicializar na Evolution
+      await new Promise(r => setTimeout(r, 1500));
+      const qr = await evolution.connectInstance(req.userId!, req.userRole);
       payload = await evolution.toConnectionPayload(qr);
     }
 
@@ -205,6 +207,7 @@ router.post('/connect', requireAuth, async (req: AuthRequest, res) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro ao conectar';
+    console.error('[whatsapp] connect error:', message);
     res.status(500).json({ error: message });
   }
 });
@@ -221,7 +224,7 @@ router.post('/pairing-code', requireAuth, async (req: AuthRequest, res) => {
     const [existing] = await db.select().from(whatsappInstances)
       .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
-    const expectedInstanceName = getExpectedInstanceName(req.userId!);
+    const expectedInstanceName = getExpectedInstanceName(req.userId!, req.userRole);
     const instanceNames = uniqueInstanceNames(existing?.instanceName, expectedInstanceName);
 
     for (const instanceName of instanceNames) {
@@ -241,7 +244,7 @@ router.post('/pairing-code', requireAuth, async (req: AuthRequest, res) => {
       status: 'connecting',
     });
 
-    const payload = await evolution.getPairingConnectionPayload(req.userId!, formattedPhone, countryCode);
+    const payload = await evolution.getPairingConnectionPayload(req.userId!, formattedPhone, countryCode, req.userRole);
     if (!payload.pairingCode) {
       throw new Error('Evolution API nao retornou codigo de pareamento para este numero');
     }
@@ -263,7 +266,7 @@ router.post('/connection-code', requireAuth, async (req: AuthRequest, res) => {
   }
 
   try {
-    if (await expireInstanceIfStale(instance, getExpectedInstanceName(req.userId!))) {
+    if (await expireInstanceIfStale(instance, getExpectedInstanceName(req.userId!, req.userRole))) {
       res.status(410).json({
         error: 'Tentativa de conexao expirada. Inicie uma nova tentativa.',
         expired: true,
@@ -272,7 +275,7 @@ router.post('/connection-code', requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const payload = await evolution.getCurrentConnectionPayload(req.userId!, req.body?.phone, req.body?.countryCode);
+    const payload = await evolution.getCurrentConnectionPayload(req.userId!, req.body?.phone, req.body?.countryCode, req.userRole);
     if (!payload.qrcode && !payload.pairingCode) {
       throw new Error('Evolution API nao retornou QR Code ou codigo de pareamento');
     }
@@ -287,7 +290,7 @@ router.post('/disconnect', requireAuth, async (req: AuthRequest, res) => {
   const [instance] = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
-  const expectedInstanceName = getExpectedInstanceName(req.userId!);
+  const expectedInstanceName = getExpectedInstanceName(req.userId!, req.userRole);
   const instanceNames = uniqueInstanceNames(instance?.instanceName, expectedInstanceName);
 
   const deleteErrors: string[] = [];

@@ -1,4 +1,3 @@
-import { nanoid } from 'nanoid';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, whatsappInstances } from '../db/schema.js';
@@ -76,35 +75,28 @@ function buildMessage(notification: NotificationLike, senderName?: string | null
 }
 
 export async function ensureWhatsAppSenderConnected(sourceUid: string) {
-  const expectedInstanceName = `bjjrats_${sourceUid}`;
   const [instance] = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.professorUid, sourceUid))
     .limit(1);
 
-  const instanceName = instance?.instanceName || expectedInstanceName;
+  const instanceName = instance?.instanceName;
+
+  if (!instanceName) return null;
 
   try {
     const state = await evolution.getConnectionState(instanceName);
-    if (state.instance.state !== 'open') return false;
+    if (state.instance.state !== 'open') return null;
 
     const phone = state.instance.ownerJid?.split('@')[0] || null;
-    if (!instance) {
-      await db.insert(whatsappInstances).values({
-        id: nanoid(),
-        professorUid: sourceUid,
-        instanceName,
-        status: 'connected',
-        phone,
-      }).onConflictDoNothing();
-    } else if (instance.status !== 'connected' || (!instance.phone && phone)) {
+    if (instance.status !== 'connected' || (!instance.phone && phone)) {
       await db.update(whatsappInstances)
         .set({ status: 'connected', phone: phone || instance.phone })
         .where(eq(whatsappInstances.id, instance.id));
     }
 
-    return true;
+    return instanceName;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -116,8 +108,8 @@ export async function sendNotificationWhatsApp(
     return { enabled: true, recipients: 0, sent: 0, failed: 0 };
   }
 
-  const connected = await ensureWhatsAppSenderConnected(senderUid);
-  if (!connected) {
+  const instanceName = await ensureWhatsAppSenderConnected(senderUid);
+  if (!instanceName) {
     return { enabled: false, recipients: 0, sent: 0, failed: 0 };
   }
 
@@ -125,7 +117,7 @@ export async function sendNotificationWhatsApp(
     db.select({ uid: users.uid, phone: users.phone }).from(users)
       .where(eq(users.uid, notification.toUid))
       .limit(1),
-    db.select({ name: users.name }).from(users)
+    db.select({ name: users.name, academyName: users.academyName, role: users.role }).from(users)
       .where(eq(users.uid, senderUid))
       .limit(1),
   ]);
@@ -135,7 +127,7 @@ export async function sendNotificationWhatsApp(
   }
 
   try {
-    await evolution.sendMessage(senderUid, recipient.phone!, buildMessage(notification, sender?.name));
+    await evolution.sendMessage(senderUid, recipient.phone!, buildMessage(notification, sender?.academyName || sender?.name), instanceName);
     return { enabled: true, recipients: 1, sent: 1, failed: 0 };
   } catch (err) {
     console.warn('[notifications] whatsapp send failed', err);
