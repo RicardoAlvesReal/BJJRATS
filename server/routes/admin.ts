@@ -10,6 +10,11 @@ import {
   ROLE_HIERARCHY,
   type AuthRequest,
 } from '../middleware/auth.js';
+import {
+  getCompanyEmailSettings,
+  saveCompanyEmailSettings,
+  sendCompanyEmail,
+} from '../services/companyEmail.js';
 
 const router = Router();
 
@@ -93,6 +98,59 @@ router.get(
     const filtered = all.filter((u) => canManage(actorRole, u.role ?? 'student'));
     res.json({ users: filtered });
   }
+);
+
+router.get(
+  '/email-automation',
+  requireAuth,
+  requireRole('superadmin'),
+  async (_req: AuthRequest, res) => {
+    const config = await getCompanyEmailSettings();
+    res.json(config);
+  },
+);
+
+router.put(
+  '/email-automation',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const config = await saveCompanyEmailSettings(req.body || {});
+    res.json(config);
+  },
+);
+
+router.post(
+  '/email-automation/test',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const to = typeof req.body?.to === 'string' && req.body.to.trim()
+      ? req.body.to.trim()
+      : '';
+
+    const [admin] = await db.select({ email: users.email }).from(users).where(eq(users.uid, req.userId!)).limit(1);
+    const recipient = to || admin?.email;
+
+    if (!recipient) {
+      res.status(400).json({ error: 'Informe um e-mail para teste.' });
+      return;
+    }
+
+    const result = await sendCompanyEmail({
+      to: [recipient],
+      subject: 'BJJRats - Teste de automacao de e-mail',
+      text: 'Este e um e-mail de teste enviado pela automacao da empresa no BJJRats.',
+      html: '<p>Este e um e-mail de teste enviado pela automacao da empresa no BJJRats.</p>',
+      metadata: { source: 'admin_email_automation_test', adminUid: req.userId },
+    });
+
+    res.json({
+      success: result.sent,
+      provider: result.provider,
+      recipients: result.recipients.length,
+    });
+  },
 );
 
 // ─── POST /api/admin/users ────────────────────────────────────────────────────

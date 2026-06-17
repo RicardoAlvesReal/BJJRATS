@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { notifications } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { sendNotificationWhatsApp } from '../services/notificationWhatsApp.js';
+import { sendNotificationEmail } from '../services/notificationEmail.js';
 import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 
 const router = Router();
@@ -27,13 +28,19 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const [row] = await db.insert(notifications).values({ id, ...body, fromUid: req.userId! }).returning();
 
   let whatsapp = { enabled: false, recipients: 0, sent: 0, failed: 0 };
+  let email = { enabled: false, recipients: 0, sent: 0, failed: 0 };
   try {
     whatsapp = await sendNotificationWhatsApp(row, req.userId!);
   } catch (err) {
     console.warn('[notifications] whatsapp automation failed', err);
   }
+  try {
+    email = await sendNotificationEmail(row, req.userId!);
+  } catch (err) {
+    console.warn('[notifications] email automation failed', err);
+  }
 
-  res.status(201).json({ ...row, whatsapp });
+  res.status(201).json({ ...row, whatsapp, email });
 });
 
 // PATCH /api/notifications/read-all  — marca todas como lidas

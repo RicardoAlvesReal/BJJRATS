@@ -81,6 +81,27 @@ export interface UserProfile {
   createdAt?: string;
 }
 
+export interface SuperadminEmailPayload {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  category?: string;
+  pageUrl?: string;
+  website?: string;
+}
+
+export interface CompanyEmailSettings {
+  enabled: boolean;
+  provider: 'log' | 'resend' | 'webhook';
+  from: string;
+  hasResendApiKey: boolean;
+  resendApiKeyLast4: string | null;
+  webhookUrl: string;
+  hasWebhookKey: boolean;
+  webhookKeyLast4: string | null;
+}
+
 export interface Training {
   id: string;
   uid: string;
@@ -364,6 +385,23 @@ export const admin = {
 
   updateSettings: (data: Record<string, string>) =>
     apiFetch<Record<string, string>>('/api/admin/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  emailAutomation: {
+    get: () => apiFetch<CompanyEmailSettings>('/api/admin/email-automation'),
+    update: (data: Partial<CompanyEmailSettings> & {
+      resendApiKey?: string;
+      webhookKey?: string;
+      clearResendApiKey?: boolean;
+      clearWebhookKey?: boolean;
+    }) => apiFetch<CompanyEmailSettings>('/api/admin/email-automation', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+    test: (to?: string) => apiFetch<{ success: boolean; provider: string; recipients: number }>('/api/admin/email-automation/test', {
+      method: 'POST',
+      body: JSON.stringify({ to }),
+    }),
+  },
 
   getStats: (days?: number) => apiFetch<AdminStats>(`/api/admin/stats${days ? `?days=${days}` : ''}`),
 
@@ -963,7 +1001,16 @@ export const publicApi = {
     apiFetch<PaymentIntegrationSettings>(`/api/public/payment-methods/${encodeURIComponent(ownerUid)}`),
 };
 
-// ─── WhatsApp ─────────────────────────────────────────────────────────────────
+// Support
+export const supportApi = {
+  sendSuperadminEmail: (data: SuperadminEmailPayload) =>
+    apiFetch<{ success: boolean; delivery?: { provider: string; sent: boolean; recipients: number } }>(
+      '/api/support/superadmin-email',
+      { method: 'POST', body: JSON.stringify(data) },
+    ),
+};
+
+// WhatsApp
 
 export interface WhatsAppStatus {
   connected: boolean;
@@ -1020,6 +1067,7 @@ const api = {
   academy,
   announcements: announcementsApi,
   public: publicApi,
+  support: supportApi,
   whatsapp,
 };
 

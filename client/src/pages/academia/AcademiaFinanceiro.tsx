@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import { FONTS } from '@/lib/design';
 import { tabVariant, tabTransition } from '@/lib/animations';
+import { getWhatsAppAutomationToast, summarizeWhatsAppAutomation } from '@/lib/whatsappAutomation';
 
 type FinTab = 'enrollments' | 'payments' | 'suspensions' | 'integrations';
 
@@ -74,6 +75,7 @@ const ACCENT = '#E87722';
 export default function AcademiaFinanceiro() {
   const { user } = useAuth();
   const [tab, setTab] = useState<FinTab>('enrollments');
+  const academyName = (user as any)?.academyName || (user as any)?.academy || user?.name || 'Academia';
 
   // Matrículas
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -239,7 +241,19 @@ export default function AcademiaFinanceiro() {
     setSuspending(true);
     try {
       await (api.enrollments.update as any)(suspendTarget.id, { status: 'suspended', suspendReason });
-      toast.success('Aluno suspenso');
+      try {
+        const notification = await api.notifications.create({
+          toUid: suspendTarget.studentUid,
+          type: 'payment_suspended',
+          title: 'Matricula suspensa',
+          message: `Sua matricula em ${academyName} foi suspensa${suspendReason ? `. Motivo: ${suspendReason}` : '.'} Regularize a situacao para voltar aos treinos.`,
+          data: { enrollmentId: suspendTarget.id, reason: suspendReason },
+          read: false,
+        } as any) as any;
+        toast.success(getWhatsAppAutomationToast(notification.whatsapp, 'Aluno suspenso e notificado'));
+      } catch {
+        toast.success('Aluno suspenso. Nao foi possivel enviar a notificacao automatica.');
+      }
       setSuspendTarget(null);
       loadEnrollments();
     } catch { toast.error('Erro ao suspender'); }
@@ -248,8 +262,12 @@ export default function AcademiaFinanceiro() {
 
   const handleReactivate = async (enr: Enrollment) => {
     try {
-      await api.enrollments.update(enr.id, { status: 'active' });
-      toast.success('Aluno reativado');
+      const updated = await api.enrollments.update(enr.id, { status: 'active', suspendReason: '' } as any) as any;
+      toast.success(
+        updated?.automation?.whatsapp
+          ? getWhatsAppAutomationToast(updated.automation.whatsapp, 'Aluno reativado e notificado')
+          : 'Aluno reativado'
+      );
       loadEnrollments();
     } catch { toast.error('Erro ao reativar'); }
   };
@@ -277,9 +295,10 @@ export default function AcademiaFinanceiro() {
 
   const handleMarkPaid = async (payment: Payment) => {
     try {
-      await api.payments.update(payment.id, { status: 'paid', paidAt: new Date().toISOString().slice(0, 10) });
-      toast.success('Pagamento registrado');
+      const updated = await api.payments.update(payment.id, { status: 'paid', paidAt: new Date().toISOString().slice(0, 10) }) as any;
+      toast.success((updated.reactivatedEnrollments || []).length > 0 ? 'Pagamento registrado e aluno reativado automaticamente' : 'Pagamento registrado');
       loadPayments(paymentMonth);
+      loadEnrollments();
     } catch { toast.error('Erro ao registrar pagamento'); }
   };
 
@@ -287,9 +306,10 @@ export default function AcademiaFinanceiro() {
     if (!enrollStudent) return;
     setSavingEnroll(true);
     try {
-      await api.enrollments.create({
+      const created = await api.enrollments.create({
         professorUid: user!.uid,
-        professorName: (user as any)?.academyName || 'Academia',
+        professorName: academyName,
+        academyName,
         studentUid: enrollStudent.uid,
         studentName: enrollStudent.name,
         studentEmail: enrollStudent.email || '',
@@ -297,7 +317,10 @@ export default function AcademiaFinanceiro() {
         monthlyFee: Number(enrollForm.monthlyFee) || 0,
         dueDay: Number(enrollForm.dueDay) || 5,
         notes: enrollForm.notes,
-      } as any);
+      } as any) as any;
+      if (created?.notification?.whatsapp) {
+        toast.success(getWhatsAppAutomationToast(created.notification.whatsapp, 'Convite de matricula enviado'));
+      } else
       toast.success('Matrícula criada');
       setShowEnroll(false);
       setEnrollStudent(null);
@@ -339,9 +362,10 @@ export default function AcademiaFinanceiro() {
     if (ativas.length === 0) { toast.info('Nenhuma matrícula ativa'); return; }
     if (!confirm(`Gerar ${ativas.length} cobrança(s) para este mês?`)) return;
     let count = 0;
+    const notificationResults: Array<{ whatsapp?: any }> = [];
     for (const enr of ativas) {
       try {
-        await api.payments.create({
+        const createdPayment = await api.payments.create({
           enrollmentId: enr.id,
           studentUid: enr.studentUid,
           studentName: enr.studentName,
@@ -352,10 +376,38 @@ export default function AcademiaFinanceiro() {
           month: paymentMonth,
           professorUid: user!.uid,
           pixKey: enr.pixKey || '',
-        } as any);
+        } as any) as any;
+        const dueDate = `${paymentMonth}-${String(enr.dueDay).padStart(2, '0')}`;
+        const dueDateFormatted = new Date(`${dueDate}T00:00:00`).toLocaleDateString('pt-BR');
+        const paymentLink = createdPayment.paymentLink || createdPayment.pixLink;
+        const paymentText = paymentLink && /^https?:\/\//.test(paymentLink)
+          ? `Acesse o link de pagamento: ${paymentLink}`
+          : 'Pague via PIX para continuar treinando.';
+        try {
+          const notification = await api.notifications.create({
+            toUid: enr.studentUid,
+            type: 'payment_due',
+            title: 'Nova mensalidade gerada',
+            message: `Mensalidade de R$ ${Number(enr.monthlyFee).toFixed(2)} gerada pela ${academyName}. Vencimento: ${dueDateFormatted}. ${paymentText}`,
+            data: {
+              enrollmentId: enr.id,
+              amount: enr.monthlyFee,
+              dueDate,
+              pixKey: enr.pixKey || '',
+              paymentLink,
+            },
+            read: false,
+          } as any);
+          notificationResults.push(notification);
+        } catch {
+          notificationResults.push({});
+        }
         count++;
       } catch { /* continua */ }
     }
+    if (count > 0) {
+      toast.success(getWhatsAppAutomationToast(summarizeWhatsAppAutomation(notificationResults), `${count} cobranca(s) gerada(s) e enviada(s)`));
+    } else
     toast.success(`${count} cobrança(s) gerada(s)`);
     loadPayments(paymentMonth);
   };

@@ -19,6 +19,7 @@ async function blockInternalProfessorWhatsAppAccess(req: AuthRequest, res: any) 
 }
 
 function getExpectedInstanceName(userId: string, role?: string | null): string {
+  if (role === 'superadmin') return `bjjrats_superadmin`;
   return role === 'academy' || role === 'admin' ? `bjjrats_academy_${userId}` : `bjjrats_${userId}`;
 }
 

@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { announcementDismissals, announcements, enrollments, users, whatsappInstances } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import * as evolution from '../services/evolutionApi.js';
+import { sendCompanyEmail } from '../services/companyEmail.js';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ type WhatsAppRecipient = {
   uid: string;
   name: string | null;
   phone: string | null;
+  email: string | null;
   role: string | null;
 };
 
@@ -54,7 +56,7 @@ function hasPhone(recipient: WhatsAppRecipient) {
 function dedupeRecipients(rows: WhatsAppRecipient[], sourceUid: string) {
   const byUid = new Map<string, WhatsAppRecipient>();
   for (const row of rows) {
-    if (row.uid === sourceUid || !hasPhone(row)) continue;
+    if (row.uid === sourceUid) continue;
     if (!byUid.has(row.uid)) byUid.set(row.uid, row);
   }
   return Array.from(byUid.values());
@@ -66,6 +68,32 @@ function buildWhatsAppAnnouncementMessage(row: AnnouncementRow) {
   const source = row.sourceName ? `\n\nEnviado por: ${row.sourceName}` : '';
   const link = row.linkUrl ? `\n${row.linkText || 'Link'}: ${row.linkUrl}` : '';
   return `*${title}*\n\n${content}${link}${source}`.trim();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function buildEmailAnnouncement(row: AnnouncementRow) {
+  const title = row.urgent ? `URGENTE: ${row.title}` : row.title;
+  const content = String(row.content || '').replace(/<[^>]*>/g, '').trim();
+  const source = row.sourceName ? `Enviado por: ${row.sourceName}` : '';
+  const link = row.linkUrl ? `${row.linkText || 'Link'}: ${row.linkUrl}` : '';
+  const text = [content, link, source].filter(Boolean).join('\n\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
+      <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
+      <p style="white-space:pre-wrap">${escapeHtml(content)}</p>
+      ${row.linkUrl ? `<p><a href="${escapeHtml(row.linkUrl)}">${escapeHtml(row.linkText || 'Abrir link')}</a></p>` : ''}
+      ${source ? `<p style="color:#666;font-size:13px">${escapeHtml(source)}</p>` : ''}
+    </div>
+  `;
+  return { subject: `BJJRats - ${title}`, text, html };
 }
 
 async function getAnnouncementRecipients(
@@ -80,6 +108,7 @@ async function getAnnouncementRecipients(
       uid: users.uid,
       name: users.name,
       phone: users.phone,
+      email: users.email,
       role: users.role,
     }).from(users);
 
@@ -92,6 +121,7 @@ async function getAnnouncementRecipients(
       uid: users.uid,
       name: users.name,
       phone: users.phone,
+      email: users.email,
       role: users.role,
     })
       .from(users)
@@ -120,6 +150,7 @@ async function getAnnouncementRecipients(
       uid: users.uid,
       name: users.name,
       phone: users.phone,
+      email: users.email,
       role: users.role,
     })
       .from(users)
@@ -204,13 +235,53 @@ async function sendAnnouncementOverWhatsApp(row: AnnouncementRow, author: Viewer
   }
 
   const message = buildWhatsAppAnnouncementMessage(row);
-  const result = await sendWithConcurrency(recipients, recipient =>
+  const recipientsWithPhone = recipients.filter(hasPhone);
+  if (!recipientsWithPhone.length) {
+    return { enabled: true, recipients: 0, sent: 0, failed: 0 };
+  }
+
+  const result = await sendWithConcurrency(recipientsWithPhone, recipient =>
     evolution.sendMessage(author.uid, recipient.phone!, message).then(() => undefined),
   );
 
   return {
     enabled: true,
-    recipients: recipients.length,
+    recipients: recipientsWithPhone.length,
+    ...result,
+  };
+}
+
+async function sendAnnouncementOverEmail(row: AnnouncementRow, author: Viewer) {
+  const recipients = await getAnnouncementRecipients(
+    author,
+    row.scope || 'global',
+    row.audience || 'all',
+    row.targetAcademyId || undefined,
+    row.targetProfessorUid || undefined,
+  );
+  const recipientEmails = Array.from(new Set(recipients.map(recipient => recipient.email).filter(Boolean))) as string[];
+  if (!recipientEmails.length) {
+    return { enabled: true, recipients: 0, sent: 0, failed: 0 };
+  }
+
+  const email = buildEmailAnnouncement(row);
+  const result = await sendWithConcurrency(recipientEmails, recipientEmail =>
+    sendCompanyEmail({
+      to: [recipientEmail],
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+      metadata: {
+        source: 'announcement',
+        announcementId: row.id,
+        sourceUid: author.uid,
+      },
+    }).then(() => undefined),
+  );
+
+  return {
+    enabled: true,
+    recipients: recipientEmails.length,
     ...result,
   };
 }
@@ -355,13 +426,19 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     }).returning();
 
     let whatsapp = { enabled: false, recipients: 0, sent: 0, failed: 0 };
+    let email = { enabled: false, recipients: 0, sent: 0, failed: 0 };
     try {
       whatsapp = await sendAnnouncementOverWhatsApp(row, author);
     } catch (err) {
       console.warn('[announcements] whatsapp automation failed', err);
     }
+    try {
+      email = await sendAnnouncementOverEmail(row, author);
+    } catch (err) {
+      console.warn('[announcements] email automation failed', err);
+    }
 
-    res.status(201).json({ ...row, whatsapp });
+    res.status(201).json({ ...row, whatsapp, email });
   } catch {
     res.status(500).json({ error: 'Erro ao criar notificação.' });
   }

@@ -7,6 +7,7 @@ import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import { useAuth } from '@/contexts/AuthContext';
+import { getWhatsAppAutomationToast } from '@/lib/whatsappAutomation';
 
 type SubTab = 'students' | 'requests' | 'enrollments';
 type BillingMode = 'prorata' | 'rolling30';
@@ -199,7 +200,7 @@ export default function AcademiaAlunos() {
     try {
       const fee = Number(inviteForm.monthlyFee) || 0;
       const terms = calculateBillingTerms(fee, billingMode);
-      await api.enrollments.create({
+      const created = await api.enrollments.create({
         professorUid: user.uid,
         professorName: academyName,
         academyName,
@@ -216,8 +217,12 @@ export default function AcademiaAlunos() {
         firstMonth: terms.firstMonth,
         status: 'pending',
         notes: inviteForm.notes.trim(),
-      } as any);
-      toast.success(`Convite enviado. Primeiro vencimento: ${formatDate(terms.firstDueDate)} (${money(terms.firstAmount)}).`);
+      } as any) as any;
+      toast.success(
+        created?.notification?.whatsapp
+          ? getWhatsAppAutomationToast(created.notification.whatsapp, 'Convite enviado')
+          : `Convite enviado. Primeiro vencimento: ${formatDate(terms.firstDueDate)} (${money(terms.firstAmount)}).`
+      );
       resetInvite();
       load();
     } catch (err: any) {
@@ -243,8 +248,12 @@ export default function AcademiaAlunos() {
   const reactivate = async (enrollment: AcademyEnrollment) => {
     setActioning(enrollment.id);
     try {
-      await api.enrollments.update(enrollment.id, { status: 'active', suspendReason: '' } as any);
-      toast.success('Matricula reativada.');
+      const updated = await api.enrollments.update(enrollment.id, { status: 'active', suspendReason: '' } as any) as any;
+      toast.success(
+        updated?.automation?.whatsapp
+          ? getWhatsAppAutomationToast(updated.automation.whatsapp, 'Matricula reativada e notificada')
+          : 'Matricula reativada.'
+      );
       load();
     } catch {
       toast.error('Erro ao reativar matricula.');
@@ -258,7 +267,7 @@ export default function AcademiaAlunos() {
     setActioning(suspendTarget.id);
     try {
       await api.enrollments.update(suspendTarget.id, { status: 'suspended', suspendReason } as any);
-      await api.notifications.create({
+      const notification = await api.notifications.create({
         toUid: suspendTarget.studentUid,
         type: 'payment_suspended',
         title: 'Matricula suspensa',
@@ -266,7 +275,7 @@ export default function AcademiaAlunos() {
         data: { enrollmentId: suspendTarget.id, reason: suspendReason },
         read: false,
       } as any);
-      toast.success('Aluno suspenso e notificado.');
+      toast.success(getWhatsAppAutomationToast(notification.whatsapp, 'Aluno suspenso e notificado'));
       setSuspendTarget(null);
       setSuspendReason('');
       load();

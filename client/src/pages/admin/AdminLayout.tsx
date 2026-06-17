@@ -11,11 +11,12 @@ import AdminUsers from './AdminUsers';
 import AdminCrm from './AdminCrm';
 import AdminPlans from './AdminPlans';
 import AdminAppLinks from './AdminAppLinks';
-import AdminAnnouncements from './AdminAnnouncements';
+import AdminEmailAutomation from './AdminEmailAutomation';
+import AdminWhatsapp from './AdminWhatsapp';
 import Community from '../app/Community';
 import NotificationBell from '@/components/NotificationBell';
 
-type AdminTab = 'dashboard' | 'users' | 'crm' | 'plans' | 'app' | 'avisos' | 'community';
+type AdminTab = 'dashboard' | 'users' | 'crm' | 'plans' | 'app' | 'email' | 'avisos' | 'whatsapp' | 'community';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -67,7 +68,7 @@ export default function AdminLayout() {
       </header>
 
       {/* Nav Tabs */}
-      <nav className="bg-[#111] border-b border-[#222] flex px-5">
+      <nav className="bg-[#111] border-b border-[#222] flex px-5 overflow-x-auto">
         {NAV_ITEMS.filter(item => !item.superOnly || isSuperAdmin).map(item => (
           <button
             key={item.id}
@@ -92,7 +93,9 @@ export default function AdminLayout() {
             {tab === 'crm'       && <AdminCrm />}
             {tab === 'plans'     && isSuperAdmin && <AdminPlans />}
             {tab === 'app'       && isSuperAdmin && <AdminAppLinks />}
+            {tab === 'email'     && isSuperAdmin && <AdminEmailAutomation />}
             {tab === 'avisos'    && isSuperAdmin && <AdminAnnouncements />}
+            {tab === 'whatsapp'  && isSuperAdmin && <AdminWhatsapp />}
             {tab === 'community' && <Community />}
           </motion.div>
         </AnimatePresence>
@@ -107,6 +110,8 @@ const NAV_ITEMS: { id: string; label: string; superOnly?: boolean }[] = [
   { id: 'crm',       label: 'CRM'       },
   { id: 'plans',     label: 'Planos', superOnly: true },
   { id: 'app',       label: 'App',    superOnly: true },
+  { id: 'email',     label: 'Email',  superOnly: true },
   { id: 'avisos',    label: 'Notificações', superOnly: true },
+  { id: 'whatsapp',  label: 'WhatsApp', superOnly: true },
   { id: 'community', label: 'Comunidade' },
 ];

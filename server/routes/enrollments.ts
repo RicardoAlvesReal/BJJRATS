@@ -6,6 +6,8 @@ import { enrollments, notifications, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import { notifyEnrollmentReactivated } from '../services/enrollmentNotifications.js';
+import { sendNotificationWhatsApp } from '../services/notificationWhatsApp.js';
+import { sendNotificationEmail } from '../services/notificationEmail.js';
 
 const router = Router();
 
@@ -128,17 +130,20 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     pixKey: body.pixKey || null,
   } as any).returning();
 
+  let inviteNotification: Record<string, unknown> | null = null;
+
   if (status === 'active') {
     const profileUpdate: Record<string, string | null> = { academyId: row.professorUid };
     if (row.academyName) profileUpdate.academy = row.academyName;
     await db.update(users).set(profileUpdate).where(eq(users.uid, row.studentUid));
   } else {
-    await db.insert(notifications).values({
+    const [notification] = await db.insert(notifications).values({
       id: nanoid(),
       toUid: studentUid,
       fromUid: req.userId!,
       fromName: body.professorName || body.academyName || 'Professor',
       type: 'enrollment_invite',
+      title: 'Convite de matricula',
       message: `${body.professorName || 'Seu professor'} enviou um convite de matrícula${body.academyName ? ` para ${body.academyName}` : ''}. Aceite para ativar o vínculo.`,
       data: {
         enrollmentId: row.id,
@@ -154,9 +159,23 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
         pixKey: body.pixKey || null,
       },
       read: false,
-    } as any);
+    } as any).returning();
+
+    let whatsapp = { enabled: false, recipients: 0, sent: 0, failed: 0 };
+    let email = { enabled: false, recipients: 0, sent: 0, failed: 0 };
+    try {
+      whatsapp = await sendNotificationWhatsApp(notification, req.userId!);
+    } catch (err) {
+      console.warn('[enrollments] invite whatsapp automation failed', err);
+    }
+    try {
+      email = await sendNotificationEmail(notification, req.userId!);
+    } catch (err) {
+      console.warn('[enrollments] invite email automation failed', err);
+    }
+    inviteNotification = { ...notification, whatsapp, email };
   }
-  res.status(201).json(row);
+  res.status(201).json(inviteNotification ? { ...row, notification: inviteNotification } : row);
 });
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
@@ -224,10 +243,11 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 
   const [row] = await db.update(enrollments).set(data).where(eq(enrollments.id, req.params.id)).returning();
+  let automation: Record<string, unknown> | null = null;
   if (row && existing.status === 'suspended' && data.status === 'active') {
-    await notifyEnrollmentReactivated(row, req.userId!);
+    automation = await notifyEnrollmentReactivated(row, req.userId!);
   }
-  res.json(row);
+  res.json(automation ? { ...row, automation } : row);
 });
 
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {

@@ -6,6 +6,7 @@ import { classSchedules, classCheckIns, enrollments, notifications } from '../db
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import { sendNotificationsWhatsApp } from '../services/notificationWhatsApp.js';
+import { sendNotificationsEmail } from '../services/notificationEmail.js';
 
 const router = Router();
 
@@ -45,7 +46,12 @@ async function notifyActiveStudentsAboutClass(
     .where(and(eq(enrollments.professorUid, professorUid), eq(enrollments.status, 'active')));
 
   const studentUids = Array.from(new Set(activeStudents.map(row => row.studentUid).filter(Boolean)));
-  if (!studentUids.length) return { enabled: true, recipients: 0, sent: 0, failed: 0 };
+  if (!studentUids.length) {
+    return {
+      whatsapp: { enabled: true, recipients: 0, sent: 0, failed: 0 },
+      email: { enabled: true, recipients: 0, sent: 0, failed: 0 },
+    };
+  }
 
   const rows = studentUids.map(studentUid => ({
     id: nanoid(),
@@ -58,7 +64,11 @@ async function notifyActiveStudentsAboutClass(
   }));
 
   const inserted = await db.insert(notifications).values(rows).returning();
-  return sendNotificationsWhatsApp(inserted, professorUid);
+  const [whatsapp, email] = await Promise.all([
+    sendNotificationsWhatsApp(inserted, professorUid),
+    sendNotificationsEmail(inserted, professorUid),
+  ]);
+  return { whatsapp, email };
 }
 
 // ─── Schedules ───────────────────────────────────────────────────────────────
@@ -119,11 +129,14 @@ router.patch('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
   const { id: _id, professorUid: _pu, academyId: _academyId, createdAt: _createdAt, ...data } = req.body ?? {};
   if (!Object.keys(data).length) { res.json(existing); return; }
   const [row] = await db.update(classSchedules).set(data).where(eq(classSchedules.id, req.params.id)).returning();
-  let whatsapp = { enabled: true, recipients: 0, sent: 0, failed: 0 };
+  let automation = {
+    whatsapp: { enabled: true, recipients: 0, sent: 0, failed: 0 },
+    email: { enabled: true, recipients: 0, sent: 0, failed: 0 },
+  };
   try {
     const before = describeSchedule(existing);
     const after = describeSchedule(row);
-    whatsapp = await notifyActiveStudentsAboutClass(
+    automation = await notifyActiveStudentsAboutClass(
       existing.professorUid,
       'class_rescheduled',
       `Aula remarcada/atualizada: ${before || 'horario anterior'} -> ${after || 'novo horario'}. Confira a grade no app.`,
@@ -132,7 +145,7 @@ router.patch('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
   } catch (err) {
     console.warn('[classes] class reschedule notification failed', err);
   }
-  res.json({ ...row, whatsapp });
+  res.json({ ...row, ...automation });
 });
 
 router.delete('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
@@ -145,10 +158,13 @@ router.delete('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
     return;
   }
   await db.delete(classSchedules).where(eq(classSchedules.id, req.params.id));
-  let whatsapp = { enabled: true, recipients: 0, sent: 0, failed: 0 };
+  let automation = {
+    whatsapp: { enabled: true, recipients: 0, sent: 0, failed: 0 },
+    email: { enabled: true, recipients: 0, sent: 0, failed: 0 },
+  };
   try {
     const schedule = describeSchedule(existing);
-    whatsapp = await notifyActiveStudentsAboutClass(
+    automation = await notifyActiveStudentsAboutClass(
       existing.professorUid,
       'class_cancelled',
       `Aula cancelada/removida da grade: ${schedule || 'horario removido'}. Confira a grade no app ou fale com o professor.`,
@@ -157,7 +173,7 @@ router.delete('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
   } catch (err) {
     console.warn('[classes] class cancellation notification failed', err);
   }
-  res.json({ success: true, whatsapp });
+  res.json({ success: true, ...automation });
 });
 
 // ─── Check-ins ───────────────────────────────────────────────────────────────

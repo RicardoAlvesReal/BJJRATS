@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { enrollments, notifications } from '../db/schema.js';
 import { sendNotificationWhatsApp } from './notificationWhatsApp.js';
+import { sendNotificationEmail } from './notificationEmail.js';
 
 type EnrollmentRow = typeof enrollments.$inferSelect;
 
@@ -26,8 +27,11 @@ export async function notifyEnrollmentReactivated(
       read: false,
     }).returning();
 
-    await sendNotificationWhatsApp(notification, sourceUid);
-    return notification;
+    const [whatsapp, email] = await Promise.all([
+      sendNotificationWhatsApp(notification, sourceUid),
+      sendNotificationEmail(notification, sourceUid),
+    ]);
+    return { ...notification, whatsapp, email };
   } catch (err) {
     console.warn('[enrollments] reactivation notification failed', err);
     return null;
@@ -66,8 +70,11 @@ export async function notifyEnrollmentSuspended(
       read: false,
     }).returning();
 
-    await sendNotificationWhatsApp(notification, sourceUid);
-    return notification;
+    const [whatsapp, email] = await Promise.all([
+      sendNotificationWhatsApp(notification, sourceUid),
+      sendNotificationEmail(notification, sourceUid),
+    ]);
+    return { ...notification, whatsapp, email };
   } catch (err) {
     console.warn('[enrollments] suspension notification failed', err);
     return null;

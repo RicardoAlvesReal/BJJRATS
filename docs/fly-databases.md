@@ -60,6 +60,13 @@ Desenvolvimento:
 fly secrets set JWT_SECRET="..." CORS_ORIGIN="https://bjjrats-dev.fly.dev" PUBLIC_API_URL="https://bjjrats-dev.fly.dev" --app bjjrats-dev
 ```
 
+E-mail para superadmin:
+
+```powershell
+fly secrets set EMAIL_AUTOMATION_ENABLED="true" EMAIL_AUTOMATION_PROVIDER="resend" EMAIL_FROM="no-reply@thebjjrats.com" RESEND_API_KEY="..." SUPERADMIN_EMAIL_TO="contato@thebjjrats.com" --app bjjrats
+fly secrets set EMAIL_AUTOMATION_ENABLED="true" EMAIL_AUTOMATION_PROVIDER="log" EMAIL_FROM="no-reply@thebjjrats.com" SUPERADMIN_EMAIL_TO="admin@bjjrats.dev" --app bjjrats-dev
+```
+
 O `DATABASE_URL` nao deve ser copiado manualmente entre ambientes quando o banco foi ligado com `fly postgres attach`; o Fly cria o secret certo para cada app.
 
 ## Deploy

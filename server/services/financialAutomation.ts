@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { classCheckIns, enrollments, notifications, payments, settings } from '../db/schema.js';
 import { sendNotificationWhatsApp } from './notificationWhatsApp.js';
+import { sendNotificationEmail } from './notificationEmail.js';
 
 export const DEFAULT_AUTO_SUSPEND_AFTER_DAYS = 10;
 
@@ -173,6 +174,7 @@ export async function applyAutomaticSuspensionsForProfessor(
         read: false,
       }).returning();
       await sendNotificationWhatsApp(notification, professorUid);
+      await sendNotificationEmail(notification, professorUid);
     } catch (err) {
       console.warn('[financial-automation] automatic suspension notification failed', err);
     }
@@ -290,6 +292,7 @@ export async function runLowFreqIncentiveSweep() {
         read: false,
       }).returning();
       await sendNotificationWhatsApp(notification, enr.professorUid);
+      await sendNotificationEmail(notification, enr.professorUid);
       sent++;
     } catch (err) {
       console.warn('[financial-automation] incentive notification failed', err);

@@ -7,6 +7,7 @@ const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
 function getInstanceName(professorUid: string, role?: string | null): string {
+  if (role === 'superadmin') return `bjjrats_superadmin`;
   return role === 'academy' || role === 'admin' ? `bjjrats_academy_${professorUid}` : `bjjrats_${professorUid}`;
 }
 
@@ -348,10 +349,10 @@ export async function sendMessage(
   if (!number) throw new Error('Numero de WhatsApp invalido');
   if (!text) throw new Error('Mensagem de WhatsApp vazia');
 
-  // Usa o hint se fornecido, senão tenta o nome padrão + academy
+  // Usa o hint se fornecido, senão tenta os nomes padrão + academy + superadmin
   const names = instanceNameHint
     ? [instanceNameHint]
-    : [getInstanceName(professorUid), getInstanceName(professorUid, 'academy')];
+    : [getInstanceName(professorUid), getInstanceName(professorUid, 'academy'), getInstanceName(professorUid, 'superadmin')];
 
   let lastError: Error | null = null;
   for (const instanceName of Array.from(new Set(names))) {
