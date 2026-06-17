@@ -60,6 +60,26 @@ const TABS: { id: Tab; label: string; icon: (active: boolean) => ReactNode }[] =
   },
 ];
 
+function promotionModalSeenKey(userUid: string, notificationId: string) {
+  return `promotion_modal_seen_${userUid}_${notificationId}`;
+}
+
+function hasSeenPromotionModal(userUid: string, notificationId: string) {
+  try {
+    return localStorage.getItem(promotionModalSeenKey(userUid, notificationId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markPromotionModalSeen(userUid: string, notificationId: string) {
+  try {
+    localStorage.setItem(promotionModalSeenKey(userUid, notificationId), '1');
+  } catch {
+    // Ignora navegadores sem storage disponivel.
+  }
+}
+
 export default function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -144,7 +164,7 @@ export default function AppLayout() {
     setShowPhotoModal(false);
   };
 
-  const [promotionNotif, setPromotionNotif] = useState<{ title: string; message: string; belt: string } | null>(null);
+  const [promotionNotif, setPromotionNotif] = useState<{ id: string; title: string; message: string; belt: string } | null>(null);
   const [communityBadge, setCommunityBadge] = useState(false);
   const [requestNotif, setRequestNotif] = useState<{ title: string; message: string; approved: boolean } | null>(null);
   const [enrollmentInvite, setEnrollmentInvite] = useState<{
@@ -169,14 +189,21 @@ export default function AppLayout() {
         const allNotifs = await api.notifications.list() as any[];
         const unread = allNotifs.filter((n: any) => !n.read);
 
-        const promoNotif = unread.find((n: any) => n.type === 'promotion');
+        const alreadyShownPromos = unread.filter((n: any) => n.type === 'promotion' && hasSeenPromotionModal(user.uid, n.id));
+        for (const seenPromo of alreadyShownPromos) {
+          api.notifications.markRead(seenPromo.id).catch(() => undefined);
+        }
+
+        const promoNotif = unread.find((n: any) => n.type === 'promotion' && !hasSeenPromotionModal(user.uid, n.id));
         if (promoNotif) {
+          markPromotionModalSeen(user.uid, promoNotif.id);
           setPromotionNotif({
+            id: promoNotif.id,
             title: promoNotif.title || 'PROMOCAO DE FAIXA',
             message: promoNotif.message,
             belt: promoNotif.belt || promoNotif.data?.belt || promoNotif.data?.newBelt || 'Branca',
           });
-          await api.notifications.markRead(promoNotif.id);
+          api.notifications.markRead(promoNotif.id).catch(() => undefined);
         }
 
         if (!isProfessor && !isAcademyOwner) {
@@ -243,6 +270,14 @@ export default function AppLayout() {
     };
     checkNotifications();
   }, [user, isProfessor]);
+
+  const dismissPromotionNotif = () => {
+    if (user && promotionNotif) {
+      markPromotionModalSeen(user.uid, promotionNotif.id);
+      api.notifications.markRead(promotionNotif.id).catch(() => undefined);
+    }
+    setPromotionNotif(null);
+  };
 
   const handleEnrollmentInviteResponse = async (accepted: boolean) => {
     if (!enrollmentInvite) return;
@@ -312,9 +347,9 @@ export default function AppLayout() {
             initial="hidden"
             animate="visible"
             exit="hidden"
-            onClick={() => setPromotionNotif(null)}
+            onClick={dismissPromotionNotif}
           >
-            <motion.div className="bjj-modal-box" variants={modalVariants} onClick={e => e.stopPropagation()}>
+            <motion.div className="bjj-modal-box" variants={modalVariants} onClick={(e) => { e.stopPropagation(); dismissPromotionNotif(); }}>
               <div
                 className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center"
                 style={{ background: BELT_COLORS[promotionNotif.belt] || '#CC0000', border: '4px solid #CC0000' }}

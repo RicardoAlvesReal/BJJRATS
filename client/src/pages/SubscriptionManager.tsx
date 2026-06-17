@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import api, { type Subscription } from '@/lib/api';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
+import { useAuth } from '@/contexts/AuthContext';
 
 const BILLING_LABELS: Record<string, string> = {
   PIX: 'PIX',
@@ -18,7 +19,23 @@ const BILLING_ICONS: Record<string, string> = {
   CREDIT_CARD: '💳',
 };
 
+function getPanelPath(user?: { role?: string } | null) {
+  if (!user) return '/login';
+  if (user.role === 'superadmin') return '/admin';
+  if (user.role === 'academy' || user.role === 'admin') return '/academia';
+  return '/app';
+}
+
+function isPanelAccessBlocked(sub: Subscription | null, graceDays: number) {
+  if (!sub || sub.status !== 'past_due') return false;
+  if (!sub.currentPeriodEnd) return true;
+  const lockDate = new Date(sub.currentPeriodEnd);
+  lockDate.setDate(lockDate.getDate() + graceDays);
+  return new Date() >= lockDate;
+}
+
 export default function SubscriptionManager() {
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,6 +154,7 @@ export default function SubscriptionManager() {
   };
 
   const canChangeBilling = sub.status === 'active' || sub.status === 'trial' || sub.status === 'past_due';
+  const panelAccessBlocked = isPanelAccessBlocked(sub, graceDays);
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center px-4 py-12">
@@ -468,20 +486,25 @@ export default function SubscriptionManager() {
             )}
             <button
               onClick={() => {
-                if (window.history.length > 1) window.history.back();
-                else navigate('/app');
+                if (panelAccessBlocked) {
+                  toast.error('Regularize a assinatura para voltar ao painel.');
+                  return;
+                }
+                navigate(getPanelPath(user));
               }}
+              disabled={panelAccessBlocked}
               style={{
                 flex: 1,
                 background: 'transparent',
-                color: '#888',
+                color: panelAccessBlocked ? '#555' : '#888',
                 border: '1px solid #222',
                 borderRadius: '6px', padding: '0.6rem',
                 fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.75rem',
-                letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer',
+                letterSpacing: '0.08em', textTransform: 'uppercase', cursor: panelAccessBlocked ? 'not-allowed' : 'pointer',
+                opacity: panelAccessBlocked ? 0.65 : 1,
               }}
             >
-              VOLTAR
+              {panelAccessBlocked ? 'REGULARIZE PARA VOLTAR' : 'VOLTAR AO PAINEL'}
             </button>
           </div>
         </motion.div>

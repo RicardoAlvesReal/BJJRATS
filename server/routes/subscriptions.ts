@@ -128,7 +128,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
   // Obtém dados do usuário
   const [user] = await db
-    .select({ name: users.name, email: users.email })
+    .select({ name: users.name, email: users.email, phone: users.phone })
     .from(users)
     .where(eq(users.uid, req.userId!))
     .limit(1);
@@ -139,13 +139,14 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   }
 
   // Cria ou reutiliza customer no Asaas
+  const customerPhone = String(phone || user.phone || '').trim() || undefined;
   let customer = await findCustomer(user.email);
   if (!customer) {
     customer = await createCustomer({
       name: user.name,
       email: user.email,
       cpfCnpj,
-      phone,
+      phone: customerPhone,
     });
   }
 

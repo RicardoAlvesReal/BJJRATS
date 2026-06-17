@@ -717,6 +717,7 @@ export const notifications = {
   markRead: (id: string) =>
     apiFetch<Notification>(`/api/notifications/${id}`, { method: 'PATCH', body: JSON.stringify({ read: true }) }),
   markAllRead: () => apiFetch<{ updated: number }>('/api/notifications/read-all', { method: 'PATCH' }),
+  clearAll: () => apiFetch<{ success: boolean }>('/api/notifications', { method: 'DELETE' }),
 };
 
 // ─── Payments ─────────────────────────────────────────────────────────────────

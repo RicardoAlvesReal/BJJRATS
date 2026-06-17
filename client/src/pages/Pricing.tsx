@@ -10,6 +10,13 @@ import { FONTS } from '@/lib/design';
 
 type BillingType = 'PIX' | 'CREDIT_CARD';
 
+function getPanelPath(user?: { role?: string } | null) {
+  if (!user) return '/login';
+  if (user.role === 'superadmin') return '/admin';
+  if (user.role === 'academy' || user.role === 'admin') return '/academia';
+  return '/app';
+}
+
 export default function PricingPage() {
   const { user, logout } = useAuth();
   const [, navigate] = useLocation();
@@ -74,8 +81,12 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center px-4 py-12">
       {user && (
-        <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+        <div style={{ alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#666' }}>{user.name || user.email}</span>
+          <button onClick={() => navigate(getPanelPath(user))}
+            style={{ background: '#111', border: '1px solid #333', color: '#AAA', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.35rem 0.75rem', borderRadius: '6px', cursor: 'pointer' }}>
+            MEU PAINEL
+          </button>
           <button onClick={handleLogout}
             style={{ background: 'transparent', border: '1px solid #CC000044', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0.35rem 0.75rem', borderRadius: '6px', cursor: 'pointer' }}>
             SAIR

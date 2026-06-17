@@ -159,6 +159,13 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
   return <Component />;
 }
 
+function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Redirect to="/login" />;
+  return <Component />;
+}
+
 function PublicRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -185,7 +192,7 @@ function Router() {
       <Route path="/trial/professor/:targetId" component={() => <PublicTrial targetKind="professor" />} />
       <Route path="/trial/:academyId" component={() => <PublicTrial />} />
       <Route path="/pricing" component={Pricing} />
-      <Route path="/app/subscription" component={() => <ProtectedRoute component={SubscriptionManager} />} />
+      <Route path="/app/subscription" component={() => <AuthenticatedRoute component={SubscriptionManager} />} />
       <Route component={() => <Redirect to="/" />} />
     </Switch>
   );

@@ -9,6 +9,7 @@ export interface RegisterData {
   email: string;
   password: string;
   name: string;
+  phone?: string;
   belt: string;
   academy: string;
   professor?: string;

@@ -12,6 +12,7 @@ import AdminCrm from './AdminCrm';
 import AdminPlans from './AdminPlans';
 import AdminAppLinks from './AdminAppLinks';
 import AdminEmailAutomation from './AdminEmailAutomation';
+import AdminAnnouncements from './AdminAnnouncements';
 import AdminWhatsapp from './AdminWhatsapp';
 import Community from '../app/Community';
 import NotificationBell from '@/components/NotificationBell';

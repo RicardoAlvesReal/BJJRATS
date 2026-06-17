@@ -18,6 +18,23 @@ function toBoolean(value: unknown) {
   return value === true || value === 'true' || value === '1' || value === 1;
 }
 
+function normalizeEmail(value: unknown) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
+}
+
+function normalizeWhatsApp(value: unknown) {
+  return String(value ?? '').trim();
+}
+
+function isValidWhatsApp(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 function normalizePublicRole(role: unknown): 'student' | 'professor' | 'academy' {
   if (role === 'academy' || role === 'admin') return 'academy';
   if (role === 'professor') return 'professor';
@@ -27,15 +44,27 @@ function normalizePublicRole(role: unknown): 'student' | 'professor' | 'academy'
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { name, email, password, role = 'student', belt = 'Branca', ...rest } = req.body as Record<string, unknown>;
-  if (!name || !email || !password) {
-    res.status(400).json({ error: 'name, email e password sao obrigatorios' });
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizeWhatsApp(rest.phone);
+
+  if (!name || !normalizedEmail || !password || !normalizedPhone) {
+    res.status(400).json({ error: 'name, email, password e WhatsApp sao obrigatorios' });
+    return;
+  }
+
+  if (!isValidEmail(normalizedEmail)) {
+    res.status(400).json({ error: 'Informe um e-mail valido.' });
+    return;
+  }
+
+  if (!isValidWhatsApp(normalizedPhone)) {
+    res.status(400).json({ error: 'Informe um WhatsApp valido com DDD.' });
     return;
   }
 
   const requestedAcademy = role === 'academy' || role === 'admin' || toBoolean(rest.isAcademyAdmin);
   const normalizedRole = requestedAcademy ? 'academy' : normalizePublicRole(role);
   const isAcademyAdmin = normalizedRole === 'academy';
-  const normalizedEmail = String(email).toLowerCase();
 
   const existing = await db.select({ uid: users.uid }).from(users).where(eq(users.email, normalizedEmail)).limit(1);
   if (existing.length) {
@@ -51,6 +80,7 @@ router.post('/register', async (req, res) => {
     email: normalizedEmail,
     passwordHash,
     belt: String(belt || 'Branca'),
+    phone: normalizedPhone,
     role: normalizedRole,
     isAcademyAdmin,
     academy: String(rest.academy || ''),

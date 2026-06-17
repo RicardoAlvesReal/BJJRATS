@@ -33,6 +33,15 @@ const STEP_LABELS: Record<number, Record<string, string>> = {
   5: { professor: 'IDENTIDADE VISUAL', academy: 'IDENTIDADE VISUAL' },
 };
 
+function isValidEmail(value: string) {
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value.trim());
+}
+
+function isValidWhatsApp(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 export default function Register() {
   const { register, updateProfileData } = useAuth();
   const [, navigate] = useLocation();
@@ -53,6 +62,7 @@ export default function Register() {
     // Passo 1
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
     // Passo 3 — perfil atleta (compartilhado)
@@ -179,7 +189,9 @@ export default function Register() {
   // ── Passo 1: Dados de acesso ───────────────────────────────────────────────
   const handleStep1 = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.email || !form.password) return toast.error('Preencha todos os campos');
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.password) return toast.error('Preencha nome, email, WhatsApp e senha');
+    if (!isValidEmail(form.email)) return toast.error('Informe um email valido');
+    if (!isValidWhatsApp(form.phone)) return toast.error('Informe um WhatsApp valido com DDD');
     if (form.password.length < 6) return toast.error('Senha deve ter no mínimo 6 caracteres');
     if (form.password !== form.confirmPassword) return toast.error('Senhas não conferem');
     setStep(2);
@@ -203,9 +215,10 @@ export default function Register() {
     setLoading(true);
     try {
       await register({
-        email: form.email,
+        email: form.email.trim(),
         password: form.password,
-        name: form.name,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
         belt: form.belt,
         academy: form.academy,
         professor: form.professor,
@@ -254,9 +267,10 @@ export default function Register() {
     try {
       // 1. Criar conta
       await register({
-        email: form.email,
+        email: form.email.trim(),
         password: form.password,
-        name: form.name,
+        name: form.name.trim(),
+        phone: form.phone.trim(),
         belt: form.belt,
         academy: form.academyName,
         professor: '',
@@ -366,6 +380,10 @@ export default function Register() {
             <div>
               <label className="bjj-label">Email</label>
               <input type="email" className="bjj-input" placeholder="seu@email.com" value={form.email} onChange={e => update('email', e.target.value)} />
+            </div>
+            <div>
+              <label className="bjj-label">WhatsApp *</label>
+              <input type="tel" inputMode="tel" autoComplete="tel" className="bjj-input" placeholder="(11) 99999-9999" value={form.phone} onChange={e => update('phone', e.target.value)} />
             </div>
             <div>
               <label className="bjj-label">Senha</label>
