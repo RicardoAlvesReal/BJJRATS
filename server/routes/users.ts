@@ -18,6 +18,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
     academyState: users.academyState, academyAddress: users.academyAddress,
     academyLatitude: users.academyLatitude, academyLongitude: users.academyLongitude,
     academyLogoUrl: users.academyLogoUrl, professorPhotoUrl: users.professorPhotoUrl,
+    promotionCriteria: users.promotionCriteria,
     trialRequestsEnabled: users.trialRequestsEnabled,
     isAcademyAdmin: users.isAcademyAdmin,
     athleteType: users.athleteType, bjjSince: users.bjjSince,
@@ -66,8 +67,13 @@ router.patch('/:uid', requireAuth, async (req: AuthRequest, res) => {
     return;
   }
   const {
-    passwordHash: _ph, uid: _uid, email: _email, createdAt: _c, ...raw
+    passwordHash: _ph, uid: _uid, email: _email, createdAt: _c, password, ...raw
   } = req.body;
+  // Se enviou nova senha, faz hash
+  if (typeof password === 'string' && password.trim()) {
+    const bcrypt = await import('bcryptjs');
+    raw.passwordHash = (await bcrypt.hash(password.trim(), 10));
+  }
   // Filtra apenas colunas que existem no schema para evitar SET vazio
   const validColumns = new Set(Object.keys(users));
   const allowed = Object.fromEntries(

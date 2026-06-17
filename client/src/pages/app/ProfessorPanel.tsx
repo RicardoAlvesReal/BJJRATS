@@ -334,6 +334,8 @@ const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: Lucide
   { id: 'whatsapp', label: 'WHATSAPP', group: 'gestao', icon: MessageSquare },
 ];
 
+const INTERNAL_PROFESSOR_HIDDEN_TABS: PanelTab[] = ['financial', 'relatorios', 'whatsapp', 'avisos', 'leads'];
+
 const WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 
 function formatAttemptRemaining(ms: number): string {
@@ -639,8 +641,12 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const isAcademyOwner = profile?.role === 'academy' || profile?.role === 'admin' || (profile as any)?.isAcademyAdmin === true;
   // Professor vinculado a uma academia (academyId aponta para um admin acima dele)
   const isProfessorUnderAcademy = profile?.role === 'professor' && !!(profile as any)?.academyId;
+  const canCreateEvents = !isProfessorUnderAcademy;
+  const visiblePanelTabs = PANEL_TABS.filter(tab => !isProfessorUnderAcademy || !INTERNAL_PROFESSOR_HIDDEN_TABS.includes(tab.id));
 
   // ── Dados da Academia (diretório) ────────────────────────────────────────
+  const [academyProfile, setAcademyProfile] = useState<any>(null);
+  const [academyDojoStats, setAcademyDojoStats] = useState<{ enrollments: number; members: number; revenue: number } | null>(null);
   const [showAcademyForm, setShowAcademyForm] = useState(false);
   const [academyFormData, setAcademyFormData] = useState({
     cep: '', city: '', state: '', address: '', phone: '', instagram: '', style: '',
@@ -650,6 +656,25 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [savingAcademyData, setSavingAcademyData] = useState(false);
   const [confirmClearAddress, setConfirmClearAddress] = useState(false);
   const [clearingAddress, setClearingAddress] = useState(false);
+
+  // Professor interno: carrega dados da academia para exibir no local de atendimento
+  useEffect(() => {
+    if (isProfessorUnderAcademy && (profile as any)?.academyId) {
+      const academyUid = (profile as any).academyId as string;
+      api.users.get(academyUid).then(data => setAcademyProfile(data)).catch(() => setAcademyProfile(null));
+      // Carrega dados da academia para o poder do dojo
+      Promise.all([
+        api.enrollments.list({ professorUid: academyUid }).catch(() => []),
+        api.users.list({ academyId: academyUid }).catch(() => []),
+        api.payments.list({ professorUid: academyUid }).catch(() => []),
+      ]).then(([enrolls, members, payments]) => {
+        const activeEnrollments = (enrolls as any[]).filter((e: any) => e.status === 'active').length;
+        const activeMembers = (members as any[]).length;
+        const paidRevenue = (payments as any[]).filter((p: any) => p.status === 'paid').reduce((s: number, p: any) => s + (p.amount || 0), 0);
+        setAcademyDojoStats({ enrollments: activeEnrollments, members: activeMembers, revenue: paidRevenue });
+      }).catch(() => setAcademyDojoStats(null));
+    }
+  }, [isProfessorUnderAcademy, profile]);
 
   const handleClearAddress = async () => {
     if (!user) return;
@@ -830,6 +855,8 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     asaasSandbox: true,
     asaasBillingType: 'PIX' as 'PIX' | 'BOLETO' | 'CREDIT_CARD',
     asaasApiKey: '',
+    pixKey: '',
+    pixQrCodeUrl: '',
   });
   const [savingPaymentIntegration, setSavingPaymentIntegration] = useState(false);
   const [testingPaymentIntegration, setTestingPaymentIntegration] = useState(false);
@@ -866,10 +893,29 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     if (!user) return;
     setMembersLoading(true);
     try {
-      const [linkedDocs, enrollmentDocs] = await Promise.all([
-        api.users.list({ academyId: user.uid }) as Promise<Member[]>,
+      // Professor interno: carrega apenas alunos atribuídos a ele
+      const searchAcademyId = isProfessorUnderAcademy ? ((profile as any)?.academyId as string || user.uid) : user.uid;
+      const memberFetch = isProfessorUnderAcademy
+        ? api.users.list({ academyId: searchAcademyId }) as Promise<Member[]>
+        : api.users.list({ academyId: user.uid }) as Promise<Member[]>;
+
+      let [linkedDocs, enrollmentDocs, assignedDocs] = await Promise.all([
+        memberFetch,
         api.enrollments.list({ professorUid: user.uid }) as unknown as Promise<Enrollment[]>,
+        isProfessorUnderAcademy || profile?.role === 'professor'
+          ? api.academy.studentAssignments.mine() as unknown as Promise<{ studentUid: string }[]>
+          : Promise.resolve([]),
       ]);
+
+      // Para professor (interno/parceiro): filtra apenas alunos atribuídos
+      if (assignedDocs.length > 0) {
+        const assignedUids = new Set(assignedDocs.map(a => a.studentUid));
+        if (isProfessorUnderAcademy) {
+          linkedDocs = linkedDocs.filter(m => assignedUids.has(m.uid));
+        }
+      } else if (isProfessorUnderAcademy) {
+        linkedDocs = [];
+      }
       const activeEnrollmentDocs = enrollmentDocs.filter(enr => ['active', 'suspended'].includes(enr.status) && !!enr.studentUid);
       const byUid = new Map<string, Member>();
 
@@ -919,7 +965,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     } finally {
       setMembersLoading(false);
     }
-  }, [user]);
+  }, [user, isProfessorUnderAcademy, profile]);
 
   // Carregar membros ao montar — único ponto de carga
   useEffect(() => {
@@ -939,7 +985,11 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   }, [user]);
 
   const loadPayments = useCallback(async (month: string) => {
-    if (!user) return;
+    if (!user || isProfessorUnderAcademy) {
+      setPayments([]);
+      setPaymentsLoading(false);
+      return;
+    }
     setPaymentsLoading(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
@@ -962,9 +1012,14 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
       await loadEnrollments();
     } catch { setPayments([]); }
     finally { setPaymentsLoading(false); }
-  }, [user, loadEnrollments]);
+  }, [user, isProfessorUnderAcademy, loadEnrollments]);
 
   const loadFinancialSettings = useCallback(async () => {
+    if (isProfessorUnderAcademy) {
+      setAutoSuspendAfterDays(10);
+      setAutoSuspendInput('10');
+      return;
+    }
     try {
       const settings = await api.financialSettings.get();
       setAutoSuspendAfterDays(settings.autoSuspendAfterDays);
@@ -973,7 +1028,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
       setAutoSuspendAfterDays(10);
       setAutoSuspendInput('10');
     }
-  }, []);
+  }, [isProfessorUnderAcademy]);
 
   const saveFinancialSettings = useCallback(async () => {
     const parsed = Number(autoSuspendInput);
@@ -1002,17 +1057,23 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
       asaasSandbox: settings.asaasSandbox,
       asaasBillingType: settings.asaasBillingType,
       asaasApiKey: '',
+      pixKey: settings.pixKey || '',
+      pixQrCodeUrl: settings.pixQrCodeUrl || '',
     });
   }, []);
 
   const loadPaymentIntegration = useCallback(async () => {
+    if (isProfessorUnderAcademy) {
+      setPaymentIntegration(null);
+      return;
+    }
     try {
       const settings = await api.paymentIntegrations.get();
       applyPaymentIntegrationState(settings);
     } catch {
       setPaymentIntegration(null);
     }
-  }, [applyPaymentIntegrationState]);
+  }, [applyPaymentIntegrationState, isProfessorUnderAcademy]);
 
   const savePaymentIntegration = useCallback(async () => {
     setSavingPaymentIntegration(true);
@@ -1776,6 +1837,11 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
 
   const handleSaveEvent = async () => {
     if (!user || !profile || !eventForm.title.trim() || !eventForm.date || !eventForm.description.trim() || !eventForm.slots || !eventForm.time || !eventForm.type) return;
+    if (!canCreateEvents) {
+      toast.error('Eventos sao gerenciados pela academia.');
+      setShowNewEvent(false);
+      return;
+    }
     setSavingEvent(true);
     try {
       const publishAsAcademy = profile.role === 'academy' || profile.role === 'admin' || (profile as any).isAcademyAdmin === true;
@@ -1944,8 +2010,8 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     return matchName && matchBelt;
   });
 
-  const activeTabInfo = PANEL_TABS.find(tab => tab.id === activeTab) || PANEL_TABS[0];
-  const activeGroupTabs = PANEL_TABS.filter(tab => tab.group === activeTabGroup);
+  const activeTabInfo = visiblePanelTabs.find(tab => tab.id === activeTab) || visiblePanelTabs[0] || PANEL_TABS[0];
+  const activeGroupTabs = visiblePanelTabs.filter(tab => tab.group === activeTabGroup);
   const pendingPartnerAssignments = partnerAssignments.filter(item => item.status === 'pending');
   const pendingPartnerInvites = partnerInvites.filter(item => item.status === 'pending');
   const pendingJoinCount = joinRequests.filter(r => r.status === 'pending').length + pendingPartnerAssignments.length + pendingPartnerInvites.length;
@@ -1953,15 +2019,15 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   const suspendedEnrollmentCount = enrollments.filter(e => e.status === 'suspended').length;
   const overduePaymentCount = payments.filter(p => p.status === 'overdue').length;
   const pendingLeadCount = leads.filter(l => l.status === 'pending').length;
+  const financialAttentionCount = isProfessorUnderAcademy ? 0 : overduePaymentCount + suspendedEnrollmentCount;
   const paidRevenue = payments
     .filter(p => p.status === 'paid')
     .reduce((sum, payment) => sum + payment.amount, 0);
   const visibleMemberCount = memberCount ?? members.length;
-  const totalAttentionCount = pendingJoinCount + pendingLeadCount + overduePaymentCount + suspendedEnrollmentCount;
-  const dojoPower = Math.max(
-    0,
-    Math.round(activeEnrollmentCount * 140 + visibleMemberCount * 35 + Math.min(paidRevenue, 20000) / 20 + Math.max(0, pendingLeadCount) * 45)
-  );
+  const totalAttentionCount = pendingJoinCount + pendingLeadCount + financialAttentionCount;
+  const dojoPower = isProfessorUnderAcademy && academyDojoStats
+    ? Math.max(0, Math.round(academyDojoStats.enrollments * 140 + academyDojoStats.members * 35 + Math.min(academyDojoStats.revenue, 20000) / 20))
+    : Math.max(0, Math.round(activeEnrollmentCount * 140 + visibleMemberCount * 35 + Math.min(paidRevenue, 20000) / 20 + Math.max(0, pendingLeadCount) * 45));
   const dojoLevel = Math.max(1, Math.floor(dojoPower / 1000) + 1);
   const dojoProgress = dojoPower % 1000;
   const dojoProgressPercent = Math.min(100, Math.round((dojoProgress / 1000) * 100));
@@ -1987,7 +2053,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     : 'Selecione fotos do local onde atende. Elas ajudam alunos a reconhecer o espaco.';
   const directorySaveLabel = isAcademyOwner ? 'SALVAR E PUBLICAR NO DIRETORIO' : 'SALVAR LOCAL DE ATENDIMENTO';
   const directorySaveToast = isAcademyOwner ? 'Dados da academia atualizados!' : 'Local de atendimento atualizado!';
-  const commandStatus = overduePaymentCount > 0
+  const commandStatus = !isProfessorUnderAcademy && overduePaymentCount > 0
     ? { label: 'ATENCAO', color: '#CC0000', icon: Flame }
     : totalAttentionCount > 0
       ? { label: 'EM MISSAO', color: '#FFD166', icon: Zap }
@@ -2022,7 +2088,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
       icon: CalendarDays,
       onClick: () => { setActiveTabGroup('gestao'); setActiveTab('horarios'); },
     },
-  ];
+  ].filter(card => !(isProfessorUnderAcademy && (card.label === 'Financeiro' || card.label === 'Aulas gratis')));
   const filteredPosts = postFilter === 'all'
     ? posts
     : posts.filter(post => getProfessorPostType(post) === postFilter);
@@ -2039,7 +2105,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   const handleGroupSelect = (groupId: PanelGroup) => {
     setActiveTabGroup(groupId);
     if (activeTabInfo.group !== groupId) {
-      const firstTab = PANEL_TABS.find(tab => tab.group === groupId);
+      const firstTab = visiblePanelTabs.find(tab => tab.group === groupId);
       if (firstTab) setActiveTab(firstTab.id);
     }
   };
@@ -2054,6 +2120,13 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   useEffect(() => {
     if (activeTabInfo.group !== activeTabGroup) setActiveTabGroup(activeTabInfo.group);
   }, [activeTabGroup, activeTabInfo.group]);
+
+  useEffect(() => {
+    if (isProfessorUnderAcademy && INTERNAL_PROFESSOR_HIDDEN_TABS.includes(activeTab)) {
+      setActiveTab('overview');
+      setActiveTabGroup('principal');
+    }
+  }, [activeTab, isProfessorUnderAcademy]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -2105,6 +2178,20 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
           </div>
         </div>
         <div className="prof-panel-notifications">{notificationSlot}</div>
+        <button
+          onClick={() => window.location.href = '/app/subscription'}
+          title="Minha Assinatura"
+          style={{
+            width: '36px', height: '36px', background: '#111', border: '1px solid #333',
+            color: '#AAA', padding: 0, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="1" y="4" width="22" height="16" rx="2" />
+            <line x1="1" y1="10" x2="23" y2="10" />
+          </svg>
+        </button>
       </div>
 
       {/* Sub-nav organizada por grupos */}
@@ -2256,10 +2343,12 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                 </div>
 
                 <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                  <button onClick={() => setActiveTab('financial')} style={{ background: '#101010', border: '1px solid #2A2A2A', color: '#DDD', padding: '0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.45rem', justifyContent: 'center' }}>
-                    <TrendingUp size={15} color="#0D9E6E" strokeWidth={2.4} />
-                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase' }}>Financeiro</span>
-                  </button>
+                  {!isProfessorUnderAcademy && (
+                    <button onClick={() => setActiveTab('financial')} style={{ background: '#101010', border: '1px solid #2A2A2A', color: '#DDD', padding: '0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.45rem', justifyContent: 'center' }}>
+                      <TrendingUp size={15} color="#0D9E6E" strokeWidth={2.4} />
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase' }}>Financeiro</span>
+                    </button>
+                  )}
                   <button onClick={() => setActiveTab('members')} style={{ background: '#101010', border: '1px solid #2A2A2A', color: '#DDD', padding: '0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.45rem', justifyContent: 'center' }}>
                     <Users size={15} color={accentColor} strokeWidth={2.4} />
                     <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase' }}>Membros</span>
@@ -2297,7 +2386,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                 { label: 'MATRÍCULAS ATIVAS', value: enrollmentsLoading ? '...' : activeEnrollmentCount, icon: UserPlus, color: '#0D9E6E' },
                 { label: 'PENDÊNCIAS', value: pendingJoinCount + overduePaymentCount + suspendedEnrollmentCount, icon: Bell, color: pendingJoinCount + overduePaymentCount + suspendedEnrollmentCount > 0 ? '#CC0000' : '#555' },
                 { label: 'RECEBIDO NO MÊS', value: paymentsLoading ? '...' : `R$ ${paidRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, icon: DollarSign, color: '#0D9E6E' },
-              ].map(stat => {
+              ].filter(stat => !isProfessorUnderAcademy || !['MATRÍCULAS ATIVAS', 'PENDÊNCIAS', 'RECEBIDO NO MÊS'].includes(stat.label)).map(stat => {
                 const Icon = stat.icon;
                 return (
                   <div key={stat.label} style={{ background: '#111', border: '1px solid #1E1E1E', borderLeft: `3px solid ${stat.color}`, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: '104px' }}>
@@ -2333,7 +2422,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
               </div>
             </div>
 
-            {/* Resumo financeiro do mês */}
+            {!isProfessorUnderAcademy && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 💰 FINANCEIRO · {new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
@@ -2368,11 +2457,14 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                 </div>
               </div>
             </div>
+            )}
 
             {/* Alertas */}
             {(joinRequests.filter(r => r.status === 'pending').length > 0 ||
-              enrollments.filter(e => e.status === 'suspended').length > 0 ||
-              payments.filter(p => p.status === 'overdue').length > 0) && (
+              (!isProfessorUnderAcademy && (
+                enrollments.filter(e => e.status === 'suspended').length > 0 ||
+                payments.filter(p => p.status === 'overdue').length > 0
+              ))) && (
               <div style={{ background: '#140E00', border: '1px solid #CC660033', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#CC7700', textTransform: 'uppercase', letterSpacing: '0.06em' }}>🔔 REQUER ATENÇÃO</p>
                 {joinRequests.filter(r => r.status === 'pending').length > 0 && (
@@ -2385,7 +2477,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                     <svg style={{ marginLeft: 'auto', flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CC7700" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
                   </button>
                 )}
-                {payments.filter(p => p.status === 'overdue').length > 0 && (
+                {!isProfessorUnderAcademy && payments.filter(p => p.status === 'overdue').length > 0 && (
                   <button
                     onClick={() => setActiveTab('financial')}
                     style={{ background: 'none', border: '1px solid #CC000022', padding: '0.5rem 0.75rem', color: '#DDD', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem', width: '100%' }}
@@ -2395,7 +2487,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                     <svg style={{ marginLeft: 'auto', flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CC0000" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
                   </button>
                 )}
-                {enrollments.filter(e => e.status === 'suspended').length > 0 && (
+                {!isProfessorUnderAcademy && enrollments.filter(e => e.status === 'suspended').length > 0 && (
                   <button
                     onClick={() => setActiveTab('financial')}
                     style={{ background: 'none', border: '1px solid #33330022', padding: '0.5rem 0.75rem', color: '#DDD', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem', width: '100%' }}
@@ -2412,8 +2504,12 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
             <div style={{ background: '#111', border: `1px solid ${accentColor}22`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF' }}>{directoryPanelTitle}</p>
-                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.2rem' }}>{isProfessorUnderAcademy ? 'Gerenciado pela academia. Edite pelo painel da academia.' : directoryPanelSubtitle}</p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF' }}>
+                    {isProfessorUnderAcademy ? 'DADOS DA ACADEMIA' : directoryPanelTitle}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.2rem' }}>
+                    {isProfessorUnderAcademy ? `Vinculado a ${academyProfile?.academyName || academyProfile?.name || 'academia'}. Gerenciado pela academia.` : directoryPanelSubtitle}
+                  </p>
                 </div>
                 {!isProfessorUnderAcademy && (
                   <button
@@ -2444,9 +2540,31 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
               {/* Info atual */}
               {!showAcademyForm && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
-                    {(profile as any)?.academyCity || (profile as any)?.academyState ? (
-                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #CC0000', color: '#CC0000', background: '#CC000015' }}>
+                  {(isProfessorUnderAcademy && academyProfile) ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                      {(academyProfile.academyCity || academyProfile.academyState) && (
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #E87722', color: '#E87722', background: '#E8772215' }}>
+                          📍 {[academyProfile.academyCity, academyProfile.academyState].filter(Boolean).join(' — ')}
+                        </span>
+                      )}
+                      {academyProfile.academyPhone && (
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>📱 {academyProfile.academyPhone}</span>
+                      )}
+                      {academyProfile.academyInstagram && (
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>📸 @{academyProfile.academyInstagram}</span>
+                      )}
+                      {academyProfile.academyAddress && (
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #333', color: '#888' }}>🏠 {academyProfile.academyAddress}</span>
+                      )}
+                      {!academyProfile.academyCity && !academyProfile.academyAddress && (
+                        <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#444' }}>Academia ainda não cadastrou endereço no diretório.</span>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+                        {(profile as any)?.academyCity || (profile as any)?.academyState ? (
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', border: '1px solid #CC0000', color: '#CC0000', background: '#CC000015' }}>
                         📍 {[(profile as any)?.academyCity, (profile as any)?.academyState].filter(Boolean).join(' — ')}
                       </span>
                     ) : (
@@ -2489,6 +2607,8 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                       )}
                     </div>
                   )}
+                  </>
+                )}
                 </div>
               )}
               {/* Formulário de edição */}
@@ -2654,6 +2774,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
             </div>
 
             {/* Waiver / Contrato Digital */}
+            {!isProfessorUnderAcademy && (
             <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF', margin: 0 }}>📄 CONTRATO / WAIVER</p>
@@ -2700,12 +2821,13 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                 </div>
               )}
             </div>
+            )}
 
             {/* Quick actions */}
             <div>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>AÇÕES RÁPIDAS</p>
                 <div className="prof-panel-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                {PANEL_TABS.filter(action => action.id !== 'overview' && action.id !== 'avisos').map(action => {
+                {visiblePanelTabs.filter(action => action.id !== 'overview' && action.id !== 'avisos').map(action => {
                   const Icon = action.icon;
                   return (
                   <button key={action.id} onClick={() => setActiveTab(action.id)}
@@ -2852,12 +2974,19 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
         {/* ── Eventos ── */}
         {activeTab === 'events' && (
           <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <button onClick={() => setShowNewEvent(true)}
-              style={{ background: accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', cursor: 'pointer', width: '100%' }}>
-              + NOVO EVENTO
-            </button>
+            {canCreateEvents ? (
+              <button onClick={() => setShowNewEvent(true)}
+                style={{ background: accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', cursor: 'pointer', width: '100%' }}>
+                + NOVO EVENTO
+              </button>
+            ) : (
+              <div style={{ background: '#101010', border: '1px solid #2A2A2A', borderLeft: `3px solid ${accentColor}`, padding: '1rem' }}>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', textTransform: 'uppercase', color: '#FFF', marginBottom: '0.25rem' }}>EVENTOS GERENCIADOS PELA ACADEMIA</p>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#666', lineHeight: 1.45 }}>Professores subordinados podem acompanhar os eventos, mas a criacao fica no painel da academia.</p>
+              </div>
+            )}
 
-            {showNewEvent && (
+            {canCreateEvents && showNewEvent && (
               <div style={{ background: '#111', border: `1px solid ${accentColor}`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', color: '#FFF' }}>NOVO EVENTO</p>
                 {[{ k: 'title', l: 'TÍTULO *', ph: 'Ex: Open Match Interno' }, { k: 'description', l: 'DESCRIÇÃO *', ph: 'Detalhes do evento...' }].map(f => (
@@ -3472,7 +3601,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
           />
         )}
       {/* ─── Aba FINANCEIRO ──────────────────────────────────────────────────────────────────────────── */}
-      {activeTab === 'financial' && (
+      {activeTab === 'financial' && !isProfessorUnderAcademy && (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
 
           {/* Banner WhatsApp */}
@@ -3722,6 +3851,41 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                   <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.78rem', color: '#EEE', textTransform: 'uppercase' }}>Manter confirmacao manual como alternativa</span>
                 </label>
 
+                {paymentIntegrationForm.manualPaymentsEnabled && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingLeft: '1.5rem' }}>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.2rem' }}>CHAVE PIX DA ACADEMIA</p>
+                      <input value={paymentIntegrationForm.pixKey} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, pixKey: e.target.value }))}
+                        placeholder="CPF, CNPJ, celular, e-mail ou chave aleatória"
+                        style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.82rem', padding: '0.5rem', outline: 'none' }} />
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.2rem' }}>QR CODE DO PIX</p>
+                      {paymentIntegrationForm.pixQrCodeUrl ? (
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                          <img src={paymentIntegrationForm.pixQrCodeUrl} alt="QR Code PIX" style={{ maxWidth: '140px', border: '1px solid #333' }} />
+                          <button onClick={() => setPaymentIntegrationForm(prev => ({ ...prev, pixQrCodeUrl: '' }))}
+                            style={{ position: 'absolute', top: 0, right: 0, background: 'rgba(0,0,0,0.8)', border: 'none', color: '#CC0000', cursor: 'pointer', fontSize: '0.7rem', padding: '0.1rem 0.3rem' }}>✕</button>
+                        </div>
+                      ) : (
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#0A0A0A', border: '1px dashed #333', padding: '0.5rem 0.7rem', cursor: 'pointer' }}>
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#666', textTransform: 'uppercase' }}>📎 ANEXAR QR CODE</span>
+                          <input type="file" accept="image/*" style={{ display: 'none' }}
+                            onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                const url = await api.upload.file(file, 'perfil');
+                                setPaymentIntegrationForm(prev => ({ ...prev, pixQrCodeUrl: url }));
+                                toast.success('QR Code enviado');
+                              } catch { toast.error('Erro ao enviar imagem'); }
+                            }} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.625rem' }}>
                   <div>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>AMBIENTE</p>
@@ -3732,10 +3896,9 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                   </div>
                   <div>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>COBRANCA</p>
-                    <select value={paymentIntegrationForm.asaasBillingType} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, asaasBillingType: e.target.value as 'PIX' | 'BOLETO' | 'CREDIT_CARD' }))} style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.82rem', padding: '0.625rem', outline: 'none' }}>
+                    <select value={paymentIntegrationForm.asaasBillingType} onChange={e => setPaymentIntegrationForm(prev => ({ ...prev, asaasBillingType: e.target.value as 'PIX' | 'CREDIT_CARD' }))} style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.82rem', padding: '0.625rem', outline: 'none' }}>
                       <option value="PIX">PIX</option>
-                      <option value="BOLETO">Boleto</option>
-                      <option value="CREDIT_CARD">Cartao</option>
+                      <option value="CREDIT_CARD">Cartão</option>
                     </select>
                   </div>
                 </div>
@@ -4153,11 +4316,11 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
 
       {/* ─── HORÁRIOS TAB ─────────────────────────────────────────────── */}
       {activeTab === 'horarios' && (
-        <HorariosTab professorUid={user?.uid || ''} accentColor={accentColor} />
+        <HorariosTab professorUid={user?.uid || ''} accentColor={accentColor} readOnly={isProfessorUnderAcademy} />
       )}
 
       {/* ─── RELATÓRIOS TAB ───────────────────────────────────────────── */}
-      {activeTab === 'relatorios' && (
+      {activeTab === 'relatorios' && !isProfessorUnderAcademy && (
         <RelatoriosTab
           professorUid={user?.uid || ''}
           accentColor={accentColor}
@@ -4323,7 +4486,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
 
 
       {/* ── ABA WHATSAPP ──────────────────────────────────────────────────────────────────────────────────────── */}
-      {activeTab === 'whatsapp' && <WhatsAppTab />}
+      {activeTab === 'whatsapp' && !isProfessorUnderAcademy && <WhatsAppTab />}
 
 
       {/* ─── Modal: Revisão de Cobranças ─────────────────────────────────────────── */}
@@ -4339,6 +4502,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
             member={selectedMember}
             accentColor={accentColor}
             professorUid={user?.uid}
+            hideFinancial={isProfessorUnderAcademy}
             onClose={() => setSelectedMember(null)}
             onPromoted={(uid, belt, stripes) => {
               setMembers(prev => prev.map(m => m.uid === uid ? { ...m, belt, stripes } : m));
@@ -4792,7 +4956,7 @@ function EventCard({ ev, accentColor, professorProfile, onDelete }: {
 // ── Modal de detalhe do membro ────────────────────────────────────────────────
 const BELTS_ORDER = ['Branca', 'Azul', 'Roxa', 'Marrom', 'Preta'];
 
-function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromoted }: { member: Member; accentColor: string; professorUid?: string; onClose: () => void; onPromoted: (uid: string, belt: string, stripes: number) => void }) {
+function MemberDetailModal({ member, accentColor, professorUid, hideFinancial = false, onClose, onPromoted }: { member: Member; accentColor: string; professorUid?: string; hideFinancial?: boolean; onClose: () => void; onPromoted: (uid: string, belt: string, stripes: number) => void }) {
   const beltColor = BELT_COLORS[member.belt] || '#555';
   const hours = member.totalMinutes ? Math.round(member.totalMinutes / 60) : 0;
   const [promoting, setPromoting] = useState(false);
@@ -4800,6 +4964,7 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
   const [newBelt, setNewBelt] = useState(member.belt);
   const [newStripes, setNewStripes] = useState(member.stripes ?? 0);
   const [detailTab, setDetailTab] = useState<'frequencia' | 'financeiro' | 'perfil'>('frequencia');
+  const detailTabs = (hideFinancial ? ['perfil', 'frequencia'] : ['perfil', 'frequencia', 'financeiro']) as Array<'perfil' | 'frequencia' | 'financeiro'>;
 
   // Frequência
   const [attendance, setAttendance] = useState<Array<{ id: string; trainingDate: string; sessionType?: string; modality?: string; duration?: number }>>([]);
@@ -4821,7 +4986,11 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
   const memberReceiptInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (detailTab !== 'financeiro') return;
+    if (hideFinancial && detailTab === 'financeiro') {
+      setDetailTab('frequencia');
+      return;
+    }
+    if (hideFinancial || detailTab !== 'financeiro') return;
     let cancelled = false;
     const load = async () => {
       setMemberPaymentsLoading(true);
@@ -4838,7 +5007,7 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
     };
     load();
     return () => { cancelled = true; };
-  }, [member.uid, detailTab]);
+  }, [member.uid, detailTab, hideFinancial]);
 
   const handleMemberMarkPaid = async (payment: Payment, receiptUrl?: string) => {
     setMarkingPaid(payment.id);
@@ -5130,7 +5299,7 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
         {/* Tabs FREQUÊNCIA / FINANCEIRO */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
           <div style={{ display: 'flex', borderBottom: '1px solid #1E1E1E' }}>
-            {(['perfil', 'frequencia', 'financeiro'] as const).map(t => (
+            {detailTabs.map(t => (
               <button
                 key={t}
                 onClick={() => setDetailTab(t)}
@@ -5287,7 +5456,7 @@ function MemberDetailModal({ member, accentColor, professorUid, onClose, onPromo
           )}
 
           {/* Aba FINANCEIRO */}
-          {detailTab === 'financeiro' && (
+          {!hideFinancial && detailTab === 'financeiro' && (
             <>
               {/* Input oculto para comprovante */}
               <input
@@ -5709,7 +5878,7 @@ const CLASS_TYPES = ['Iniciante', 'Graduado', 'Geral', 'Competição', 'Open Mat
 const CLASS_MODES = ['Gi', 'No-Gi'];
 const PUBLICO_TYPES = ['Misto', 'Masculino', 'Feminino', 'Infantil (até 16 anos)'];
 
-function HorariosTab({ professorUid, accentColor }: { professorUid: string; accentColor: string }) {
+function HorariosTab({ professorUid, accentColor, readOnly = false }: { professorUid: string; accentColor: string; readOnly?: boolean }) {
   const [schedules, setSchedules] = useState<ClassSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -5729,14 +5898,15 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
   const loadSchedules = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await api.classes.listSchedules() as ClassSchedule[];
-      list.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
-      setSchedules(list);
+      const list = await api.classes.listSchedules({ professorUid }) as ClassSchedule[];
+      const ownSchedules = list.filter(s => s.professorUid === professorUid);
+      ownSchedules.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+      setSchedules(ownSchedules);
     } catch {
       setSchedules([]);
     }
     setLoading(false);
-  }, []);
+  }, [professorUid]);
 
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
 
@@ -5746,6 +5916,10 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
 
   const handleSave = async () => {
     if (!form.time || form.days.length === 0) return;
+    if (readOnly) {
+      setSaveError('Horarios gerenciados pela academia.');
+      return;
+    }
     setSaving(true);
     setSaveError('');
     try {
@@ -5767,12 +5941,14 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
   };
 
   const handleEdit = (s: ClassSchedule) => {
+    if (readOnly) return;
     setForm({ days: s.days, time: s.time, type: s.type, mode: s.mode || 'Gi', publico: s.publico || 'Misto', durationMin: s.durationMin, notes: s.notes || '' });
     setEditingId(s.id);
     setShowForm(true);
   };
 
   const handleDelete = async (id: string) => {
+    if (readOnly) return;
     if (!confirm('Excluir este horário?')) return;
     await api.classes.deleteSchedule(id);
     setSchedules(prev => prev.filter(s => s.id !== id));
@@ -5789,6 +5965,13 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {readOnly && (
+        <div style={{ background: '#141414', border: '1px solid #2A2A2A', padding: '0.875rem 1rem' }}>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', color: accentColor, letterSpacing: '0.06em' }}>GRADE GERENCIADA PELA ACADEMIA</p>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#AAA', marginTop: '0.25rem' }}>Voce pode consultar seus horarios, mas alteracoes ficam no painel da academia.</p>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ borderLeft: `3px solid ${accentColor}`, paddingLeft: '0.75rem' }}>
@@ -5804,7 +5987,9 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
         <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
           <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🕐</p>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM HORÁRIO CADASTRADO</p>
-          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#444', marginTop: '0.5rem' }}>Clique em "+ NOVO HORÁRIO" para adicionar as aulas fixas da academia.</p>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#444', marginTop: '0.5rem' }}>
+            {readOnly ? 'Nenhum horario atribuido pela academia.' : 'Clique em "+ NOVO HORARIO" para adicionar as aulas fixas da academia.'}
+          </p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -5836,8 +6021,8 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
                     </div>
                     {/* Ações */}
                     <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0 }}>
-                      <button onClick={() => handleEdit(s)} style={{ background: 'none', border: '1px solid #333', color: '#888', cursor: 'pointer', padding: '0.25rem 0.5rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase' }}>✏️</button>
-                      <button onClick={() => handleDelete(s.id)} style={{ background: 'none', border: '1px solid #CC000044', color: '#CC0000', cursor: 'pointer', padding: '0.25rem 0.5rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase' }}>✕</button>
+                      {!readOnly && <button onClick={() => handleEdit(s)} style={{ background: 'none', border: '1px solid #333', color: '#888', cursor: 'pointer', padding: '0.25rem 0.5rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase' }}>EDITAR</button>}
+                      {!readOnly && <button onClick={() => handleDelete(s.id)} style={{ background: 'none', border: '1px solid #CC000044', color: '#CC0000', cursor: 'pointer', padding: '0.25rem 0.5rem', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', textTransform: 'uppercase' }}>EXCLUIR</button>}
                     </div>
                   </div>
                 ))}
@@ -5848,13 +6033,13 @@ function HorariosTab({ professorUid, accentColor }: { professorUid: string; acce
       )}
 
       {/* Botão + NOVO HORÁRIO — aparece ABAIXO da lista */}
-      <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(emptyForm); }}
+      {!readOnly && <button onClick={() => { setShowForm(!showForm); setEditingId(null); setForm(emptyForm); }}
         style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.625rem 1rem', background: showForm ? '#333' : accentColor, border: 'none', color: '#FFF', cursor: 'pointer', letterSpacing: '0.06em', alignSelf: 'flex-start' }}>
         {showForm ? '✕ CANCELAR' : '+ NOVO HORÁRIO'}
-      </button>
+      </button>}
 
       {/* Formulário */}
-      {showForm && (
+      {showForm && !readOnly && (
         <div style={{ background: '#111', border: `1px solid ${accentColor}`, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', textTransform: 'uppercase', color: '#FFF', marginBottom: '0.25rem' }}>
             {editingId ? '✏️ EDITAR HORÁRIO' : '+ NOVO HORÁRIO'}

@@ -4,12 +4,19 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { whatsappInstances } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import * as evolution from '../services/evolutionApi.js';
 
 const router = Router();
 const CONNECTION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 
 type WhatsAppInstanceRow = typeof whatsappInstances.$inferSelect;
+
+async function blockInternalProfessorWhatsAppAccess(req: AuthRequest, res: any) {
+  if (!await isInternalAcademyProfessor(req.userId!, req.userRole)) return false;
+  res.status(403).json({ error: 'WhatsApp gerenciado pela academia.' });
+  return true;
+}
 
 function getExpectedInstanceName(userId: string, role?: string | null): string {
   return role === 'academy' || role === 'admin' ? `bjjrats_academy_${userId}` : `bjjrats_${userId}`;
@@ -74,6 +81,8 @@ async function expireInstanceIfStale(instance: WhatsAppInstanceRow, expectedInst
 }
 
 router.get('/status', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorWhatsAppAccess(req, res)) return;
+
   const [instance] = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
@@ -165,6 +174,8 @@ router.get('/status', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/connect', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorWhatsAppAccess(req, res)) return;
+
   const [existing] = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
@@ -213,6 +224,8 @@ router.post('/connect', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/pairing-code', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorWhatsAppAccess(req, res)) return;
+
   const countryCode = String(req.body?.countryCode || '55');
   const formattedPhone = evolution.formatPairingPhone(String(req.body?.phone || ''), countryCode);
   if (formattedPhone.length < 10) {
@@ -257,6 +270,8 @@ router.post('/pairing-code', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/connection-code', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorWhatsAppAccess(req, res)) return;
+
   const [instance] = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
@@ -287,6 +302,8 @@ router.post('/connection-code', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/disconnect', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorWhatsAppAccess(req, res)) return;
+
   const [instance] = await db.select().from(whatsappInstances)
     .where(eq(whatsappInstances.professorUid, req.userId!)).limit(1);
 
@@ -317,6 +334,8 @@ router.post('/disconnect', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/send', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorWhatsAppAccess(req, res)) return;
+
   const { phone, message } = req.body;
 
   if (!phone || !message) {

@@ -24,6 +24,8 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   const { user, loading } = useAuth();
   const [checkingSub, setCheckingSub] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
+  const [isPastDue, setIsPastDue] = useState(false);
+  const [isGracePeriod, setIsGracePeriod] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -37,7 +39,41 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
           return;
         }
         const { subscription } = await api.subscriptions.getMy();
-        setHasAccess(!!subscription);
+        if (subscription) {
+          if (subscription.status === 'past_due') {
+            // Verifica período de carência
+            try {
+              const pubSettings = await api.settings.public();
+              const graceDays = parseInt(pubSettings.past_due_grace_days || '3', 10);
+              if (subscription.currentPeriodEnd) {
+                const lockDate = new Date(subscription.currentPeriodEnd);
+                lockDate.setDate(lockDate.getDate() + graceDays);
+                if (new Date() < lockDate) {
+                  // Dentro da carência — permite acesso
+                  setIsGracePeriod(true);
+                  setHasAccess(true);
+                  setIsPastDue(false);
+                } else {
+                  // Fora da carência — bloqueia
+                  setIsPastDue(true);
+                  setHasAccess(false);
+                  setIsGracePeriod(false);
+                }
+              } else {
+                setIsPastDue(true);
+                setHasAccess(false);
+              }
+            } catch {
+              // Se não conseguir verificar, bloqueia por segurança
+              setIsPastDue(true);
+              setHasAccess(false);
+            }
+          } else {
+            setHasAccess(true);
+          }
+        } else {
+          setHasAccess(false);
+        }
       } catch {
         setHasAccess(false);
       } finally {
@@ -66,7 +102,9 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   if (!user) return <Redirect to="/login" />;
   if (user.role === 'superadmin') return <Redirect to="/admin" />;
   if (user.role === 'admin' || user.role === 'academy') return <Redirect to="/academia" />;
+  if (isPastDue) return <Redirect to="/app/subscription" />;
   if (!hasAccess) return <Redirect to="/pricing" />;
+  // Durante período de carência, renderiza normalmente mas passa flag
   return <Component />;
 }
 
@@ -80,9 +118,44 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
 
 function AcademiaRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  const [checkingSub, setCheckingSub] = useState(true);
+  const [isPastDue, setIsPastDue] = useState(false);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { setCheckingSub(false); return; }
+    if (user.subscriptionExempt) { setCheckingSub(false); return; }
+    const check = async () => {
+      try {
+        const { subscription } = await api.subscriptions.getMy();
+        if (subscription?.status === 'past_due') {
+          // Verifica período de carência
+          try {
+            const pubSettings = await api.settings.public();
+            const graceDays = parseInt(pubSettings.past_due_grace_days || '3', 10);
+            if (subscription.currentPeriodEnd) {
+              const lockDate = new Date(subscription.currentPeriodEnd);
+              lockDate.setDate(lockDate.getDate() + graceDays);
+              if (new Date() >= lockDate) {
+                setIsPastDue(true);
+              }
+            } else {
+              setIsPastDue(true);
+            }
+          } catch {
+            setIsPastDue(true);
+          }
+        }
+      } catch { /* ignora */ }
+      setCheckingSub(false);
+    };
+    check();
+  }, [user, loading]);
+
+  if (loading || checkingSub) return null;
   if (!user) return <Redirect to="/login" />;
   if (user.role !== 'academy' && user.role !== 'admin') return <Redirect to="/app" />;
+  if (isPastDue) return <Redirect to="/app/subscription" />;
   return <Component />;
 }
 

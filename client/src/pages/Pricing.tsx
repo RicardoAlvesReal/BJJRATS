@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
 
-type BillingType = 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+type BillingType = 'PIX' | 'CREDIT_CARD';
 
 export default function PricingPage() {
   const { user, logout } = useAuth();
@@ -94,7 +94,7 @@ export default function PricingPage() {
 
         {/* Payment method selector */}
         <motion.div variants={fadeUp} className="flex justify-center gap-2 mb-8">
-          {(['PIX', 'BOLETO', 'CREDIT_CARD'] as BillingType[]).map(bt => (
+          {(['PIX', 'CREDIT_CARD'] as BillingType[]).map(bt => (
             <button
               key={bt}
               onClick={() => setBillingType(bt)}
@@ -108,7 +108,7 @@ export default function PricingPage() {
                 transition: 'all 0.15s',
               }}
             >
-              {bt === 'CREDIT_CARD' ? 'Cartão' : bt === 'BOLETO' ? 'Boleto' : 'PIX'}
+              {bt === 'CREDIT_CARD' ? 'Cartão' : 'PIX'}
             </button>
           ))}
         </motion.div>

@@ -42,9 +42,9 @@ export default function AdminAppLinks() {
   return (
     <motion.div initial="hidden" animate="show" variants={staggerContainer}>
       <motion.div variants={fadeUp} style={{ marginBottom: '1.5rem' }}>
-        <h1 style={headingStyle}>Links do App</h1>
+        <h1 style={headingStyle}>Configurações do App</h1>
         <p style={mutedStyle}>
-          Configure os links de download do aplicativo nas lojas. Eles aparecerão na página inicial.
+          Links de download e parâmetros de cobrança da plataforma.
         </p>
       </motion.div>
 
@@ -69,6 +69,28 @@ export default function AdminAppLinks() {
               placeholder="https://apps.apple.com/app/id..."
             />
           </Field>
+
+          <div style={{ borderTop: '1px solid #222', paddingTop: '1rem', marginTop: '0.5rem' }}>
+            <p style={{ ...mutedStyle, marginBottom: '0.75rem' }}>Cobrança</p>
+
+            <Field label="Tolerância de inadimplência (dias)">
+              <input
+                style={inputStyle}
+                type="number"
+                min="0"
+                max="30"
+                value={settings.past_due_grace_days ?? '3'}
+                onChange={e => {
+                  const v = Math.max(0, Math.min(30, parseInt(e.target.value) || 0));
+                  setField('past_due_grace_days', String(v));
+                }}
+                placeholder="3"
+              />
+              <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', display: 'block', marginTop: '0.25rem' }}>
+                Dias que o usuário pode continuar usando o app após o vencimento antes de ser bloqueado.
+              </span>
+            </Field>
+          </div>
 
           {error && <p style={{ color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.85rem', margin: '0.5rem 0' }}>{error}</p>}
 

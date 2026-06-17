@@ -83,6 +83,19 @@ export default function AcademiaProfessores() {
   const [newProfessorName, setNewProfessorName] = useState('');
   const [newProfessorEmail, setNewProfessorEmail] = useState('');
   const [newProfessorPassword, setNewProfessorPassword] = useState('');
+  const [createErrors, setCreateErrors] = useState<{ name?: string; email?: string; password?: string }>({});
+
+  const validateCreateForm = (): boolean => {
+    const errors: typeof createErrors = {};
+    if (!newProfessorName.trim()) errors.name = 'Nome é obrigatório';
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!newProfessorEmail.trim()) errors.email = 'E-mail é obrigatório';
+    else if (!emailRegex.test(newProfessorEmail.trim())) errors.email = 'E-mail inválido';
+    if (!newProfessorPassword) errors.password = 'Senha é obrigatória';
+    else if (newProfessorPassword.length < 6) errors.password = 'Mínimo 6 caracteres';
+    setCreateErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const load = useCallback(async () => {
     if (!user?.uid) return;
@@ -155,6 +168,7 @@ export default function AcademiaProfessores() {
   };
 
   const createLink = async () => {
+    if (createAccount && !validateCreateForm()) return;
     if (!createAccount && !selectedProfessor) return;
     setSaving(true);
     try {
@@ -326,9 +340,22 @@ export default function AcademiaProfessores() {
           {relationType === 'internal' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.85rem', border: '1px solid #E8772244', background: '#1A1208' }}>
               <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.7rem', color: '#D9A25B', textTransform: 'uppercase', margin: 0 }}>Login inicial do professor</p>
-              <input value={newProfessorName} onChange={e => setNewProfessorName(e.target.value)} placeholder="Nome do professor" style={inputStyle} />
-              <input value={newProfessorEmail} onChange={e => { setNewProfessorEmail(e.target.value); setCreateAccount(!!e.target.value); }} placeholder="E-mail" type="email" style={inputStyle} />
-              <input value={newProfessorPassword} onChange={e => { setNewProfessorPassword(e.target.value); setCreateAccount(!!e.target.value); }} placeholder="Senha inicial" type="password" style={inputStyle} />
+              <div>
+                <input value={newProfessorName} onChange={e => { setNewProfessorName(e.target.value); setCreateErrors(p => ({ ...p, name: undefined })); }} placeholder="Nome do professor" style={{ ...inputStyle, borderColor: createErrors.name ? '#CC0000' : '#2A2A2A' }} />
+                {createErrors.name && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.68rem', color: '#CC0000', margin: '0.2rem 0 0' }}>{createErrors.name}</p>}
+              </div>
+              <div>
+                <input value={newProfessorEmail} onChange={e => { setNewProfessorEmail(e.target.value); setCreateAccount(!!e.target.value); setCreateErrors(p => ({ ...p, email: undefined })); }}
+                  onBlur={() => { if (newProfessorEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newProfessorEmail.trim())) setCreateErrors(p => ({ ...p, email: 'E-mail inválido' })); }}
+                  placeholder="E-mail válido" type="email" style={{ ...inputStyle, borderColor: createErrors.email ? '#CC0000' : '#2A2A2A' }} />
+                {createErrors.email && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.68rem', color: '#CC0000', margin: '0.2rem 0 0' }}>{createErrors.email}</p>}
+              </div>
+              <div>
+                <input value={newProfessorPassword} onChange={e => { setNewProfessorPassword(e.target.value); setCreateAccount(!!e.target.value); setCreateErrors(p => ({ ...p, password: undefined })); }}
+                  onBlur={() => { if (newProfessorPassword && newProfessorPassword.length < 6) setCreateErrors(p => ({ ...p, password: 'Mínimo 6 caracteres' })); }}
+                  placeholder="Senha inicial (mínimo 6 caracteres)" type="password" style={{ ...inputStyle, borderColor: createErrors.password ? '#CC0000' : '#2A2A2A' }} />
+                {createErrors.password && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.68rem', color: '#CC0000', margin: '0.2rem 0 0' }}>{createErrors.password}</p>}
+              </div>
               <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.68rem', color: '#A67B3D', margin: 0, lineHeight: 1.4 }}>
                 Cria uma conta com role professor, faixa preta, vinculada a esta academia. O professor fara login com o e-mail e senha fornecidos.
               </p>
@@ -514,6 +541,22 @@ function ProfessorDetail({ link, assignments, students, actioning, onRemove, onA
   const info = relationInfo(link.relationType);
   const status = linkStatusInfo(link.status);
   const [quickStudent, setQuickStudent] = useState('');
+  const [removingAssignment, setRemovingAssignment] = useState<string | null>(null);
+
+  const handleRemoveAssignment = async (assignmentId: string, studentName?: string | null) => {
+    if (!confirm(`Remover ${studentName || 'aluno'} deste professor?`)) return;
+    setRemovingAssignment(assignmentId);
+    try {
+      await api.academy.studentAssignments.cancel(assignmentId);
+      toast.success('Aluno removido do professor.');
+      // Recarrega fechando e reabrindo
+      onRemove(link);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao remover atribuição');
+    } finally {
+      setRemovingAssignment(null);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -549,6 +592,11 @@ function ProfessorDetail({ link, assignments, students, actioning, onRemove, onA
               <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#111', border: '1px solid #222', padding: '0.5rem 0.7rem' }}>
                 <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.8rem', color: '#FFF', flex: 1 }}>{a.studentName || 'Aluno'}</span>
                 <Badge label={assignmentStatus(a.status).label} color={assignmentStatus(a.status).color} />
+                <button onClick={e => { e.stopPropagation(); handleRemoveAssignment(a.id, a.studentName); }}
+                    disabled={removingAssignment === a.id}
+                    style={{ background: 'none', border: '1px solid #CC000044', color: '#CC0000', cursor: removingAssignment === a.id ? 'not-allowed' : 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.4rem', fontFamily: FONTS.condensed, fontWeight: 700 }}>
+                    {removingAssignment === a.id ? '...' : '✕'}
+                  </button>
               </div>
             ))}
           </div>

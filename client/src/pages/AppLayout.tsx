@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, CalendarCheck, School, GraduationCap, Users, Target, User } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, School, GraduationCap, Users, Target, User, CreditCard } from 'lucide-react';
 import { pageVariant as pageVariants, pageTransition, overlayVariant as overlayVariants, modalVariant as modalVariants } from '@/lib/animations';
 import { COLORS } from '@/lib/design';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
@@ -589,6 +589,10 @@ export default function AppLayout() {
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             <span>NOVO TREINO</span>
+          </button>
+          <button className="bjj-sidebar-logout-btn" onClick={() => window.location.href = '/app/subscription'} style={{ color: '#AAA', borderColor: '#333' }}>
+            <CreditCard size={13} strokeWidth={2} />
+            <span>ASSINATURA</span>
           </button>
           <button className="bjj-sidebar-logout-btn" onClick={handleLogout}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

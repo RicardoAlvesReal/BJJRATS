@@ -1,6 +1,7 @@
 // BJJRats PWA — Auth Context (JWT + PostgreSQL, sem Firebase)
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import api, { type UserProfile } from '@/lib/api';
+import { toast } from 'sonner';
 
 export type { UserProfile };
 
@@ -51,13 +52,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Troca de senha obrigatória (professor interno primeiro login)
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [changingPass, setChangingPass] = useState(false);
+
   // Restaurar sessão ao montar
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) { setLoading(false); return; }
 
     api.auth.me()
-      .then(setUser)
+      .then(u => {
+        setUser(u);
+        if ((u as any).mustChangePassword) setShowChangePassword(true);
+      })
       .catch(() => localStorage.removeItem(TOKEN_KEY))
       .finally(() => setLoading(false));
   }, []);
@@ -66,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { token, user: u } = await api.auth.login(email, password);
     localStorage.setItem(TOKEN_KEY, token);
     setUser(u);
+    if ((u as any).mustChangePassword) setShowChangePassword(true);
   };
 
   const register = async (data: RegisterData) => {
@@ -95,6 +106,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updated);
   };
 
+  const handleChangePassword = async () => {
+    if (!newPass || newPass.length < 6) { toast.error('Senha deve ter no mínimo 6 caracteres'); return; }
+    if (newPass !== confirmPass) { toast.error('Senhas não conferem'); return; }
+    setChangingPass(true);
+    try {
+      await api.users.update(user!.uid, { password: newPass, mustChangePassword: false } as any);
+      toast.success('Senha alterada com sucesso!');
+      setShowChangePassword(false);
+      setUser(prev => prev ? { ...prev, mustChangePassword: false } as any : null);
+    } catch { toast.error('Erro ao alterar senha'); }
+    finally { setChangingPass(false); }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -107,6 +131,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshProfile,
       updateProfileData,
     }}>
+      {showChangePassword && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#0A0A0A', border: '1px solid #E87722', padding: '1.5rem', width: '100%', maxWidth: '380px' }}>
+            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', color: '#FFF', textTransform: 'uppercase', margin: '0 0 0.25rem' }}>🔐 ALTERAR SENHA</p>
+            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', marginBottom: '1rem', lineHeight: 1.4 }}>
+              Primeiro acesso detectado. Por segurança, defina uma nova senha para sua conta.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)}
+                placeholder="Nova senha (mínimo 6 caracteres)"
+                style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.65rem', outline: 'none', boxSizing: 'border-box' }} />
+              <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)}
+                placeholder="Confirmar nova senha"
+                style={{ width: '100%', background: '#111', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.65rem', outline: 'none', boxSizing: 'border-box' }} />
+              <button onClick={handleChangePassword} disabled={changingPass}
+                style={{ background: changingPass ? '#333' : '#E87722', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', textTransform: 'uppercase', padding: '0.7rem', cursor: 'pointer', width: '100%' }}>
+                {changingPass ? 'SALVANDO...' : 'SALVAR NOVA SENHA'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {children}
     </AuthContext.Provider>
   );

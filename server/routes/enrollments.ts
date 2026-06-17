@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { enrollments, notifications, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import { notifyEnrollmentReactivated } from '../services/enrollmentNotifications.js';
 
 const router = Router();
@@ -93,6 +94,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   const createdByProfessor = req.userId === professorUid;
   if (!createdByStudent && !createdByProfessor) {
     res.status(403).json({ error: 'Proibido' });
+    return;
+  }
+
+  if (createdByProfessor && await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Matriculas deste professor sao gerenciadas pela academia.' });
     return;
   }
 
@@ -208,6 +214,10 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 
   if (existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Matriculas deste professor sao gerenciadas pela academia.' });
+    return;
+  }
   if (existing.status === 'pending' && data.status === 'active') {
     res.status(403).json({ error: 'O aluno precisa aceitar a matrícula' });
     return;
@@ -223,6 +233,10 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ professorUid: enrollments.professorUid }).from(enrollments).where(eq(enrollments.id, req.params.id)).limit(1);
   if (!existing || existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Matriculas deste professor sao gerenciadas pela academia.' });
+    return;
+  }
   await db.delete(enrollments).where(eq(enrollments.id, req.params.id));
   res.json({ success: true });
 });

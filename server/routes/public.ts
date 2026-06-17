@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { eq, and, ilike, or, ne, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { classSchedules, notifications, users } from '../db/schema.js';
+import { classSchedules, enrollments, notifications, users } from '../db/schema.js';
+import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { getPaymentIntegration, toPublicPaymentIntegration } from '../services/paymentIntegrations.js';
 
 const router = Router();
 
@@ -202,6 +204,34 @@ router.post('/trial-requests', async (req, res) => {
   });
 
   res.status(201).json({ success: true });
+});
+
+// GET /api/public/payment-methods/:ownerUid
+// Retorna métodos de pagamento públicos de uma academia/professor
+// Requer autenticação — o aluno precisa ter matrícula ativa com o owner
+router.get('/payment-methods/:ownerUid', requireAuth, async (req: AuthRequest, res) => {
+  const ownerUid = req.params.ownerUid;
+
+  // Verifica se o aluno logado tem matrícula ativa com este professor/academia
+  const [enrollment] = await db
+    .select()
+    .from(enrollments)
+    .where(
+      and(
+        eq(enrollments.studentUid, req.userId!),
+        eq(enrollments.professorUid, ownerUid),
+        eq(enrollments.status, 'active'),
+      ),
+    )
+    .limit(1);
+
+  if (!enrollment) {
+    res.status(403).json({ error: 'Sem matrícula ativa com este professor/academia' });
+    return;
+  }
+
+  const integration = await getPaymentIntegration(ownerUid);
+  res.json(toPublicPaymentIntegration(integration));
 });
 
 export default router;

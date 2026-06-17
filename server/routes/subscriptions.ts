@@ -1,18 +1,32 @@
 // BJJRats — Subscription routes (Asaas integration)
 
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { users, plans, subscriptions } from '../db/schema.js';
+import { academyProfessorLinks, users, plans, subscriptions, settings } from '../db/schema.js';
 import {
   createCustomer, findCustomer, createSubscription as asaasCreateSub,
-  cancelSubscription as asaasCancelSub, listSubscriptionPayments, parseWebhook,
+  cancelSubscription as asaasCancelSub, getSubscription, updateSubscription,
+  listSubscriptionPayments, parseWebhook,
   type AsaasWebhookEvent,
 } from '../services/asaas.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
+
+async function getGraceDays(): Promise<number> {
+  try {
+    const [row] = await db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, 'past_due_grace_days'))
+      .limit(1);
+    return parseInt(row?.value || '3', 10) || 3;
+  } catch {
+    return 3;
+  }
+}
 
 // ─── GET /api/subscriptions/plans ──────────────────────────────────────────
 // Lista planos disponíveis
@@ -26,7 +40,7 @@ router.get('/plans', async (_req, res) => {
 });
 
 // ─── GET /api/subscriptions/my ────────────────────────────────────────────
-// Assinatura do usuário atual
+// Assinatura do usuário atual (inclui past_due para permitir regularização)
 router.get('/my', requireAuth, async (req: AuthRequest, res) => {
   const sub = await db
     .select()
@@ -34,11 +48,54 @@ router.get('/my', requireAuth, async (req: AuthRequest, res) => {
     .where(
       and(
         eq(subscriptions.userUid, req.userId!),
-        eq(subscriptions.status, 'active'),
+        or(
+          eq(subscriptions.status, 'active'),
+          eq(subscriptions.status, 'trial'),
+          eq(subscriptions.status, 'past_due'),
+        ),
       ),
     )
     .limit(1);
   if (!sub.length) {
+    const [academyCoveredAccess] = await db
+      .select({
+        academyUid: academyProfessorLinks.academyUid,
+        academyName: users.academyName,
+        academy: users.academy,
+        academyUserName: users.name,
+        createdAt: academyProfessorLinks.createdAt,
+      })
+      .from(academyProfessorLinks)
+      .innerJoin(users, eq(users.uid, academyProfessorLinks.academyUid))
+      .where(
+        and(
+          eq(academyProfessorLinks.professorUid, req.userId!),
+          eq(academyProfessorLinks.relationType, 'internal'),
+          eq(academyProfessorLinks.status, 'active'),
+        ),
+      )
+      .limit(1);
+
+    if (academyCoveredAccess) {
+      res.json({
+        subscription: {
+          id: `academy-covered:${academyCoveredAccess.academyUid}`,
+          userUid: req.userId!,
+          planId: 'academy-covered',
+          status: 'active',
+          coveredByAcademy: true,
+          academyUid: academyCoveredAccess.academyUid,
+          academyName: academyCoveredAccess.academyName
+            || academyCoveredAccess.academy
+            || academyCoveredAccess.academyUserName
+            || 'Academia',
+          createdAt: academyCoveredAccess.createdAt,
+          plan: null,
+        },
+      });
+      return;
+    }
+
     res.json({ subscription: null });
     return;
   }
@@ -195,6 +252,110 @@ router.post('/cancel', requireAuth, async (req: AuthRequest, res) => {
     .where(eq(subscriptions.id, sub.id));
 
   res.json({ success: true });
+});
+
+// ─── GET /api/subscriptions/my/billing ────────────────────────────────────
+// Retorna o billing type atual da assinatura no Asaas + pending payment info
+router.get('/my/billing', requireAuth, async (req: AuthRequest, res) => {
+  const [sub] = await db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.userUid, req.userId!),
+        or(eq(subscriptions.status, 'active'), eq(subscriptions.status, 'trial'), eq(subscriptions.status, 'past_due')),
+      ),
+    )
+    .limit(1);
+
+  if (!sub || !sub.asaasId) {
+    res.json({ billingType: null, availableMethods: ['PIX', 'CREDIT_CARD'], pendingPayment: null, graceDays: await getGraceDays() });
+    return;
+  }
+
+  try {
+    const asaasSub = await getSubscription(sub.asaasId);
+    let pendingPayment: {
+      id: string;
+      value: number;
+      dueDate: string;
+      status: string;
+      invoiceUrl?: string;
+      bankSlipUrl?: string;
+      pixQrCode?: string;
+    } | null = null;
+
+    // Se estiver past_due, busca cobranças pendentes
+    if (sub.status === 'past_due' || asaasSub.status === 'OVERDUE') {
+      try {
+        const payments = await listSubscriptionPayments(sub.asaasId);
+        const overdue = payments.find(p => ['OVERDUE', 'PENDING'].includes(p.status));
+        if (overdue) {
+          pendingPayment = {
+            id: overdue.id,
+            value: overdue.value,
+            dueDate: overdue.dueDate,
+            status: overdue.status,
+            invoiceUrl: overdue.invoiceUrl,
+            bankSlipUrl: overdue.bankSlipUrl,
+            pixQrCode: overdue.pixQrCode,
+          };
+        }
+      } catch { /* silencioso */ }
+    }
+
+    res.json({
+      billingType: asaasSub.billingType || 'PIX',
+      availableMethods: ['PIX', 'CREDIT_CARD'],
+      pendingPayment,
+      graceDays: await getGraceDays(),
+    });
+  } catch {
+    res.json({ billingType: 'PIX', availableMethods: ['PIX', 'CREDIT_CARD'], pendingPayment: null, graceDays: await getGraceDays() });
+  }
+});
+
+// ─── PUT /api/subscriptions/my/billing ────────────────────────────────────
+// Altera a forma de pagamento da assinatura
+router.put('/my/billing', requireAuth, async (req: AuthRequest, res) => {
+  const { billingType } = req.body as { billingType?: string };
+  const validTypes = ['PIX', 'CREDIT_CARD'];
+
+  if (!billingType || !validTypes.includes(billingType)) {
+    res.status(400).json({ error: `billingType inválido. Use: ${validTypes.join(', ')}` });
+    return;
+  }
+
+  const [sub] = await db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.userUid, req.userId!),
+        or(eq(subscriptions.status, 'active'), eq(subscriptions.status, 'trial'), eq(subscriptions.status, 'past_due')),
+      ),
+    )
+    .limit(1);
+
+  if (!sub) {
+    res.status(404).json({ error: 'Nenhuma assinatura ativa' });
+    return;
+  }
+
+  if (!sub.asaasId) {
+    res.status(400).json({ error: 'Assinatura não vinculada ao Asaas' });
+    return;
+  }
+
+  const updated = await updateSubscription(sub.asaasId, {
+    billingType: billingType as 'PIX' | 'BOLETO' | 'CREDIT_CARD',
+  });
+
+  res.json({
+    billingType: updated.billingType || billingType,
+    availableMethods: validTypes,
+    message: 'Forma de pagamento alterada com sucesso',
+  });
 });
 
 // ─── POST /api/subscriptions/webhook ──────────────────────────────────────

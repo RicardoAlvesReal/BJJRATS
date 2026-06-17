@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import api, { type CrmData } from '@/lib/api';
+import api, { type CrmData, type AdminMetrics } from '@/lib/api';
 import { fadeUp, staggerContainer, tabVariant, tabTransition } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
 
-type CrmTab = 'overview' | 'leads' | 'financial' | 'students' | 'attendance';
+type CrmTab = 'overview' | 'financial' | 'metrics';
 
 export default function AdminCrm() {
   const [data, setData] = useState<CrmData | null>(null);
@@ -41,10 +41,8 @@ export default function AdminCrm() {
 
   const tabs = [
     { id: 'overview' as CrmTab, label: 'VISÃO GERAL' },
-    { id: 'leads' as CrmTab, label: 'LEADS' },
     { id: 'financial' as CrmTab, label: 'FINANCEIRO' },
-    { id: 'students' as CrmTab, label: 'ALUNOS' },
-    { id: 'attendance' as CrmTab, label: 'FREQUÊNCIA' },
+    { id: 'metrics' as CrmTab, label: 'MÉTRICAS' },
   ];
 
   return (
@@ -55,7 +53,7 @@ export default function AdminCrm() {
             CRM
           </h1>
           <p style={{ color: '#666', fontSize: '0.85rem', fontFamily: FONTS.condensed, letterSpacing: '0.05em', marginTop: '0.125rem' }}>
-            Relacionamento com academias e alunos
+            Receita de assinaturas da plataforma
           </p>
         </div>
         <button onClick={load} className="bjj-btn-ghost" style={{ fontSize: '0.7rem', padding: '0.4rem 0.75rem' }}>
@@ -89,10 +87,8 @@ export default function AdminCrm() {
 
       <motion.div key={tab} variants={tabVariant} initial="initial" animate="animate" transition={tabTransition}>
         {tab === 'overview' && <OverviewTab data={data} onRefresh={load} />}
-        {tab === 'leads' && <LeadsTab data={data} />}
         {tab === 'financial' && <FinancialTab data={data} />}
-        {tab === 'students' && <StudentsTab data={data} />}
-        {tab === 'attendance' && <AttendanceTab data={data} />}
+        {tab === 'metrics' && <MetricsTab />}
       </motion.div>
     </motion.div>
   );
@@ -101,30 +97,29 @@ export default function AdminCrm() {
 // ─── Overview ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ data, onRefresh }: { data: CrmData; onRefresh: () => void }) {
-  const { revenue, studentStats, attendance, inactiveStudents, defaultingStudents } = data;
+  const { revenue, studentStats, defaultingStudents } = data;
+  const mrr = revenue?.mrr ?? revenue?.projectedMonthly ?? 0;
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show">
 
-      {/* Revenue cards */}
-      <motion.div variants={fadeUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-        <StatCard label="Faturado" value={`R$ ${revenue.totalBilled.toFixed(0)}`} color="#22C55E" />
-        <StatCard label="Recebido" value={`R$ ${revenue.totalPaid.toFixed(0)}`} color="#22C55E" />
-        <StatCard label="Pendente" value={`R$ ${revenue.totalPending.toFixed(0)}`} color="#E87722" />
-        <StatCard label="Vencido" value={`R$ ${revenue.totalOverdue.toFixed(0)}`} color="#CC0000" />
-        <StatCard label="Previsto/mês" value={`R$ ${revenue.projectedMonthly.toFixed(0)}`} color="#3B82F6" />
-        <StatCard label="Previsto/ano" value={`R$ ${revenue.projectedAnnual.toFixed(0)}`} color="#3B82F6" />
+      {/* Revenue cards — plataforma */}
+      <motion.div variants={fadeUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+        <StatCard label="MRR" value={`R$ ${mrr.toFixed(0)}`} color="#22C55E" />
+        <StatCard label="Previsto/ano" value={`R$ ${(mrr * 12).toFixed(0)}`} color="#3B82F6" />
+        <StatCard label="Assinantes ativos" value={`${studentStats?.active ?? 0}`} color="#22C55E" />
+        <StatCard label="Em trial" value={`${studentStats?.suspended ?? 0}`} color="#3B82F6" />
+        <StatCard label="Inadimplentes" value={`${studentStats?.cancelled ?? 0}`} color="#CC0000" />
       </motion.div>
 
-      {/* Second row: students + attendance + inactive alert */}
-      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        {/* Student stats */}
+      {/* Subscriber distribution + evolution */}
+      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">ALUNOS</p>
+          <p className="bjj-label">ASSINANTES</p>
           <div className="flex items-stretch gap-2 mt-2" style={{ minHeight: '60px' }}>
             {[
               { label: 'Ativos', count: studentStats?.active ?? 0, color: '#22C55E' },
-              { label: 'Suspensos', count: studentStats?.suspended ?? 0, color: '#E87722' },
-              { label: 'Cancelados', count: studentStats?.cancelled ?? 0, color: '#CC0000' },
+              { label: 'Trial', count: studentStats?.suspended ?? 0, color: '#3B82F6' },
+              { label: 'Inadimplentes', count: studentStats?.cancelled ?? 0, color: '#CC0000' },
             ].map(s => (
               <div key={s.label} className="flex-1 flex flex-col items-center justify-center text-center" style={{ background: '#0A0A0A', borderRadius: '8px', padding: '0.5rem' }}>
                 <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.25rem', color: s.color }}>{s.count}</span>
@@ -134,69 +129,23 @@ function OverviewTab({ data, onRefresh }: { data: CrmData; onRefresh: () => void
           </div>
         </div>
 
-        {/* Attendance rate */}
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">FREQUÊNCIA (30 DIAS)</p>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
-            <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.75rem', color: '#3B82F6' }}>
-              {attendance?.rate ?? 0}%
-            </span>
-            <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>
-              {attendance?.checkInsLast30Days ?? 0} check-ins / {attendance?.totalStudents ?? 0} alunos
-            </span>
-          </div>
-          <div style={{ width: '100%', height: '6px', background: '#1A1A1A', borderRadius: '3px', marginTop: '0.5rem', overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(attendance?.rate ?? 0, 100)}%`, height: '100%', background: '#3B82F6', borderRadius: '3px' }} />
-          </div>
-        </div>
-
-        {/* Inactive students alert */}
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">ALUNOS INATIVOS</p>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.25rem' }}>
-            <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.75rem', color: (inactiveStudents?.length ?? 0) > 0 ? '#E87722' : '#22C55E' }}>
-              {inactiveStudents?.length ?? 0}
-            </span>
-            <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>
-              sem treinar há 15+ dias
-            </span>
-          </div>
-          {(inactiveStudents?.length ?? 0) > 0 && (
-            <div style={{ marginTop: '0.5rem', maxHeight: '80px', overflowY: 'auto' }}>
-              {inactiveStudents?.slice(0, 5).map(s => (
-                <div key={s.studentUid} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#888', fontFamily: FONTS.condensed, padding: '2px 0', borderBottom: '1px solid #1A1A1A' }}>
-                  <span>{s.studentName}</span>
-                  <span style={{ color: s.daysSinceLastCheckIn > 30 ? '#CC0000' : '#E87722' }}>{s.daysSinceLastCheckIn}d</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Lead pipeline + Revenue chart */}
-      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">PIPELINE DE LEADS</p>
-          <PipelineBars data={data} />
-        </div>
         {data.revenueMonthly.length > 0 && (
           <div className="bjj-card" style={{ padding: '1.25rem' }}>
-            <p className="bjj-label">FATURAMENTO MENSAL (RECEBIDO)</p>
+            <p className="bjj-label">NOVAS ASSINATURAS POR MÊS</p>
             <RevenueChart data={data.revenueMonthly} />
           </div>
         )}
       </motion.div>
 
-      {/* Defaulting students */}
+      {/* Defaulting subscribers */}
       {(defaultingStudents?.length ?? 0) > 0 && (
         <motion.div variants={fadeUp}>
-          <p className="bjj-label" style={{ color: '#CC0000' }}>INADIMPLENTES</p>
+          <p className="bjj-label" style={{ color: '#CC0000' }}>ASSINANTES INADIMPLENTES</p>
           <div className="bjj-card" style={{ padding: '1.25rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               {defaultingStudents?.map(p => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.3rem' }}>
-                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{p.studentName || '—'}</span>
+                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{p.studentName || p.id}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.85rem', color: '#CC0000' }}>R$ {Number(p.amount).toFixed(2)}</span>
                     <PaymentBadge status={p.status} />
@@ -208,85 +157,6 @@ function OverviewTab({ data, onRefresh }: { data: CrmData; onRefresh: () => void
         </motion.div>
       )}
 
-      {/* Recent payments */}
-      <motion.div variants={fadeUp}>
-        <p className="bjj-label">ÚLTIMOS PAGAMENTOS</p>
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          {data.recentPayments.length === 0 ? (
-            <p style={{ color: '#555', fontSize: '0.85rem', fontFamily: FONTS.condensed }}>Nenhum pagamento registrado.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {data.recentPayments.map(p => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.3rem' }}>
-                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{p.studentName || '—'}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.85rem', color: p.status === 'paid' ? '#22C55E' : p.status === 'overdue' ? '#CC0000' : '#E87722' }}>
-                      R$ {Number(p.amount).toFixed(2)}
-                    </span>
-                    <PaymentBadge status={p.status} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ─── Leads ─────────────────────────────────────────────────────────────────
-
-function LeadsTab({ data }: { data: CrmData }) {
-  const pending = data.leads.find(l => l.status === 'pending')?.count ?? 0;
-  const accepted = data.leads.find(l => l.status === 'accepted')?.count ?? 0;
-  const rejected = data.leads.find(l => l.status === 'rejected')?.count ?? 0;
-  const total = pending + accepted + rejected;
-
-  const leadsList = data.leadsDetail ?? [];
-
-  return (
-    <motion.div variants={staggerContainer} initial="hidden" animate="show">
-      <motion.div variants={fadeUp} className="bjj-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-        <p className="bjj-label">HISTÓRICO DE ENTRADAS</p>
-        <div className="flex flex-col gap-3 mt-2">
-          <FunnelStage label="Automáticas" count={total} total={total} color="#22C55E" />
-        </div>
-      </motion.div>
-
-      <motion.div variants={fadeUp}>
-        <p className="bjj-label">TODAS AS ENTRADAS</p>
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          {leadsList.length === 0 ? (
-            <p style={{ color: '#555', fontSize: '0.85rem', fontFamily: FONTS.condensed }}>Nenhuma entrada registrada.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {leadsList.map(l => (
-                <div key={l.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.65rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '150px' }}>
-                    {l.studentPhoto ? (
-                      <img src={l.studentPhoto} alt="" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>
-                        {l.studentName?.charAt(0)?.toUpperCase() || '?'}
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC', fontWeight: 600 }}>{l.studentName || '—'}</span>
-                      <span style={{ fontFamily: FONTS.condensed, fontSize: '0.65rem', color: '#666' }}>
-                        {l.studentBelt || 'Faixa não informada'} {l.studentEmail ? `• ${l.studentEmail}` : ''}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ fontFamily: FONTS.condensed, fontSize: '0.65rem', color: '#22C55E' }}>
-                    Matrícula criada
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </motion.div>
     </motion.div>
   );
 }
@@ -295,55 +165,34 @@ function LeadsTab({ data }: { data: CrmData }) {
 
 function FinancialTab({ data }: { data: CrmData }) {
   const { revenue, defaultingStudents } = data;
+  const mrr = (revenue as any)?.mrr ?? revenue?.projectedMonthly ?? 0;
   const defaultingTotal = defaultingStudents?.reduce((a, p) => a + Number(p.amount), 0) ?? 0;
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show">
       <motion.div variants={fadeUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-        <StatCard label="Total faturado" value={`R$ ${revenue.totalBilled.toFixed(2)}`} color="#22C55E" />
-        <StatCard label="Total recebido" value={`R$ ${revenue.totalPaid.toFixed(2)}`} color="#22C55E" />
-        <StatCard label="Pendente" value={`R$ ${revenue.totalPending.toFixed(2)}`} color="#E87722" />
-        <StatCard label="Vencido" value={`R$ ${revenue.totalOverdue.toFixed(2)}`} color="#CC0000" />
-        <StatCard label="Inadimplência" value={revenue.totalBilled > 0 ? `${((revenue.totalOverdue / revenue.totalBilled) * 100).toFixed(1)}%` : '0%'} color="#CC0000" />
-        <StatCard label="A receber em aberto" value={`R$ ${(revenue.totalPending + revenue.totalOverdue).toFixed(2)}`} color="#E87722" />
-      </motion.div>
-
-      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">RECEITA MENSAL PREVISTA</p>
-          <p style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '2rem', color: '#3B82F6', margin: '0.5rem 0 0' }}>
-            R$ {revenue.projectedMonthly.toFixed(2)}
-          </p>
-          <p style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>
-            {revenue.activeEnrollments} matrícula{revenue.activeEnrollments !== 1 ? 's' : ''} ativa{revenue.activeEnrollments !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">RECEITA ANUAL PREVISTA</p>
-          <p style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '2rem', color: '#3B82F6', margin: '0.5rem 0 0' }}>
-            R$ {revenue.projectedAnnual.toFixed(2)}
-          </p>
-          <p style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>
-            Projeção anual com base nas matrículas atuais
-          </p>
-        </div>
+        <StatCard label="MRR" value={`R$ ${mrr.toFixed(2)}`} color="#22C55E" />
+        <StatCard label="Previsto anual" value={`R$ ${(mrr * 12).toFixed(2)}`} color="#3B82F6" />
+        <StatCard label="Assinantes ativos" value={`${revenue.activeEnrollments}`} color="#22C55E" />
+        <StatCard label="Inadimplentes" value={`${defaultingStudents?.length ?? 0}`} color="#CC0000" />
+        <StatCard label="Total inadimplência" value={`R$ ${defaultingTotal.toFixed(2)}`} color="#CC0000" />
+        <StatCard label="Ticket médio" value={revenue.activeEnrollments > 0 ? `R$ ${(mrr / revenue.activeEnrollments).toFixed(2)}` : 'R$ 0,00'} color="#FFF" />
       </motion.div>
 
       {data.revenueMonthly.length > 0 && (
         <motion.div variants={fadeUp} className="bjj-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-          <p className="bjj-label">HISTÓRICO DE FATURAMENTO (RECEBIDO)</p>
+          <p className="bjj-label">NOVAS ASSINATURAS POR MÊS</p>
           <RevenueChart data={data.revenueMonthly} height={160} showCount />
         </motion.div>
       )}
 
-      {/* Defaulting */}
       {(defaultingStudents?.length ?? 0) > 0 && (
         <motion.div variants={fadeUp}>
-          <p className="bjj-label" style={{ color: '#CC0000' }}>INADIMPLENTES — Total: R$ {defaultingTotal.toFixed(2)}</p>
+          <p className="bjj-label" style={{ color: '#CC0000' }}>ASSINANTES INADIMPLENTES — Total: R$ {defaultingTotal.toFixed(2)}</p>
           <div className="bjj-card" style={{ padding: '1.25rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               {defaultingStudents?.map(p => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.3rem' }}>
-                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{p.studentName || '—'}</span>
+                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{p.studentName || p.id}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.85rem', color: '#CC0000' }}>R$ {Number(p.amount).toFixed(2)}</span>
                     <PaymentBadge status={p.status} />
@@ -358,184 +207,101 @@ function FinancialTab({ data }: { data: CrmData }) {
   );
 }
 
-// ─── Students ──────────────────────────────────────────────────────────────
+// ─── Metrics ──────────────────────────────────────────────────────────────
 
-function StudentsTab({ data }: { data: CrmData }) {
-  const { studentStats, enrollmentEvolution, studentsByBelt, inactiveStudents } = data;
+function MetricsTab() {
+  const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const enrollmentTotal = enrollmentEvolution?.reduce((a, e) => a + e.newEnrollments, 0) ?? 0;
+  useEffect(() => {
+    api.admin.getMetrics()
+      .then(setMetrics)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div style={{ color: '#666', fontFamily: FONTS.condensed, padding: '2rem 0', textAlign: 'center' }}>CARREGANDO...</div>;
+  }
+
+  if (!metrics) {
+    return <div style={{ color: '#666', fontFamily: FONTS.condensed, padding: '2rem 0', textAlign: 'center' }}>Erro ao carregar métricas.</div>;
+  }
+
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show">
-      {/* Cards */}
-      <motion.div variants={fadeUp} className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <StatCard label="Total de alunos" value={studentStats?.total ?? 0} color="#FFF" />
-        <StatCard label="Matrículas ativas" value={studentStats?.active ?? 0} color="#22C55E" />
-        <StatCard label="Suspensos" value={studentStats?.suspended ?? 0} color="#E87722" />
-        <StatCard label="Cancelados" value={studentStats?.cancelled ?? 0} color="#CC0000" />
+      {/* Overview cards */}
+      <motion.div variants={fadeUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+        <StatCard label="Total faturado" value={fmt(metrics.overview.totalBilled)} color="#22C55E" />
+        <StatCard label="Total recebido" value={fmt(metrics.overview.totalPaid)} color="#22C55E" />
+        <StatCard label="Pendente" value={fmt(metrics.overview.totalPending)} color="#E87722" />
+        <StatCard label="Vencido" value={fmt(metrics.overview.totalOverdue)} color="#CC0000" />
+        <StatCard label="Taxa de recebimento" value={`${metrics.overview.paidRate}%`} color="#3B82F6" />
       </motion.div>
 
-      {/* Enrollment evolution + Belt distribution */}
+      {/* Second row */}
+      <motion.div variants={fadeUp} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+        <StatCard label="Previsto/mês" value={fmt(metrics.overview.monthlyProjected)} color="#3B82F6" />
+        <StatCard label="Total de registros" value={`${metrics.overview.totalRows ?? 0}`} color="#FFF" />
+        <StatCard label="Pagos" value={`${metrics.overview.countPaid}`} color="#22C55E" />
+        <StatCard label="Pendentes" value={`${metrics.overview.countPending}`} color="#E87722" />
+        <StatCard label="Vencidos" value={`${metrics.overview.countOverdue}`} color="#CC0000" />
+      </motion.div>
+
+      {/* Revenue chart + Enrollment breakdown */}
       <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Enrollments over time */}
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">MATRÍCULAS POR MÊS ({enrollmentTotal} total)</p>
-          {enrollmentEvolution && enrollmentEvolution.length > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem', height: '120px', paddingTop: '0.5rem' }}>
-              {enrollmentEvolution.map((r) => {
-                const max = Math.max(...enrollmentEvolution.map(x => x.newEnrollments), 1);
-                const h = (r.newEnrollments / max) * 100;
-                return (
-                  <div key={r.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.6rem', color: '#888' }}>{r.newEnrollments}</span>
-                    <div style={{ width: '100%', height: `${Math.max(h, 4)}%`, background: 'linear-gradient(to top, #3B82F6, #60A5FA)', borderRadius: '3px 3px 0 0', minHeight: '4px' }} />
-                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.55rem', color: '#555', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                      {new Date(r.month + '-01').toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p style={{ color: '#555', fontSize: '0.85rem', fontFamily: FONTS.condensed, marginTop: '0.5rem' }}>Nenhuma matrícula registrada.</p>
-          )}
-        </div>
-
-        {/* Belt distribution */}
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">ALUNOS POR FAIXA</p>
-          {studentsByBelt && studentsByBelt.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
-              {studentsByBelt.map(b => {
-                const total = studentsByBelt.reduce((a, x) => a + x.count, 0) || 1;
-                const pct = (b.count / total) * 100;
-                const beltColors: Record<string, string> = {
-                  'Branca': '#E5E7EB',
-                  'Azul': '#3B82F6',
-                  'Roxa': '#8B5CF6',
-                  'Marrom': '#78350F',
-                  'Preta': '#111',
-                };
-                return (
-                  <div key={b.belt} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#CCC', width: '70px', flexShrink: 0 }}>{b.belt || 'Sem faixa'}</span>
-                    <div style={{ flex: 1, height: '16px', background: '#1A1A1A', borderRadius: '8px', overflow: 'hidden', display: 'flex' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', background: beltColors[b.belt ?? ''] || '#555', borderRadius: '8px', minWidth: '4px' }} />
-                    </div>
-                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.7rem', color: '#888', width: '40px', textAlign: 'right' }}>{b.count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p style={{ color: '#555', fontSize: '0.85rem', fontFamily: FONTS.condensed, marginTop: '0.5rem' }}>Nenhum aluno cadastrado.</p>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Inactive students */}
-      {(inactiveStudents?.length ?? 0) > 0 && (
-        <motion.div variants={fadeUp}>
-          <p className="bjj-label" style={{ color: '#E87722' }}>ALUNOS INATIVOS (15+ DIAS SEM TREINAR)</p>
+        {metrics.monthlyRevenue.length > 0 && (
           <div className="bjj-card" style={{ padding: '1.25rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {inactiveStudents?.map(s => (
-                <div key={s.studentUid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.3rem' }}>
-                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{s.studentName || '—'}</span>
-                  <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.8rem', color: s.daysSinceLastCheckIn > 30 ? '#CC0000' : '#E87722' }}>
-                    {s.daysSinceLastCheckIn} dias sem treinar
-                  </span>
+            <p className="bjj-label">RECEITA MENSAL DA PLATAFORMA</p>
+            <RevenueChart data={metrics.monthlyRevenue} height={160} />
+          </div>
+        )}
+        <div className="bjj-card" style={{ padding: '1.25rem' }}>
+          <p className="bjj-label">MATRÍCULAS</p>
+          <div className="flex items-stretch gap-2 mt-2" style={{ minHeight: '60px' }}>
+            {metrics.enrollmentBreakdown.map(s => {
+              const color = s.status === 'active' ? '#22C55E' : s.status === 'suspended' ? '#E87722' : '#666';
+              return (
+                <div key={s.status} className="flex-1 flex flex-col items-center justify-center text-center" style={{ background: '#0A0A0A', borderRadius: '8px', padding: '0.5rem' }}>
+                  <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.25rem', color }}>{s.count}</span>
+                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.55rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.status === 'active' ? 'Ativas' : s.status === 'suspended' ? 'Suspensas' : s.status}</span>
+                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.6rem', color: '#888', marginTop: '0.15rem' }}>{fmt(s.monthly)}/mês</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </motion.div>
-  );
-}
-
-// ─── Attendance (Frequência) ──────────────────────────────────────────────
-
-function AttendanceTab({ data }: { data: CrmData }) {
-  const { attendance, inactiveStudents, studentStats } = data;
-  const riskStudents = inactiveStudents?.filter(s => s.daysSinceLastCheckIn > 30) ?? [];
-  const warningStudents = inactiveStudents?.filter(s => s.daysSinceLastCheckIn > 14 && s.daysSinceLastCheckIn <= 30) ?? [];
-
-  return (
-    <motion.div variants={staggerContainer} initial="hidden" animate="show">
-      <motion.div variants={fadeUp} className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <StatCard label="Check-ins (30d)" value={attendance?.checkInsLast30Days ?? 0} color="#3B82F6" />
-        <StatCard label="Alunos" value={attendance?.totalStudents ?? 0} color="#FFF" />
-        <StatCard label="Taxa de frequência" value={`${attendance?.rate ?? 0}%`} color="#22C55E" />
-        <StatCard label="Matrículas ativas" value={studentStats?.active ?? 0} color="#22C55E" />
-      </motion.div>
-
-      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Attendance rate card */}
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">TAXA DE FREQUÊNCIA</p>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', marginTop: '0.25rem' }}>
-            <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '3rem', color: '#3B82F6' }}>
-              {attendance?.rate ?? 0}%
-            </span>
-          </div>
-          <div style={{ width: '100%', height: '10px', background: '#1A1A1A', borderRadius: '5px', marginTop: '0.5rem', overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(attendance?.rate ?? 0, 100)}%`, height: '100%', background: 'linear-gradient(to right, #3B82F6, #22C55E)', borderRadius: '5px' }} />
-          </div>
-          <p style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666', marginTop: '0.5rem' }}>
-            {attendance?.checkInsLast30Days ?? 0} check-ins nos últimos 30 dias entre {attendance?.totalStudents ?? 0} alunos
-          </p>
-        </div>
-
-        {/* Evasion risk */}
-        <div className="bjj-card" style={{ padding: '1.25rem' }}>
-          <p className="bjj-label">RISCO DE EVASÃO</p>
-          <div className="flex items-stretch gap-2 mt-3" style={{ minHeight: '60px' }}>
-            <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ background: '#0A0A0A', borderRadius: '8px', padding: '0.75rem' }}>
-              <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.5rem', color: '#E87722' }}>{warningStudents.length}</span>
-              <span style={{ fontFamily: FONTS.condensed, fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Alerta (15-30d)</span>
-            </div>
-            <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ background: '#0A0A0A', borderRadius: '8px', padding: '0.75rem' }}>
-              <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.5rem', color: '#CC0000' }}>{riskStudents.length}</span>
-              <span style={{ fontFamily: FONTS.condensed, fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Crítico (30+ dias)</span>
-            </div>
-            <div className="flex-1 flex flex-col items-center justify-center text-center" style={{ background: '#0A0A0A', borderRadius: '8px', padding: '0.75rem' }}>
-              <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.5rem', color: '#22C55E' }}>{(studentStats?.active ?? 0) - (inactiveStudents?.length ?? 0)}</span>
-              <span style={{ fontFamily: FONTS.condensed, fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Frequentes</span>
-            </div>
+              );
+            })}
           </div>
         </div>
       </motion.div>
 
-      {/* Inactive students detail */}
-      {(inactiveStudents?.length ?? 0) > 0 && (
-        <motion.div variants={fadeUp}>
-          <p className="bjj-label">ALUNOS INATIVOS</p>
-          <div className="bjj-card" style={{ padding: '1.25rem' }}>
+      {/* Top earners */}
+      <motion.div variants={fadeUp}>
+        <p className="bjj-label">TOP 20 — MAIORES FATURAMENTOS</p>
+        <div className="bjj-card" style={{ padding: '1.25rem' }}>
+          {metrics.topEarners.length === 0 ? (
+            <p style={{ color: '#555', fontSize: '0.85rem', fontFamily: FONTS.condensed }}>Nenhum pagamento registrado.</p>
+          ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {inactiveStudents?.map(s => (
-                <div key={s.studentUid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.3rem' }}>
-                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{s.studentName || '—'}</span>
+              {metrics.topEarners.map((e, i) => (
+                <div key={e.professorUid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.3rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ width: '80px', height: '6px', background: '#1A1A1A', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{
-                        width: `${Math.min((s.daysSinceLastCheckIn / 60) * 100, 100)}%`,
-                        height: '100%',
-                        background: s.daysSinceLastCheckIn > 30 ? '#CC0000' : s.daysSinceLastCheckIn > 20 ? '#E87722' : '#E8772288',
-                        borderRadius: '3px',
-                      }} />
-                    </div>
-                    <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.8rem', color: s.daysSinceLastCheckIn > 30 ? '#CC0000' : '#E87722' }}>
-                      {s.daysSinceLastCheckIn}d
-                    </span>
+                    <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.7rem', color: '#444', width: '24px', textAlign: 'right' }}>#{i + 1}</span>
+                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{e.name}</span>
+                    {e.role && (
+                      <span style={{ fontFamily: FONTS.condensed, fontSize: '0.55rem', color: '#555', background: '#111', padding: '1px 6px', textTransform: 'uppercase' }}>{e.role === 'academy' ? 'Academia' : 'Professor'}</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.65rem', color: '#666' }}>{e.countPaid} pgto{e.countPaid !== 1 ? 's' : ''}</span>
+                    <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.85rem', color: '#22C55E' }}>{fmt(e.totalPaid)}</span>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        </motion.div>
-      )}
+          )}
+        </div>
+      </motion.div>
     </motion.div>
   );
 }
@@ -561,49 +327,6 @@ function PaymentBadge({ status }: { status?: string | null }) {
     <span style={{ background: (colors[s] ?? '#666') + '22', color: colors[s] ?? '#666', fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.55rem', letterSpacing: '0.08em', padding: '2px 6px' }}>
       {labels[s] ?? s}
     </span>
-  );
-}
-
-function FunnelStage({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
-  const pct = total > 0 ? (count / total) * 100 : 0;
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-        <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{label}</span>
-        <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.85rem', color }}>
-          {count} ({pct.toFixed(0)}%)
-        </span>
-      </div>
-      <div style={{ width: '100%', height: '8px', background: '#1A1A1A', borderRadius: '4px', overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '4px', transition: 'width 0.5s ease' }} />
-      </div>
-    </div>
-  );
-}
-
-function PipelineBars({ data }: { data: CrmData }) {
-  return (
-    <div className="flex items-stretch gap-2 mt-3" style={{ minHeight: '80px' }}>
-      {[
-        { status: 'pending', label: 'Pendentes', color: '#E87722' },
-        { status: 'accepted', label: 'Aceitos', color: '#22C55E' },
-        { status: 'rejected', label: 'Rejeitados', color: '#CC0000' },
-      ].map(s => {
-        const found = data.leads.find(l => l.status === s.status);
-        const count = found?.count ?? 0;
-        const total = data.leads.reduce((a, l) => a + l.count, 0) || 1;
-        const pct = (count / total) * 100;
-        return (
-          <div key={s.status} className="flex-1 flex flex-col items-center justify-center text-center" style={{ background: '#0A0A0A', borderRadius: '8px', padding: '0.75rem' }}>
-            <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.5rem', color: s.color }}>{count}</span>
-            <span style={{ fontFamily: FONTS.condensed, fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '0.125rem' }}>{s.label}</span>
-            <div style={{ width: '100%', height: '4px', background: '#1A1A1A', borderRadius: '2px', marginTop: '0.375rem', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct}%`, background: s.color, borderRadius: '2px' }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 

@@ -5,6 +5,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { settings } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import {
   DEFAULT_AUTO_SUSPEND_AFTER_DAYS,
   financialSettingsKey,
@@ -19,19 +20,29 @@ import { testConnection as testAsaasConnection } from '../services/asaas.js';
 
 const router = Router();
 
+async function blockInternalProfessorFinancialAccess(req: AuthRequest, res: any) {
+  if (!await isInternalAcademyProfessor(req.userId!, req.userRole)) return false;
+  res.status(403).json({ error: 'Financeiro gerenciado pela academia.' });
+  return true;
+}
+
 // ─── GET /api/settings/public ───────────────────────────────────────────────
 // Retorna configurações públicas (sem autenticação)
 router.get('/public', async (_req, res) => {
   const rows = await db
     .select()
     .from(settings)
-    .where(inArray(settings.key, ['app_store_url', 'play_store_url']));
+    .where(inArray(settings.key, ['app_store_url', 'play_store_url', 'past_due_grace_days']));
   const map: Record<string, string> = {};
   for (const row of rows) map[row.key] = row.value;
+  // Garante fallback se não estiver configurado
+  if (!map.past_due_grace_days) map.past_due_grace_days = '3';
   res.json(map);
 });
 
 router.get('/financial', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorFinancialAccess(req, res)) return;
+
   const key = financialSettingsKey(req.userId!);
   const [row] = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
   res.json({
@@ -41,6 +52,8 @@ router.get('/financial', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.put('/financial', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorFinancialAccess(req, res)) return;
+
   const autoSuspendAfterDays = normalizeAutoSuspendAfterDays(req.body?.autoSuspendAfterDays);
   const key = financialSettingsKey(req.userId!);
   await db.insert(settings)
@@ -59,6 +72,8 @@ function paymentWebhookUrl(req: AuthRequest) {
 }
 
 router.get('/payment-integration', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorFinancialAccess(req, res)) return;
+
   const integration = await getPaymentIntegration(req.userId!);
   res.json({
     ...toPublicPaymentIntegration(integration),
@@ -67,6 +82,8 @@ router.get('/payment-integration', requireAuth, async (req: AuthRequest, res) =>
 });
 
 router.put('/payment-integration', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorFinancialAccess(req, res)) return;
+
   const integration = await savePaymentIntegration(req.userId!, req.body || {});
   res.json({
     ...toPublicPaymentIntegration(integration),
@@ -75,6 +92,8 @@ router.put('/payment-integration', requireAuth, async (req: AuthRequest, res) =>
 });
 
 router.post('/payment-integration/test', requireAuth, async (req: AuthRequest, res) => {
+  if (await blockInternalProfessorFinancialAccess(req, res)) return;
+
   const stored = await getPaymentIntegration(req.userId!, true);
   const apiKey = typeof req.body?.asaasApiKey === 'string' && req.body.asaasApiKey.trim()
     ? req.body.asaasApiKey.trim()

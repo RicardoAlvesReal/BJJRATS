@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { enrollments, payments, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import { applyAutomaticSuspensionsForProfessor } from '../services/financialAutomation.js';
 import { notifyEnrollmentsReactivated, notifyEnrollmentsSuspended } from '../services/enrollmentNotifications.js';
 import { getAsaasCredentials, getPaymentIntegration } from '../services/paymentIntegrations.js';
@@ -170,6 +171,11 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Financeiro gerenciado pela academia.' });
+    return;
+  }
+
   const id = nanoid();
   const data = normalizePaymentPayload(req.body);
   const professorUid = String(data.professorUid || req.userId);
@@ -199,7 +205,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   if (data.studentUid && data.dueDate) {
     const dueDateStr = formatDateOnly(data.dueDate);
     if (typeof dueDateStr === 'string') {
-      const monthPrefix = dueDateStr.slice(0, 7); // YYYY-MM
+      const [y, m] = dueDateStr.slice(0, 7).split('-').map(Number);
       const [duplicate] = await db
         .select({ id: payments.id })
         .from(payments)
@@ -207,7 +213,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
           and(
             eq(payments.professorUid, professorUid),
             eq(payments.studentUid, String(data.studentUid)),
-            sql`to_char(${payments.dueDate}, 'YYYY-MM') = ${monthPrefix}`,
+            sql`EXTRACT(YEAR FROM ${payments.dueDate}) = ${y}`,
+            sql`EXTRACT(MONTH FROM ${payments.dueDate}) = ${m}`,
           )
         )
         .limit(1);
@@ -230,6 +237,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select().from(payments).where(eq(payments.id, req.params.id)).limit(1);
   if (!existing || existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Financeiro gerenciado pela academia.' });
+    return;
+  }
+
   const { id: _id, ...data } = normalizePaymentPayload(req.body);
   const [row] = await db.update(payments).set(data as any).where(eq(payments.id, req.params.id)).returning();
   const reactivatedEnrollments = await reactivateSuspendedEnrollmentsForPaidPayment(row);

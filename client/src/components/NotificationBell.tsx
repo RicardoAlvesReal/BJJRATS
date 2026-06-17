@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, Bell, Check, ExternalLink, Megaphone, X } from 'lucide-react';
+import { AlertTriangle, Bell, Check, ExternalLink, Megaphone, Trash2, X } from 'lucide-react';
 import api, { type Announcement, type Notification } from '@/lib/api';
 
 function formatDate(value?: string | null) {
@@ -28,6 +28,7 @@ export default function NotificationBell({ placement = 'fixed' }: NotificationBe
   const [open, setOpen] = useState(false);
   const [urgent, setUrgent] = useState<Announcement | null>(null);
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +111,25 @@ export default function NotificationBell({ placement = 'fixed' }: NotificationBe
     }
   };
 
+  const clearAll = async () => {
+    if (items.length === 0 || clearing) return;
+    const announcementIds = announcements.map(item => item.id);
+    setClearing(true);
+    setAnnouncements([]);
+    setNotifications([]);
+    setUrgent(null);
+    try {
+      await Promise.all([
+        api.notifications.clearAll(),
+        ...announcementIds.map(id => api.announcements.dismiss(id)),
+      ]);
+    } catch {
+      await load();
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const containerStyle: CSSProperties = placement === 'inline'
     ? { position: 'relative', zIndex: 10020, flexShrink: 0 }
     : { position: 'fixed', top: '0.75rem', right: '0.75rem', zIndex: 10020 };
@@ -184,6 +204,33 @@ export default function NotificationBell({ placement = 'fixed' }: NotificationBe
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.95rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   NOTIFICAÇÕES
                 </p>
+                {items.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAll}
+                    disabled={clearing}
+                    aria-label="Limpar notificacoes"
+                    title="Limpar notificacoes"
+                    style={{
+                      background: '#111',
+                      border: '1px solid #333',
+                      color: clearing ? '#444' : '#888',
+                      cursor: clearing ? 'not-allowed' : 'pointer',
+                      padding: '0.35rem 0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      fontFamily: 'Barlow Condensed, sans-serif',
+                      fontWeight: 900,
+                      fontSize: '0.65rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                    }}
+                  >
+                    <Trash2 size={12} />
+                    {clearing ? 'LIMPANDO' : 'LIMPAR'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setOpen(false)}

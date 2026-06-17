@@ -15,6 +15,8 @@ export type PaymentIntegrationPublic = {
   hasAsaasApiKey: boolean;
   asaasApiKeyLast4: string | null;
   webhookToken: string;
+  pixKey: string;
+  pixQrCodeUrl: string;
 };
 
 export type PaymentIntegrationPrivate = PaymentIntegrationPublic & {
@@ -84,6 +86,8 @@ async function loadMap(ownerUid: string) {
     'asaas_billing_type',
     'asaas_api_key',
     'webhook_token',
+    'pix_key',
+    'pix_qr_code_url',
   ];
   const rows = await db.select().from(settings).where(inArray(settings.key, names.map(name => key(ownerUid, name))));
   const map: Record<string, string> = {};
@@ -118,6 +122,8 @@ export async function getPaymentIntegration(ownerUid: string, includeSecret = fa
     asaasApiKeyLast4: apiKey ? apiKey.slice(-4) : null,
     webhookToken,
     asaasApiKey: includeSecret ? apiKey : null,
+    pixKey: map.pix_key || '',
+    pixQrCodeUrl: map.pix_qr_code_url || '',
   };
 }
 
@@ -135,6 +141,9 @@ export async function savePaymentIntegration(ownerUid: string, input: Record<str
   } else if (input.clearAsaasApiKey === true) {
     updates.push(deleteSetting(key(ownerUid, 'asaas_api_key')));
   }
+
+  if (typeof input.pixKey === 'string') updates.push(upsertSetting(key(ownerUid, 'pix_key'), input.pixKey));
+  if (typeof input.pixQrCodeUrl === 'string') updates.push(upsertSetting(key(ownerUid, 'pix_qr_code_url'), input.pixQrCodeUrl));
 
   await Promise.all(updates);
   await ensurePaymentWebhookToken(ownerUid);

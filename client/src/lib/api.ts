@@ -369,6 +369,8 @@ export const admin = {
 
   getCrmData: () => apiFetch<CrmData>('/api/admin/crm'),
 
+  getMetrics: () => apiFetch<AdminMetrics>('/api/admin/metrics'),
+
   // Community moderation (superadmin)
   community: {
     stats: () => apiFetch<CommunityStats>('/api/admin/community/stats'),
@@ -450,6 +452,8 @@ export const academy = {
     mine: () => apiFetch<AcademyStudentProfessorAssignment[]>('/api/academy/student-assignments/mine'),
     respond: (id: string, status: 'accepted' | 'rejected') =>
       apiFetch<AcademyStudentProfessorAssignment>(`/api/academy/student-assignments/${id}/respond`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    cancel: (id: string) =>
+      apiFetch<AcademyStudentProfessorAssignment>(`/api/academy/student-assignments/${id}`, { method: 'PATCH' }),
   },
 };
 
@@ -530,6 +534,36 @@ export interface AdminStats {
   userGrowth: { month: string; count: number }[];
   beltDistribution: { belt: string; count: number }[];
   academiesByState: { state: string; count: number }[];
+}
+
+export interface AdminMetrics {
+  overview: {
+    totalBilled: number;
+    totalPaid: number;
+    totalPending: number;
+    totalOverdue: number;
+    countPaid: number;
+    countPending: number;
+    countOverdue: number;
+    totalRows: number;
+    dupOverdue: number;
+    dupPending: number;
+    monthlyProjected: number;
+    paidRate: number;
+  };
+  monthlyRevenue: { month: string; total: number; count: number }[];
+  topEarners: {
+    professorUid: string;
+    name: string;
+    role: string | null;
+    totalPaid: number;
+    countPaid: number;
+  }[];
+  enrollmentBreakdown: {
+    status: string;
+    count: number;
+    monthly: number;
+  }[];
 }
 
 export interface CommunityStats {
@@ -677,12 +711,17 @@ export interface PaymentIntegrationSettings {
   asaasApiKeyLast4: string | null;
   webhookToken: string;
   webhookUrl: string;
+  pixKey?: string | null;
+  pixQrCodeUrl?: string | null;
 }
-
 export const financialSettings = {
   get: () => apiFetch<FinancialSettings>('/api/settings/financial'),
   update: (data: { autoSuspendAfterDays: number }) =>
     apiFetch<FinancialSettings>('/api/settings/financial', { method: 'PUT', body: JSON.stringify(data) }),
+};
+
+export const settings = {
+  public: () => apiFetch<Record<string, string>>('/api/settings/public'),
 };
 
 export const paymentIntegrations = {
@@ -843,6 +882,12 @@ export const subscriptions = {
     }),
   cancel: () =>
     apiFetch<{ success: boolean }>('/api/subscriptions/cancel', { method: 'POST' }),
+  getBilling: () =>
+    apiFetch<{ billingType: string | null; availableMethods: string[]; pendingPayment?: { id: string; value: number; dueDate: string; status: string; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string } | null; graceDays?: number }>('/api/subscriptions/my/billing'),
+  updateBilling: (billingType: string) =>
+    apiFetch<{ billingType: string; availableMethods: string[]; message: string }>('/api/subscriptions/my/billing', {
+      method: 'PUT', body: JSON.stringify({ billingType }),
+    }),
 };
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
@@ -914,6 +959,8 @@ export const publicApi = {
     preferredDay?: string;
   }) =>
     apiFetch<{ success: boolean }>('/api/public/trial-requests', { method: 'POST', body: JSON.stringify(data) }),
+  getPaymentMethods: (ownerUid: string) =>
+    apiFetch<PaymentIntegrationSettings>(`/api/public/payment-methods/${encodeURIComponent(ownerUid)}`),
 };
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────
@@ -958,6 +1005,7 @@ const api = {
   challenges,
   notifications,
   payments,
+  settings,
   financialSettings,
   paymentIntegrations,
   enrollments,

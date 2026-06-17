@@ -107,7 +107,7 @@ export default function AcademiaAlunos() {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<UserProfile[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<UserProfile | null>(null);
-  const [inviteForm, setInviteForm] = useState({ monthlyFee: '', pixKey: '', studentPhone: '', notes: '' });
+  const [inviteForm, setInviteForm] = useState({ monthlyFee: '', notes: '' });
   const [billingMode, setBillingMode] = useState<BillingMode>('rolling30');
   const [savingInvite, setSavingInvite] = useState(false);
   const [suspendTarget, setSuspendTarget] = useState<AcademyEnrollment | null>(null);
@@ -180,7 +180,7 @@ export default function AcademiaAlunos() {
     setSearch('');
     setResults([]);
     setSelectedStudent(null);
-    setInviteForm({ monthlyFee: '', pixKey: '', studentPhone: '', notes: '' });
+    setInviteForm({ monthlyFee: '', notes: '' });
     setBillingMode('rolling30');
   };
 
@@ -188,7 +188,7 @@ export default function AcademiaAlunos() {
     setSelectedStudent(student || null);
     setSearch(student?.name || '');
     setResults([]);
-    setInviteForm({ monthlyFee: '', pixKey: '', studentPhone: student?.phone || '', notes: '' });
+    setInviteForm({ monthlyFee: '', notes: '' });
     setBillingMode('rolling30');
     setShowInvite(true);
   };
@@ -206,7 +206,6 @@ export default function AcademiaAlunos() {
         studentUid: selectedStudent.uid,
         studentName: selectedStudent.name,
         studentEmail: selectedStudent.email || '',
-        studentPhone: inviteForm.studentPhone.trim(),
         studentBelt: selectedStudent.belt || 'Branca',
         studentStripes: selectedStudent.stripes ?? 0,
         monthlyFee: fee,
@@ -216,7 +215,6 @@ export default function AcademiaAlunos() {
         firstDueDate: terms.firstDueDate,
         firstMonth: terms.firstMonth,
         status: 'pending',
-        pixKey: inviteForm.pixKey.trim(),
         notes: inviteForm.notes.trim(),
       } as any);
       toast.success(`Convite enviado. Primeiro vencimento: ${formatDate(terms.firstDueDate)} (${money(terms.firstAmount)}).`);
@@ -407,8 +405,6 @@ export default function AcademiaAlunos() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Mensalidade *"><input type="number" value={inviteForm.monthlyFee} onChange={event => setInviteForm(form => ({ ...form, monthlyFee: event.target.value }))} placeholder="150.00" style={inputStyle} /></Field>
-              <Field label="WhatsApp do aluno"><input type="tel" value={inviteForm.studentPhone} onChange={event => setInviteForm(form => ({ ...form, studentPhone: event.target.value }))} placeholder="11999999999" style={inputStyle} /></Field>
-              <Field label="Chave PIX"><input value={inviteForm.pixKey} onChange={event => setInviteForm(form => ({ ...form, pixKey: event.target.value }))} placeholder="CPF, email ou chave" style={inputStyle} /></Field>
               <Field label="Cobranca inicial">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
                   {[

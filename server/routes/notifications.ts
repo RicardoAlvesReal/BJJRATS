@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { notifications } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { sendNotificationWhatsApp } from '../services/notificationWhatsApp.js';
+import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 
 const router = Router();
 
@@ -16,6 +17,11 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 });
 
 router.post('/', requireAuth, async (req: AuthRequest, res) => {
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Notificacoes deste professor sao gerenciadas pela academia.' });
+    return;
+  }
+
   const id = nanoid();
   const { id: _id, fromUid: _fromUid, createdAt: _createdAt, whatsapp: _whatsapp, ...body } = req.body || {};
   const [row] = await db.insert(notifications).values({ id, ...body, fromUid: req.userId! }).returning();
@@ -35,6 +41,11 @@ router.patch('/read-all', requireAuth, async (req: AuthRequest, res) => {
   await db.update(notifications).set({ read: true }).where(
     and(eq(notifications.toUid, req.userId!), eq(notifications.read, false))
   );
+  res.json({ success: true });
+});
+
+router.delete('/', requireAuth, async (req: AuthRequest, res) => {
+  await db.delete(notifications).where(eq(notifications.toUid, req.userId!));
   res.json({ success: true });
 });
 

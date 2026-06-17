@@ -6,21 +6,23 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
 import { tabVariant, tabTransition } from '@/lib/animations';
 import api from '@/lib/api';
-import AdminDashboard from '../admin/AdminDashboard';
 import Community from '../app/Community';
 import NotificationBell from '@/components/NotificationBell';
+import AcademiaDashboard from './AcademiaDashboard';
 import AcademiaCrm from './AcademiaCrm';
 import AcademiaAlunos from './AcademiaAlunos';
 import AcademiaProfessores from './AcademiaProfessores';
 import AcademiaFinanceiro from './AcademiaFinanceiro';
 import AcademiaWhatsapp from './AcademiaWhatsapp';
+import AcademiaPromocoes from './AcademiaPromocoes';
 
-type AcademiaTab = 'dashboard' | 'users' | 'professors' | 'financeiro' | 'whatsapp' | 'crm' | 'community';
+type AcademiaTab = 'dashboard' | 'users' | 'professors' | 'promotions' | 'financeiro' | 'whatsapp' | 'crm' | 'community';
 
 const NAV_ITEMS: { id: AcademiaTab; label: string }[] = [
   { id: 'dashboard',  label: 'Dashboard'   },
   { id: 'users',      label: 'Alunos'      },
   { id: 'professors',  label: 'Professores' },
+  { id: 'promotions', label: 'Promocao'    },
   { id: 'financeiro', label: 'Financeiro'  },
   { id: 'whatsapp',   label: 'WhatsApp'    },
   { id: 'crm',        label: 'CRM'         },
@@ -78,8 +80,6 @@ export default function AcademiaLayout() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col font-['Barlow_Condensed']">
-      <NotificationBell />
-
       {/* Top Bar */}
       <header
         className="bjj-glass-strong flex items-center justify-between px-5 h-14 sticky top-0 z-100"
@@ -123,6 +123,25 @@ export default function AcademiaLayout() {
         </div>
 
         <div className="flex items-center gap-3">
+          <NotificationBell placement="inline" />
+          <button
+            onClick={() => navigate('/app/subscription')}
+            style={{
+              background: 'transparent',
+              color: '#AAA',
+              border: '1px solid #333',
+              borderRadius: '6px',
+              padding: '0.4rem 0.9rem',
+              fontFamily: 'Barlow Condensed, sans-serif',
+              fontWeight: 700,
+              fontSize: '0.7rem',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >
+            Assinatura
+          </button>
           <button
             onClick={handleLogout}
             style={{
@@ -180,9 +199,10 @@ export default function AcademiaLayout() {
             exit="exit"
             transition={tabTransition}
           >
-            {tab === 'dashboard' && <AdminDashboard />}
+            {tab === 'dashboard' && <AcademiaDashboard />}
             {tab === 'users'     && <AcademiaAlunos />}
             {tab === 'professors' && <AcademiaProfessores />}
+            {tab === 'promotions' && <AcademiaPromocoes />}
             {tab === 'financeiro' && <AcademiaFinanceiro />}
             {tab === 'whatsapp'   && <AcademiaWhatsapp />}
             {tab === 'crm'       && <AcademiaCrm />}

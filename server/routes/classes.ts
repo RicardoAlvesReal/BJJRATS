@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { classSchedules, classCheckIns, enrollments, notifications } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import { sendNotificationsWhatsApp } from '../services/notificationWhatsApp.js';
 
 const router = Router();
@@ -62,31 +63,68 @@ async function notifyActiveStudentsAboutClass(
 
 // ─── Schedules ───────────────────────────────────────────────────────────────
 router.get('/schedules', requireAuth, async (req: AuthRequest, res) => {
-  const { academyId } = req.query as Record<string, string>;
-  const rows = academyId
-    ? await db.select().from(classSchedules).where(eq(classSchedules.academyId, academyId))
+  const { academyId, professorUid } = req.query as Record<string, string | undefined>;
+  const conditions = [];
+
+  if (academyId) conditions.push(eq(classSchedules.academyId, academyId));
+  if (professorUid) conditions.push(eq(classSchedules.professorUid, professorUid));
+
+  if (!conditions.length && req.userRole !== 'superadmin') {
+    if (req.userRole === 'academy' || req.userRole === 'admin') {
+      conditions.push(eq(classSchedules.academyId, req.userId!));
+    } else if (req.userRole === 'professor') {
+      conditions.push(eq(classSchedules.professorUid, req.userId!));
+    } else {
+      res.json([]);
+      return;
+    }
+  }
+
+  const rows = conditions.length
+    ? await db.select().from(classSchedules).where(and(...conditions))
     : await db.select().from(classSchedules);
   res.json(rows);
 });
 
 router.post('/schedules', requireAuth, async (req: AuthRequest, res) => {
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Horarios deste professor sao gerenciados pela academia.' });
+    return;
+  }
+
   const id = nanoid();
-  const academyId = req.body.academyId ?? req.userId!;
-  const [row] = await db.insert(classSchedules).values({ id, professorUid: req.userId!, academyId, ...req.body }).returning();
+  const {
+    id: _id,
+    professorUid: requestedProfessorUid,
+    academyId: requestedAcademyId,
+    createdAt: _createdAt,
+    ...data
+  } = req.body ?? {};
+  const isAcademyOwner = req.userRole === 'academy' || req.userRole === 'admin';
+  const academyId = isAcademyOwner ? req.userId! : requestedAcademyId ?? req.userId!;
+  const professorUid = isAcademyOwner ? requestedProfessorUid ?? req.userId! : req.userId!;
+  const [row] = await db.insert(classSchedules).values({ id, ...data, professorUid, academyId }).returning();
   res.status(201).json(row);
 });
 
 router.patch('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select().from(classSchedules).where(eq(classSchedules.id, req.params.id)).limit(1);
-  if (!existing || existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
-  const { id: _id, professorUid: _pu, ...data } = req.body;
+  const canManageAsAcademy = (req.userRole === 'academy' || req.userRole === 'admin') && existing?.academyId === req.userId;
+  const canManage = req.userRole === 'superadmin' || existing?.professorUid === req.userId || canManageAsAcademy;
+  if (!existing || !canManage) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Horarios deste professor sao gerenciados pela academia.' });
+    return;
+  }
+  const { id: _id, professorUid: _pu, academyId: _academyId, createdAt: _createdAt, ...data } = req.body ?? {};
+  if (!Object.keys(data).length) { res.json(existing); return; }
   const [row] = await db.update(classSchedules).set(data).where(eq(classSchedules.id, req.params.id)).returning();
   let whatsapp = { enabled: true, recipients: 0, sent: 0, failed: 0 };
   try {
     const before = describeSchedule(existing);
     const after = describeSchedule(row);
     whatsapp = await notifyActiveStudentsAboutClass(
-      req.userId!,
+      existing.professorUid,
       'class_rescheduled',
       `Aula remarcada/atualizada: ${before || 'horario anterior'} -> ${after || 'novo horario'}. Confira a grade no app.`,
       { scheduleId: row.id, before, after },
@@ -99,13 +137,19 @@ router.patch('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
 
 router.delete('/schedules/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select().from(classSchedules).where(eq(classSchedules.id, req.params.id)).limit(1);
-  if (!existing || existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
+  const canManageAsAcademy = (req.userRole === 'academy' || req.userRole === 'admin') && existing?.academyId === req.userId;
+  const canManage = req.userRole === 'superadmin' || existing?.professorUid === req.userId || canManageAsAcademy;
+  if (!existing || !canManage) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+    res.status(403).json({ error: 'Horarios deste professor sao gerenciados pela academia.' });
+    return;
+  }
   await db.delete(classSchedules).where(eq(classSchedules.id, req.params.id));
   let whatsapp = { enabled: true, recipients: 0, sent: 0, failed: 0 };
   try {
     const schedule = describeSchedule(existing);
     whatsapp = await notifyActiveStudentsAboutClass(
-      req.userId!,
+      existing.professorUid,
       'class_cancelled',
       `Aula cancelada/removida da grade: ${schedule || 'horario removido'}. Confira a grade no app ou fale com o professor.`,
       { scheduleId: existing.id, schedule },

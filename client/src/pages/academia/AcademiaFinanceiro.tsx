@@ -1,7 +1,7 @@
 // BJJRats — Financeiro da Academia
 // Mesma lógica do ProfessorPanel, adaptada para o painel da academia
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import api, { type PaymentIntegrationSettings } from '@/lib/api';
@@ -98,6 +98,8 @@ export default function AcademiaFinanceiro() {
     asaasEnabled: false,
     asaasBillingTypes: ['PIX'] as string[],
     asaasApiKey: '',
+    pixKey: '',
+    pixQrCodeUrl: '',
   });
   const [savingIntegration, setSavingIntegration] = useState(false);
 
@@ -105,13 +107,18 @@ export default function AcademiaFinanceiro() {
   const [showEnroll, setShowEnroll] = useState(false);
   const [enrollSearch, setEnrollSearch] = useState('');
   const [enrollStudent, setEnrollStudent] = useState<Member | null>(null);
-  const [enrollForm, setEnrollForm] = useState({ monthlyFee: '', dueDay: '5', pixKey: '', notes: '' });
+  const [enrollForm, setEnrollForm] = useState({ monthlyFee: '', dueDay: '5', notes: '' });
   const [savingEnroll, setSavingEnroll] = useState(false);
 
   // Suspensão manual
   const [suspendTarget, setSuspendTarget] = useState<Enrollment | null>(null);
   const [suspendReason, setSuspendReason] = useState('');
   const [suspending, setSuspending] = useState(false);
+
+  // Editar mensalidade
+  const [editEnrollment, setEditEnrollment] = useState<Enrollment | null>(null);
+  const [editMonthlyFee, setEditMonthlyFee] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // ─── Carregar dados ─────────────────────────────────────────────────────
 
@@ -178,12 +185,52 @@ export default function AcademiaFinanceiro() {
         asaasEnabled: s.asaasEnabled,
         asaasBillingTypes: (s as any).asaasBillingTypes || [(s as any).asaasBillingType || 'PIX'],
         asaasApiKey: '',
+        pixKey: s.pixKey || '',
+        pixQrCodeUrl: s.pixQrCodeUrl || '',
       });
     } catch { /* offline */ }
   }, []);
 
   useEffect(() => { loadEnrollments(); loadMembers(); loadSettings(); loadIntegration(); }, [loadEnrollments, loadMembers, loadSettings, loadIntegration]);
   useEffect(() => { loadPayments(paymentMonth); }, [paymentMonth, loadPayments]);
+
+  // Auto-gerar cobranças do mês corrente ao carregar
+  const autoGenerateRef = useRef(false);
+  useEffect(() => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    if (!enrollmentsLoading && enrollments.length > 0 && paymentMonth === currentMonth && !autoGenerateRef.current) {
+      autoGenerateRef.current = true;
+      handleGerarCobrancasSilent();
+    }
+    if (paymentMonth !== currentMonth) autoGenerateRef.current = false;
+  }, [enrollments, enrollmentsLoading, paymentMonth]);
+
+  const handleGerarCobrancasSilent = async () => {
+    const ativas = enrollments.filter(e => e.status === 'active');
+    if (ativas.length === 0) return;
+    // Evita duplicatas: pula alunos que já têm cobrança neste mês
+    const existingKeys = new Set(
+      payments
+        .filter(p => (p.dueDate || '').startsWith(paymentMonth))
+        .map(p => p.studentUid)
+    );
+    let count = 0;
+    for (const enr of ativas) {
+      if (existingKeys.has(enr.studentUid)) continue; // já existe, pula
+      try {
+        await api.payments.create({
+          enrollmentId: enr.id, studentUid: enr.studentUid, studentName: enr.studentName,
+          studentEmail: enr.studentEmail, amount: enr.monthlyFee,
+          dueDate: `${paymentMonth}-${String(enr.dueDay).padStart(2, '0')}`,
+          status: 'pending', month: paymentMonth, professorUid: user!.uid, pixKey: enr.pixKey || '',
+        } as any);
+        count++;
+      } catch (err: any) {
+        if (err?.status === 409) continue;
+      }
+    }
+    if (count > 0) { loadPayments(paymentMonth); }
+  };
 
   // ─── Ações ──────────────────────────────────────────────────────────────
 
@@ -205,6 +252,18 @@ export default function AcademiaFinanceiro() {
       toast.success('Aluno reativado');
       loadEnrollments();
     } catch { toast.error('Erro ao reativar'); }
+  };
+
+  const handleEditEnrollment = async () => {
+    if (!editEnrollment || !editMonthlyFee) return;
+    setSavingEdit(true);
+    try {
+      await api.enrollments.update(editEnrollment.id, { monthlyFee: Number(editMonthlyFee) } as any);
+      toast.success(`Mensalidade de ${editEnrollment.studentName} atualizada para R$ ${Number(editMonthlyFee).toFixed(2)}`);
+      setEditEnrollment(null);
+      loadEnrollments();
+    } catch { toast.error('Erro ao atualizar mensalidade'); }
+    finally { setSavingEdit(false); }
   };
 
   const handleDeleteEnrollment = async (enr: Enrollment) => {
@@ -234,17 +293,15 @@ export default function AcademiaFinanceiro() {
         studentUid: enrollStudent.uid,
         studentName: enrollStudent.name,
         studentEmail: enrollStudent.email || '',
-        studentPhone: enrollStudent.phone || '',
         studentBelt: enrollStudent.belt,
         monthlyFee: Number(enrollForm.monthlyFee) || 0,
         dueDay: Number(enrollForm.dueDay) || 5,
-        pixKey: enrollForm.pixKey,
         notes: enrollForm.notes,
       } as any);
       toast.success('Matrícula criada');
       setShowEnroll(false);
       setEnrollStudent(null);
-      setEnrollForm({ monthlyFee: '', dueDay: '5', pixKey: '', notes: '' });
+      setEnrollForm({ monthlyFee: '', dueDay: '5', notes: '' });
       loadEnrollments();
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao criar matrícula');
@@ -394,6 +451,8 @@ export default function AcademiaFinanceiro() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
                       <span style={{ fontFamily: FONTS.condensed, fontSize: '0.65rem', color: '#555', textTransform: 'uppercase' }}>VENCE DIA {enr.dueDay}</span>
                       <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button onClick={() => { setEditEnrollment(enr); setEditMonthlyFee(String(enr.monthlyFee)); }}
+                          style={{ background: 'transparent', border: '1px solid #1A6ECC', color: '#1A6ECC', fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.35rem 0.6rem', cursor: 'pointer' }}>R$</button>
                         {enr.status === 'active' && (
                           <button onClick={() => { setSuspendTarget(enr); setSuspendReason(''); }}
                             style={{ background: 'transparent', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.35rem 0.6rem', cursor: 'pointer' }}>SUSPENDER</button>
@@ -548,6 +607,39 @@ export default function AcademiaFinanceiro() {
               <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#888', lineHeight: 1.5 }}>
                 Controle total: você registra cada pagamento manualmente. Ideal para quem recebe via PIX, dinheiro ou transferência.
               </p>
+              {integrationForm.manualPaymentsEnabled && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.75rem', paddingLeft: '1.5rem' }}>
+                  <div>
+                    <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Chave PIX da academia</p>
+                    <input value={integrationForm.pixKey} onChange={e => setIntegrationForm(f => ({ ...f, pixKey: e.target.value }))}
+                      placeholder="CPF, CNPJ, celular, e-mail ou chave aleatória" style={inputStyle} />
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '0.2rem' }}>QR Code do PIX (imagem)</p>
+                    {integrationForm.pixQrCodeUrl ? (
+                      <div style={{ position: 'relative', display: 'inline-block' }}>
+                        <img src={integrationForm.pixQrCodeUrl} alt="QR Code PIX" style={{ maxWidth: '160px', border: '1px solid #333' }} />
+                        <button onClick={() => setIntegrationForm(f => ({ ...f, pixQrCodeUrl: '' }))}
+                          style={{ position: 'absolute', top: '0.25rem', right: '0.25rem', background: 'rgba(0,0,0,0.8)', border: 'none', color: '#CC0000', cursor: 'pointer', fontSize: '0.7rem', padding: '0.15rem 0.35rem' }}>✕</button>
+                      </div>
+                    ) : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#0A0A0A', border: '1px dashed #333', padding: '0.6rem', cursor: 'pointer' }}>
+                        <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.65rem', color: '#666', textTransform: 'uppercase' }}>📎 ANEXAR QR CODE</span>
+                        <input type="file" accept="image/*" style={{ display: 'none' }}
+                          onChange={async e => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              const url = await api.upload.file(file, 'pix');
+                              setIntegrationForm(f => ({ ...f, pixQrCodeUrl: url }));
+                              toast.success('QR Code enviado');
+                            } catch { toast.error('Erro ao enviar imagem'); }
+                          }} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Asaas */}
@@ -643,8 +735,6 @@ export default function AcademiaFinanceiro() {
                       type="number" min={1} max={31} style={inputStyle} />
                   </div>
                 </div>
-                <input value={enrollForm.pixKey} onChange={e => setEnrollForm(f => ({ ...f, pixKey: e.target.value }))}
-                  placeholder="Chave PIX (opcional)" style={inputStyle} />
                 <input value={enrollForm.notes} onChange={e => setEnrollForm(f => ({ ...f, notes: e.target.value }))}
                   placeholder="Observações" style={inputStyle} />
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -657,6 +747,30 @@ export default function AcademiaFinanceiro() {
                 </div>
               </>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ─── Modal: Editar mensalidade ─── */}
+      {editEnrollment && (
+        <Modal onClose={() => setEditEnrollment(null)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <p style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '1rem', color: '#FFF', textTransform: 'uppercase', margin: 0 }}>
+              Editar mensalidade — {editEnrollment.studentName}
+            </p>
+            <div>
+              <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.65rem', color: '#888', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Valor mensal R$</p>
+              <input value={editMonthlyFee} onChange={e => setEditMonthlyFee(e.target.value)}
+                type="number" step="0.01" style={inputStyle} autoFocus />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={() => setEditEnrollment(null)}
+                style={{ flex: 1, background: 'transparent', border: '1px solid #333', color: '#777', fontFamily: FONTS.condensed, fontWeight: 800, padding: '0.65rem', cursor: 'pointer', textTransform: 'uppercase' }}>Cancelar</button>
+              <button onClick={handleEditEnrollment} disabled={!editMonthlyFee || savingEdit}
+                style={{ flex: 2, background: (!editMonthlyFee || savingEdit) ? '#333' : ACCENT, border: 'none', color: '#FFF', fontFamily: FONTS.condensed, fontWeight: 900, padding: '0.65rem', cursor: 'pointer', textTransform: 'uppercase' }}>
+                {savingEdit ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
           </div>
         </Modal>
       )}

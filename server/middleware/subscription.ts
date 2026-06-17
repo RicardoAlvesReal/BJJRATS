@@ -1,8 +1,8 @@
 // BJJRats — Subscription / feature gating middleware
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users, plans, subscriptions } from '../db/schema.js';
+import { academyProfessorLinks, users, plans, subscriptions } from '../db/schema.js';
 import type { AuthRequest } from './auth.js';
 import type { Response, NextFunction } from 'express';
 
@@ -56,6 +56,22 @@ export async function requireSubscription(
       .limit(1);
 
     if (!sub || (sub.status !== 'active' && sub.status !== 'trial')) {
+      const [academyCoveredAccess] = await db
+        .select({ id: academyProfessorLinks.id })
+        .from(academyProfessorLinks)
+        .where(and(
+          eq(academyProfessorLinks.professorUid, req.userId!),
+          eq(academyProfessorLinks.relationType, 'internal'),
+          eq(academyProfessorLinks.status, 'active'),
+        ))
+        .limit(1);
+
+      if (academyCoveredAccess) {
+        req.isExempt = true;
+        req.subscriptionStatus = 'academy_covered';
+        return next();
+      }
+
       res.status(403).json({
         error: 'subscription_required',
         message: 'Assinatura necessária para acessar este recurso.',

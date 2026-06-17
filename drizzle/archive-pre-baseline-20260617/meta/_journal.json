@@ -1,0 +1,69 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1779744874957,
+      "tag": "0000_perpetual_lockheed",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779830000000,
+      "tag": "0001_add_community_moderator",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779900000000,
+      "tag": "0002_add_trial_ends_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779910000000,
+      "tag": "0003_add_trial_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779920000000,
+      "tag": "0004_add_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779930000000,
+      "tag": "0005_add_announcements",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779940000000,
+      "tag": "0006_add_academy_coordinates",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779950000000,
+      "tag": "0007_announcement_scopes",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779960000000,
+      "tag": "0008_add_trial_requests_enabled",
+      "breakpoints": true
+    }
+  ]
+}

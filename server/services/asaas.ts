@@ -146,6 +146,26 @@ export async function cancelSubscription(id: string, config?: AsaasRequestConfig
   return request<AsaasSubscription>('DELETE', `/subscriptions/${id}`, undefined, config);
 }
 
+export async function updateSubscription(id: string, data: {
+  billingType?: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+}, config?: AsaasRequestConfig): Promise<AsaasSubscription> {
+  if (isDevMode(config)) {
+    return {
+      id,
+      customer: '',
+      billingType: data.billingType || 'PIX',
+      value: 0,
+      nextDueDate: new Date().toISOString().split('T')[0],
+      status: 'ACTIVE',
+      cycle: 'MONTHLY',
+      deleted: false,
+    };
+  }
+  return request<AsaasSubscription>('PUT', `/subscriptions/${id}`, {
+    billingType: data.billingType,
+  }, config);
+}
+
 // ─── Payments (for a subscription) ─────────────────────────────────────────
 
 export async function listSubscriptionPayments(subscriptionId: string, config?: AsaasRequestConfig): Promise<AsaasPayment[]> {

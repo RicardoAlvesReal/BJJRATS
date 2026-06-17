@@ -32,7 +32,9 @@ export const users = pgTable('users', {
   role:             text('role').default('student'),   // superadmin|academy|professor|student ('admin' legado)
   communityModerator: boolean('community_moderator').default(false),
   trialEndsAt: timestamp('trial_ends_at'),
+  mustChangePassword: boolean('must_change_password').default(false),
   trialRequestsEnabled: boolean('trial_requests_enabled').default(true),
+  promotionCriteria: jsonb('promotion_criteria').default([]),
   academyName:      text('academy_name'),
   academyAddress:   text('academy_address'),
   academyCity:      text('academy_city'),
@@ -151,6 +153,8 @@ export const posts = pgTable('posts', {
   mediaType:    text('media_type'),                   // 'image' | 'video'
   postType:     text('post_type').default('community'),// 'community' | 'academy' | 'training'
   academyId:    text('academy_id'),
+  academyName:  text('academy_name'),
+  academyLogo:  text('academy_logo'),
   trainingData: jsonb('training_data'),
   likes:        jsonb('likes').default([]),           // array of uid strings
   createdAt:    timestamp('created_at').defaultNow(),

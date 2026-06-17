@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
-import { eq, sql, and, or, gte, lt, desc, isNotNull, ilike } from 'drizzle-orm';
+import { eq, sql, and, or, gte, lt, desc, isNotNull, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, trainings, classCheckIns, payments, enrollments, academyRequests, posts, comments, events, challenges, plans, subscriptions, settings } from '../db/schema.js';
 import {
@@ -390,351 +390,351 @@ router.get(
 );
 
 // ─── GET /api/admin/crm ──────────────────────────────────────────────────────
-// Dados completos do CRM: faturamento, leads, alunos, frequência, inadimplência
+// CRM do superadmin: métricas de assinatura da plataforma (receita SaaS)
 router.get(
   '/crm',
   requireAuth,
   requireRole('superadmin'),
-  async (req: AuthRequest, res) => {
-    const actorRole = req.userRole!;
-    const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
+  async (_req: AuthRequest, res) => {
     const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const [
-      paymentData,
-      enrollmentData,
-      leadPipeline,
+      subCounts,
+      activeSubs,
       revenueMonthly,
-      recentPayments,
-      leadsDetail,
-      studentStatusCounts,
-      enrollmentMonthly,
-      beltDist,
-      checkIns30d,
-      totalStudents,
-      defaultingPayments,
-      activeEnrollmentsList,
-      lastCheckIns,
+      recentSubPayments,
+      pastDueSubs,
+      allSubs,
     ] = await Promise.all([
-      // 1. Resumo financeiro geral
-      (() => {
-        const cond: any[] = [];
-        if (academyUid) cond.push(eq(payments.professorUid, academyUid));
-        return db
-          .select({
-            totalBilled:  sql<number>`coalesce(sum(${payments.amount}), 0)`,
-            totalPaid:    sql<number>`coalesce(sum(${payments.amount}) filter (where ${payments.status} = 'paid'), 0)`,
-            totalPending: sql<number>`coalesce(sum(${payments.amount}) filter (where ${payments.status} = 'pending'), 0)`,
-            totalOverdue: sql<number>`coalesce(sum(${payments.amount}) filter (where ${payments.status} = 'overdue'), 0)`,
-          })
-          .from(payments)
-          .where(cond.length ? and(...cond) : undefined);
-      })(),
+      // 1. Contagem de assinaturas por status
+      db
+        .select({
+          status: subscriptions.status,
+          count: sql<number>`count(*)`,
+        })
+        .from(subscriptions)
+        .groupBy(subscriptions.status),
 
-      // 2. Mensalidades previstas
+      // 2. Assinaturas ativas para MRR (com plano)
+      db
+        .select({
+          id: subscriptions.id,
+          userUid: subscriptions.userUid,
+          planId: subscriptions.planId,
+          status: subscriptions.status,
+          currentPeriodEnd: subscriptions.currentPeriodEnd,
+          planPrice: plans.price,
+          planName: plans.name,
+        })
+        .from(subscriptions)
+        .innerJoin(plans, eq(plans.id, subscriptions.planId))
+        .where(or(
+          eq(subscriptions.status, 'active'),
+          eq(subscriptions.status, 'trial'),
+        )),
+
+      // 3. Faturamento mensal de assinaturas (pagos)
       (() => {
-        const cond: any[] = [eq(enrollments.status, 'active')];
-        if (academyUid) cond.push(eq(enrollments.professorUid, academyUid));
+        // Como subscriptions não tem payment history local, usamos os períodos
+        // Agrupamos por mês de criação para evolução de assinantes
         return db
           .select({
-            total: sql<number>`coalesce(sum(${enrollments.monthlyFee}), 0)`,
+            month: sql<string>`to_char(${subscriptions.createdAt}, 'YYYY-MM')`,
             count: sql<number>`count(*)`,
           })
-          .from(enrollments)
-          .where(and(...cond));
+          .from(subscriptions)
+          .where(eq(subscriptions.status, 'active'))
+          .groupBy(sql`to_char(${subscriptions.createdAt}, 'YYYY-MM')`)
+          .orderBy(sql`to_char(${subscriptions.createdAt}, 'YYYY-MM')`);
       })(),
 
-      // 3. Pipeline de leads (agrupado)
-      (() => {
-        const cond: any[] = [];
-        if (academyUid) cond.push(eq(academyRequests.professorUid, academyUid));
-        return db
-          .select({
-            status: academyRequests.status,
-            count: sql<number>`count(*)`,
-          })
-          .from(academyRequests)
-          .where(cond.length ? and(...cond) : undefined)
-          .groupBy(academyRequests.status);
-      })(),
+      // 4. Assinaturas recentes (últimas 20)
+      db
+        .select({
+          id: subscriptions.id,
+          userUid: subscriptions.userUid,
+          planId: subscriptions.planId,
+          status: subscriptions.status,
+          planName: plans.name,
+          planPrice: plans.price,
+          createdAt: subscriptions.createdAt,
+          currentPeriodEnd: subscriptions.currentPeriodEnd,
+        })
+        .from(subscriptions)
+        .leftJoin(plans, eq(plans.id, subscriptions.planId))
+        .orderBy(desc(subscriptions.createdAt))
+        .limit(20),
 
-      // 4. Faturamento mensal (recebido)
-      (() => {
-        const cond: any[] = [eq(payments.status, 'paid')];
-        if (academyUid) cond.push(eq(payments.professorUid, academyUid));
-        return db
-          .select({
-            month: sql<string>`to_char(${payments.paidAt}, 'YYYY-MM')`,
-            total: sql<number>`coalesce(sum(${payments.amount}), 0)`,
-            count: sql<number>`count(*)`,
-          })
-          .from(payments)
-          .where(and(...cond))
-          .groupBy(sql`to_char(${payments.paidAt}, 'YYYY-MM')`)
-          .orderBy(sql`to_char(${payments.paidAt}, 'YYYY-MM')`);
-      })(),
+      // 5. Assinaturas inadimplentes (past_due)
+      db
+        .select({
+          id: subscriptions.id,
+          userUid: subscriptions.userUid,
+          planId: subscriptions.planId,
+          status: subscriptions.status,
+          currentPeriodEnd: subscriptions.currentPeriodEnd,
+          planName: plans.name,
+          planPrice: plans.price,
+        })
+        .from(subscriptions)
+        .leftJoin(plans, eq(plans.id, subscriptions.planId))
+        .where(eq(subscriptions.status, 'past_due'))
+        .orderBy(desc(subscriptions.currentPeriodEnd)),
 
-      // 5. Últimos pagamentos
-      (() => {
-        const cond: any[] = [];
-        if (academyUid) cond.push(eq(payments.professorUid, academyUid));
-        return db
-          .select({
-            id: payments.id,
-            studentName: payments.studentName,
-            studentUid: payments.studentUid,
-            amount: payments.amount,
-            status: payments.status,
-            dueDate: payments.dueDate,
-            paidAt: payments.paidAt,
-          })
-          .from(payments)
-          .where(cond.length ? and(...cond) : undefined)
-          .orderBy(desc(payments.createdAt))
-          .limit(20);
-      })(),
-
-      // 6. Leads detalhados
-      (() => {
-        const cond: any[] = [];
-        if (academyUid) cond.push(eq(academyRequests.professorUid, academyUid));
-        return db
-          .select({
-            id: academyRequests.id,
-            studentName: academyRequests.studentName,
-            studentEmail: academyRequests.studentEmail,
-            studentBelt: academyRequests.studentBelt,
-            studentPhoto: academyRequests.studentPhoto,
-            studentUid: academyRequests.studentUid,
-            status: academyRequests.status,
-            createdAt: academyRequests.createdAt,
-          })
-          .from(academyRequests)
-          .where(cond.length ? and(...cond) : undefined)
-          .orderBy(desc(academyRequests.createdAt));
-      })(),
-
-      // 7. Alunos por status de matrícula
-      (() => {
-        const cond: any[] = [];
-        if (academyUid) cond.push(eq(enrollments.professorUid, academyUid));
-        return db
-          .select({
-            status: enrollments.status,
-            count: sql<number>`count(*)`,
-          })
-          .from(enrollments)
-          .where(cond.length ? and(...cond) : undefined)
-          .groupBy(enrollments.status);
-      })(),
-
-      // 8. Matrículas por mês
-      (() => {
-        const cond: any[] = [];
-        if (academyUid) cond.push(eq(enrollments.professorUid, academyUid));
-        return db
-          .select({
-            month: sql<string>`to_char(${enrollments.createdAt}, 'YYYY-MM')`,
-            count: sql<number>`count(*)`,
-          })
-          .from(enrollments)
-          .where(cond.length ? and(...cond) : undefined)
-          .groupBy(sql`to_char(${enrollments.createdAt}, 'YYYY-MM')`)
-          .orderBy(sql`to_char(${enrollments.createdAt}, 'YYYY-MM')`);
-      })(),
-
-      // 9. Alunos por faixa
-      (() => {
-        const cond: any[] = [eq(users.role, 'student')];
-        if (academyUid) cond.push(
-          or(
-            eq(users.academyId, academyUid),
-            eq(users.uid, academyUid),
-          )
-        );
-        return db
-          .select({
-            belt: users.belt,
-            count: sql<number>`count(*)`,
-          })
-          .from(users)
-          .where(and(...cond))
-          .groupBy(users.belt)
-          .orderBy(desc(sql`count(*)`));
-      })(),
-
-      // 10. Check-ins nos últimos 30 dias
-      (() => {
-        const cond: any[] = [gte(classCheckIns.createdAt, thirtyDaysAgo)];
-        if (academyUid) cond.push(eq(classCheckIns.academyId, academyUid));
-        return db
-          .select({ count: sql<number>`count(*)` })
-          .from(classCheckIns)
-          .where(and(...cond));
-      })(),
-
-      // 11. Total de alunos (role = 'student')
-      (() => {
-        const cond: any[] = [eq(users.role, 'student')];
-        if (academyUid) cond.push(
-          or(
-            eq(users.academyId, academyUid),
-            eq(users.uid, academyUid),
-          )
-        );
-        return db
-          .select({ count: sql<number>`count(*)` })
-          .from(users)
-          .where(and(...cond));
-      })(),
-
-      // 12. Pagamentos inadimplentes (overdue ou pending com dueDate passado)
-      (() => {
-        const cond: any[] = [
-          or(
-            eq(payments.status, 'overdue'),
-            and(
-              eq(payments.status, 'pending'),
-              lt(payments.dueDate, now),
-              isNotNull(payments.dueDate),
-            ),
-          ),
-        ];
-        if (academyUid) cond.push(eq(payments.professorUid, academyUid));
-        return db
-          .select({
-            id: payments.id,
-            studentUid: payments.studentUid,
-            studentName: payments.studentName,
-            amount: payments.amount,
-            dueDate: payments.dueDate,
-            status: payments.status,
-          })
-          .from(payments)
-          .where(and(...cond))
-          .orderBy(desc(payments.dueDate))
-          .limit(50);
-      })(),
-
-      // 13. Matrículas ativas (para cálculo de inativos)
-      (() => {
-        const cond: any[] = [eq(enrollments.status, 'active')];
-        if (academyUid) cond.push(eq(enrollments.professorUid, academyUid));
-        return db
-          .select({
-            studentUid: enrollments.studentUid,
-            studentName: enrollments.studentName,
-          })
-          .from(enrollments)
-          .where(and(...cond));
-      })(),
-
-      // 14. Último check-in por aluno ativo
-      (() => {
-        const cond: any[] = [];
-        if (academyUid) cond.push(eq(classCheckIns.academyId, academyUid));
-        return db
-          .select({
-            studentUid: classCheckIns.studentUid,
-            lastDate: sql<Date>`max(${classCheckIns.createdAt})`,
-          })
-          .from(classCheckIns)
-          .where(cond.length ? and(...cond) : undefined)
-          .groupBy(classCheckIns.studentUid);
-      })(),
+      // 6. Todas as assinaturas (para calcular totais)
+      db
+        .select({
+          id: subscriptions.id,
+          status: subscriptions.status,
+          planId: subscriptions.planId,
+          planPrice: plans.price,
+        })
+        .from(subscriptions)
+        .leftJoin(plans, eq(plans.id, subscriptions.planId)),
     ]);
 
-    const projectedMonthly = Number(enrollmentData[0]?.total ?? 0);
-    const activeEnrollmentsCount = Number(enrollmentData[0]?.count ?? 0);
-    const checkIns30dCount = Number(checkIns30d[0]?.count ?? 0);
-    const totalStudentsCount = Number(totalStudents[0]?.count ?? 0);
-    const attendanceRate = totalStudentsCount > 0
-      ? Math.round((checkIns30dCount / (totalStudentsCount * 30)) * 10000) / 100
-      : 0;
+    // MRR = soma dos preços dos planos ativos
+    const mrr = activeSubs
+      .filter(s => s.status === 'active')
+      .reduce((sum, s) => sum + (Number(s.planPrice) || 0), 0);
 
-    // Mapa de último check-in por aluno
-    const lastCheckInMap = new Map<string, Date>();
-    for (const ci of lastCheckIns) {
-      if (ci.studentUid && ci.lastDate) {
-        lastCheckInMap.set(ci.studentUid, ci.lastDate);
-      }
-    }
-
-    // Alunos inativos (matrícula ativa sem check-in há mais de 14 dias)
-    const inactiveStudents = activeEnrollmentsList
-      .filter(e => {
-        const last = e.studentUid ? lastCheckInMap.get(e.studentUid) : undefined;
-        if (!last) return true; // nunca fez check-in
-        const daysSinceLast = (now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24);
-        return daysSinceLast > 14;
-      })
-      .map(e => ({
-        studentUid: e.studentUid,
-        studentName: e.studentName,
-        daysSinceLastCheckIn: e.studentUid
-          ? Math.floor((now.getTime() - (lastCheckInMap.get(e.studentUid)?.getTime() ?? now.getTime())) / (1000 * 60 * 60 * 24))
-          : 999,
-      }))
-      .sort((a, b) => b.daysSinceLastCheckIn - a.daysSinceLastCheckIn);
-
-    const enrollmentEvolution = enrollmentMonthly.map(r => ({
-      month: r.month,
-      newEnrollments: Number(r.count),
-    }));
+    // Total de assinantes (active + trial + past_due)
+    const activeCount = Number(subCounts.find(s => s.status === 'active')?.count ?? 0);
+    const trialCount = Number(subCounts.find(s => s.status === 'trial')?.count ?? 0);
+    const pastDueCount = Number(subCounts.find(s => s.status === 'past_due')?.count ?? 0);
+    const cancelledCount = Number(subCounts.find(s => s.status === 'cancelled')?.count ?? 0);
 
     res.json({
       revenue: {
-        totalBilled: Number(paymentData[0]?.totalBilled ?? 0),
-        totalPaid: Number(paymentData[0]?.totalPaid ?? 0),
-        totalPending: Number(paymentData[0]?.totalPending ?? 0),
-        totalOverdue: Number(paymentData[0]?.totalOverdue ?? 0),
-        projectedMonthly,
-        projectedAnnual: projectedMonthly * 12,
-        activeEnrollments: activeEnrollmentsCount,
+        mrr,
+        projectedAnnual: mrr * 12,
+        totalBilled: 0, // Não aplicável para plataforma
+        totalPaid: 0,
+        totalPending: 0,
+        totalOverdue: 0,
+        projectedMonthly: mrr,
+        activeEnrollments: activeCount + trialCount,
       },
-      leads: leadPipeline.map(l => ({ status: l.status, count: Number(l.count) })),
-      revenueMonthly: revenueMonthly.map(r => ({ month: r.month, total: Number(r.total), count: Number(r.count) })),
-      recentPayments: recentPayments.map(p => ({
-        id: p.id,
-        studentName: p.studentName,
-        studentUid: p.studentUid,
-        amount: Number(p.amount),
-        status: p.status,
-        dueDate: p.dueDate,
-        paidAt: p.paidAt,
+      subscribers: {
+        active: activeCount,
+        trial: trialCount,
+        pastDue: pastDueCount,
+        cancelled: cancelledCount,
+        total: activeCount + trialCount + pastDueCount,
+      },
+      revenueMonthly: revenueMonthly.map(r => ({
+        month: r.month,
+        total: 0, // sem dados de pagamento local
+        count: Number(r.count),
       })),
-      leadsDetail: leadsDetail.map(l => ({
-        id: l.id,
-        studentName: l.studentName,
-        studentEmail: l.studentEmail,
-        studentBelt: l.studentBelt,
-        studentPhoto: l.studentPhoto,
-        studentUid: l.studentUid,
-        status: l.status,
-        createdAt: l.createdAt?.toISOString(),
+      recentSubscriptions: recentSubPayments.map(s => ({
+        id: s.id,
+        userUid: s.userUid,
+        planName: s.planName || '—',
+        planPrice: Number(s.planPrice) || 0,
+        status: s.status,
+        createdAt: s.createdAt?.toISOString() || null,
+        periodEnd: s.currentPeriodEnd?.toISOString() || null,
       })),
-      studentStats: {
-        active: Number(studentStatusCounts.find(s => s.status === 'active')?.count ?? 0),
-        suspended: Number(studentStatusCounts.find(s => s.status === 'suspended')?.count ?? 0),
-        cancelled: Number(studentStatusCounts.find(s => s.status === 'cancelled')?.count ?? 0),
-        total: totalStudentsCount,
+      defaultingSubscribers: pastDueSubs.map(s => ({
+        id: s.id,
+        userUid: s.userUid,
+        planName: s.planName || '—',
+        planPrice: Number(s.planPrice) || 0,
+        periodEnd: s.currentPeriodEnd?.toISOString() || null,
+      })),
+      // Campos mantidos para compatibilidade com tipo existente (não usados pelo superadmin)
+      leads: [],
+      revenueMonthly: revenueMonthly.map(r => ({ month: r.month, total: 0, count: Number(r.count) })),
+      recentPayments: [],
+      leadsDetail: [],
+      studentStats: { active: activeCount, suspended: pastDueCount, cancelled: cancelledCount, total: activeCount + trialCount + pastDueCount },
+      enrollmentEvolution: revenueMonthly.map(r => ({ month: r.month, newEnrollments: Number(r.count) })),
+      studentsByBelt: [],
+      attendance: { checkInsLast30Days: 0, totalStudents: activeCount + trialCount, rate: 0 },
+      inactiveStudents: [],
+      defaultingStudents: [],
+    });
+  }
+);
+
+// ─── GET /api/admin/metrics ────────────────────────────────────────────────────
+// Métricas de economia da plataforma: quanto academias/professores estão lucrando
+router.get(
+  '/metrics',
+  requireAuth,
+  requireRole('superadmin'),
+  async (_req: AuthRequest, res) => {
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const [
+      paymentTotals,
+      coveredCombos,
+      duplicateAmounts,
+      monthlyRevenue,
+      topEarners,
+      enrollmentStats,
+      totalRowCount,
+    ] = await Promise.all([
+      // Totais gerais de pagamentos (bruto, sem deduplicar)
+      db
+        .select({
+          totalPending: sql<number>`coalesce(sum(${payments.amount}::double precision) filter (where ${payments.status} = 'pending'), 0)`,
+          totalPaid:    sql<number>`coalesce(sum(${payments.amount}::double precision) filter (where ${payments.status} = 'paid'), 0)`,
+          totalOverdue: sql<number>`coalesce(sum(${payments.amount}::double precision) filter (where ${payments.status} = 'overdue'), 0)`,
+          countPaid:    sql<number>`count(*) filter (where ${payments.status} = 'paid')`,
+          countPending: sql<number>`count(*) filter (where ${payments.status} = 'pending')`,
+          countOverdue: sql<number>`count(*) filter (where ${payments.status} = 'overdue')`,
+        })
+        .from(payments),
+
+      // Combinações (student+prof+month) que já têm pagamento pago — overdue/pending do mesmo mês são duplicatas
+      db
+        .select({
+          studentUid: payments.studentUid,
+          professorUid: payments.professorUid,
+          month: sql<string>`to_char(${payments.dueDate}, 'YYYY-MM')`,
+        })
+        .from(payments)
+        .where(eq(payments.status, 'paid'))
+        .groupBy(payments.studentUid, payments.professorUid, sql`to_char(${payments.dueDate}, 'YYYY-MM')`),
+
+      // Soma dos overdue/pending que são duplicatas (já têm pago no mesmo mês)
+      db.execute(sql`
+        SELECT
+          coalesce(sum(p.amount) filter (where p.status = 'overdue'), 0) as total_overdue_dup,
+          coalesce(sum(p.amount) filter (where p.status = 'pending'), 0) as total_pending_dup,
+          count(*) filter (where p.status = 'overdue') as count_overdue_dup,
+          count(*) filter (where p.status = 'pending') as count_pending_dup
+        FROM payments p
+        INNER JOIN (
+          SELECT student_uid, professor_uid, to_char(due_date, 'YYYY-MM') as m
+          FROM payments
+          WHERE status = 'paid'
+          GROUP BY student_uid, professor_uid, to_char(due_date, 'YYYY-MM')
+        ) paid ON paid.student_uid = p.student_uid
+              AND paid.professor_uid = p.professor_uid
+              AND to_char(p.due_date, 'YYYY-MM') = paid.m
+        WHERE p.status IN ('overdue', 'pending')
+      `),
+
+      // Receita mensal (pagos) por mês
+      db
+        .select({
+          month: sql<string>`to_char(${payments.paidAt}, 'YYYY-MM')`,
+          total: sql<number>`coalesce(sum(${payments.amount}::double precision), 0)`,
+          count: sql<number>`count(*)`,
+        })
+        .from(payments)
+        .where(and(eq(payments.status, 'paid'), isNotNull(payments.paidAt)))
+        .groupBy(sql`to_char(${payments.paidAt}, 'YYYY-MM')`)
+        .orderBy(sql`to_char(${payments.paidAt}, 'YYYY-MM')`),
+
+      // Top earners (professores e academias)
+      db
+        .select({
+          professorUid: payments.professorUid,
+          totalPaid: sql<number>`coalesce(sum(${payments.amount}::double precision), 0)`,
+          countPaid: sql<number>`count(*)`,
+        })
+        .from(payments)
+        .where(eq(payments.status, 'paid'))
+        .groupBy(payments.professorUid)
+        .orderBy(desc(sql`coalesce(sum(${payments.amount}::double precision), 0)`))
+        .limit(20),
+
+      // Estatísticas de matrículas
+      db
+        .select({
+          status: enrollments.status,
+          count: sql<number>`count(*)`,
+          totalMonthly: sql<number>`coalesce(sum(${enrollments.monthlyFee}::double precision), 0)`,
+        })
+        .from(enrollments)
+        .groupBy(enrollments.status),
+
+      // Contagem total de pagamentos (para debug)
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(payments),
+    ]);
+
+    // Busca nomes dos top earners
+    const topEarnerUids = topEarners.map(e => e.professorUid);
+    const earnersMap = new Map<string, { name: string; academyName: string | null; role: string | null }>();
+    if (topEarnerUids.length > 0) {
+      const earnerUsers = await db
+        .select({
+          uid: users.uid,
+          name: users.name,
+          academyName: users.academyName,
+          role: users.role,
+        })
+        .from(users)
+        .where(inArray(users.uid, topEarnerUids));
+      for (const u of earnerUsers) {
+        earnersMap.set(u.uid, { name: u.name, academyName: u.academyName, role: u.role });
+      }
+    }
+
+    const totalRawPending = Number(paymentTotals[0]?.totalPending ?? 0);
+    const totalPaidAll = Number(paymentTotals[0]?.totalPaid ?? 0);
+    const totalRawOverdue = Number(paymentTotals[0]?.totalOverdue ?? 0);
+    const rawCountOverdue = Number(paymentTotals[0]?.countOverdue ?? 0);
+    const rawCountPending = Number(paymentTotals[0]?.countPending ?? 0);
+
+    // Deduplica: remove overdue/pending que já têm pago no mesmo mês
+    const dupRow = (duplicateAmounts as any[])?.[0] || {};
+    const dupOverdue = Number(dupRow?.total_overdue_dup ?? 0);
+    const dupPending = Number(dupRow?.total_pending_dup ?? 0);
+    const dupCountOverdue = Number(dupRow?.count_overdue_dup ?? 0);
+    const dupCountPending = Number(dupRow?.count_pending_dup ?? 0);
+
+    const totalPendingAll = totalRawPending - dupPending;
+    const totalOverdueAll = totalRawOverdue - dupOverdue;
+    const countPendingAll = rawCountPending - dupCountPending;
+    const countOverdueAll = rawCountOverdue - dupCountOverdue;
+
+    // Faturado = apenas pago
+    const totalBilledAll = totalPaidAll;
+    const monthlyProjected = Number(enrollmentStats.find(s => s.status === 'active')?.totalMonthly ?? 0);
+
+    res.json({
+      overview: {
+        totalBilled: totalBilledAll,
+        totalPaid: totalPaidAll,
+        totalPending: totalPendingAll,
+        totalOverdue: totalOverdueAll,
+        countPaid: Number(paymentTotals[0]?.countPaid ?? 0),
+        countPending: countPendingAll,
+        countOverdue: countOverdueAll,
+        totalRows: Number(totalRowCount[0]?.count ?? 0),
+        dupOverdue: dupOverdue,
+        dupPending: dupPending,
+        monthlyProjected,
+        paidRate: totalBilledAll > 0 ? Math.round((totalPaidAll / totalBilledAll) * 100) : 0,
       },
-      enrollmentEvolution,
-      studentsByBelt: beltDist.map(b => ({ belt: b.belt, count: Number(b.count) })),
-      attendance: {
-        checkInsLast30Days: checkIns30dCount,
-        totalStudents: totalStudentsCount,
-        rate: attendanceRate,
-      },
-      inactiveStudents: inactiveStudents.slice(0, 20),
-      defaultingStudents: defaultingPayments.map(p => ({
-        id: p.id,
-        studentUid: p.studentUid,
-        studentName: p.studentName,
-        amount: Number(p.amount),
-        dueDate: p.dueDate,
-        status: p.status,
+      monthlyRevenue: monthlyRevenue.map(r => ({
+        month: r.month,
+        total: Number(r.total),
+        count: Number(r.count),
+      })),
+      topEarners: topEarners.map(e => {
+        const info = earnersMap.get(e.professorUid);
+        const displayName = (info?.academyName) || info?.name || e.professorUid;
+        return {
+          professorUid: e.professorUid,
+          name: displayName,
+          role: info?.role || null,
+          totalPaid: Number(e.totalPaid),
+          countPaid: Number(e.countPaid),
+        };
+      }),
+      enrollmentBreakdown: enrollmentStats.map(s => ({
+        status: s.status,
+        count: Number(s.count),
+        monthly: Number(s.totalMonthly),
       })),
     });
   }

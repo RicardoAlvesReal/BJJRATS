@@ -33,8 +33,6 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col font-['Barlow_Condensed']">
-      <NotificationBell />
-
       {/* Top Bar */}
       <header className="bjj-glass-strong flex items-center justify-between px-5 h-14 sticky top-0 z-100" style={{ borderBottom: '2px solid #CC0000' }}>
         <div className="flex items-center gap-3">
@@ -46,6 +44,7 @@ export default function AdminLayout() {
         </div>
 
         <div className="flex items-center gap-3">
+          <NotificationBell placement="inline" />
           <button
             onClick={handleLogout}
             style={{

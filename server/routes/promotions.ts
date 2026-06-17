@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { eq, desc } from 'drizzle-orm';
+import { and, desc, eq, or } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { promotions, users } from '../db/schema.js';
+import { academyStudentProfessorAssignments, enrollments, promotions, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -40,6 +40,48 @@ const serializePromotion = (row: typeof promotions.$inferSelect) => ({
   promotedAtStr: formatDate(row.promotedAt),
 });
 
+async function canPromoteStudent(actorUid: string, actorRole: string | undefined, studentUid: string) {
+  if (actorRole === 'superadmin') return true;
+  if (!['academy', 'admin', 'professor'].includes(actorRole || '')) return false;
+
+  const [student] = await db.select({
+    uid: users.uid,
+    role: users.role,
+    academyId: users.academyId,
+  }).from(users).where(eq(users.uid, studentUid)).limit(1);
+
+  if (!student || student.role !== 'student') return false;
+  if ((actorRole === 'academy' || actorRole === 'admin') && student.academyId === actorUid) return true;
+
+  const [enrollment] = await db.select({ id: enrollments.id })
+    .from(enrollments)
+    .where(and(
+      eq(enrollments.professorUid, actorUid),
+      eq(enrollments.studentUid, studentUid),
+      or(
+        eq(enrollments.status, 'active'),
+        eq(enrollments.status, 'suspended'),
+        eq(enrollments.status, 'pending'),
+      ),
+    ))
+    .limit(1);
+  if (enrollment) return true;
+
+  const [assignment] = await db.select({ id: academyStudentProfessorAssignments.id })
+    .from(academyStudentProfessorAssignments)
+    .where(and(
+      eq(academyStudentProfessorAssignments.professorUid, actorUid),
+      eq(academyStudentProfessorAssignments.studentUid, studentUid),
+      or(
+        eq(academyStudentProfessorAssignments.status, 'active'),
+        eq(academyStudentProfessorAssignments.status, 'accepted'),
+      ),
+    ))
+    .limit(1);
+
+  return !!assignment;
+}
+
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   const { professorUid, studentUid } = req.query as Record<string, string>;
   const rows = professorUid
@@ -60,6 +102,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
   if (!studentUid || !toBelt) {
     return res.status(400).json({ error: 'studentUid e toBelt/newBelt sao obrigatorios' });
+  }
+
+  const allowed = await canPromoteStudent(req.userId!, req.userRole, studentUid);
+  if (!allowed) {
+    return res.status(403).json({ error: 'Voce nao pode promover este aluno.' });
   }
 
   const [row] = await db.insert(promotions).values({

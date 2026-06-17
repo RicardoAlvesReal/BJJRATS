@@ -1407,7 +1407,7 @@ function AcademyScheduleView({ professorUid, userId, userProfile }: {
     const load = async () => {
       setLoading(true);
       try {
-        const list = await api.classes.listSchedules(professorUid) as any[];
+        const list = await api.classes.listSchedules({ professorUid }) as any[];
         list.sort((a, b) => a.time.localeCompare(b.time));
         setSchedules(list);
         const ciList = await api.classes.getCheckIns({ professorUid, dateKey: todayStr }) as any[];

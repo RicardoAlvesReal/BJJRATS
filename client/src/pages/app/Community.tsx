@@ -143,10 +143,11 @@ function getCommunityPostType(post: Pick<CommunityPost, 'type' | 'trainingData'>
 
 function normalizeCommunityPost(post: Record<string, any>): CommunityPost {
   const hasAcademyLogo = !!(post.academyLogo || post.academyLogoUrl);
+  const isAcademy = post.role === 'academy' || post.role === 'admin' || post.feedTarget === 'academy' || !!post.academyName;
   return {
     ...post,
     type: getCommunityPostType(post as CommunityPost),
-    isAcademyPost: hasAcademyLogo || post.role === 'academy' || post.role === 'admin',
+    isAcademyPost: hasAcademyLogo || isAcademy,
     academyLogo: post.academyLogo || post.academyLogoUrl || '',
   } as CommunityPost;
 }
@@ -782,6 +783,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
         authorBelt: (profile as any)?.belt || 'Branca',
         authorPhotoURL: isAcademy ? null : (profile?.photo || null),
         academyLogo: isAcademy ? ((profile as any)?.academyLogoUrl || '') : '',
+        academyName: isAcademy ? ((profile as any)?.academyName || '') : '',
         text: newPostText.trim(),
         photoURL,
         type: newPostType,
@@ -1153,7 +1155,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                   </div>
                 ) : null}
                 {communityPosts.map((post) => {
-                const isAcademyPost = post.isAcademyPost || !!post.academyLogo;
+                const isAcademyPost = post.isAcademyPost || !!post.academyLogo || !!post.academyName;
                 const beltColor = isAcademyPost ? '#E87722' : (BELT_COLORS[post.authorBelt] || '#FFFFFF');
                 const hasLiked = user && (post.likes || []).includes(user.uid);
                 const isOwn = user && (post.uid === user.uid || post.authorUid === user.uid);
@@ -1171,10 +1173,12 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                         <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: `2px solid ${isAcademyPost ? '#E87722' : beltColor}`, background: isAcademyPost ? '#1A1A1A' : (beltColor + '20'), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
                           {post.academyLogo ? (
                             <img src={post.academyLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                          ) : (post as any).academyLogoUrl ? (
+                            <img src={(post as any).academyLogoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                           ) : post.authorPhotoURL ? (
                             <img src={post.authorPhotoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                           ) : (
-                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', color: isAcademyPost ? '#E87722' : beltColor }}>{isAcademyPost ? 'AC' : (post.authorName || 'A').substring(0, 2).toUpperCase()}</span>
+                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', color: isAcademyPost ? '#E87722' : beltColor }}>{isAcademyPost ? 'AC' : ((post.authorName || 'A').substring(0, 2).toUpperCase())}</span>
                           )}
                         </div>
                         <div>
@@ -2019,7 +2023,7 @@ function LocalizarAcademiaTab() {
   const loadExpandedSchedules = async (academyId: string) => {
     setExpandedSchedulesLoading(true);
     try {
-      const list = await api.classes.listSchedules(academyId);
+      const list = await api.classes.listSchedules({ academyId });
       // Ordenar por dia da semana e hora no cliente
       const dayOrder: Record<string, number> = { 'seg': 0, 'ter': 1, 'qua': 2, 'qui': 3, 'sex': 4, 'sab': 5, 'dom': 6 };
       (list as any[]).sort((a: any, b: any) => {

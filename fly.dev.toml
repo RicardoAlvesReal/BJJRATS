@@ -1,0 +1,37 @@
+# App Fly.io separado para homologacao/desenvolvimento.
+# Crie o app com: fly apps create bjjrats-dev
+# Deploy: fly deploy -c fly.dev.toml
+
+app = "bjjrats-dev"
+primary_region = "gru"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  APP_ENV  = "development"
+  PORT     = "3000"
+  UPLOADS_DIR = "/app/uploads"
+  FINANCIAL_AUTOMATION_DISABLED = "true"
+
+[http_service]
+  internal_port       = 3000
+  force_https         = true
+  auto_stop_machines  = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type       = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  memory   = "512mb"
+  cpu_kind = "shared"
+  cpus     = 1
+
+[[mounts]]
+  source      = "bjjrats_dev_uploads"
+  destination = "/app/uploads"
+  initial_size = "1gb"

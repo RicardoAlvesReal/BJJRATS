@@ -3,7 +3,7 @@
 // Exibe cobranças pendentes, link PIX e histórico de pagamentos confirmados pelo professor
 
 import { useState, useEffect, useCallback } from 'react';
-import api from '@/lib/api';
+import api, { publicApi, type PaymentIntegrationSettings } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -74,6 +74,7 @@ export default function MinhasMensalidades({ onBack }: Props) {
   const { user } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<Record<string, PaymentIntegrationSettings | null>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'overdue' | 'paid'>('all');
 
@@ -83,6 +84,17 @@ export default function MinhasMensalidades({ onBack }: Props) {
     try {
       const enrollList = await api.enrollments.list({ studentUid: user.uid }) as Enrollment[];
       setEnrollments(enrollList);
+
+      // Busca métodos de pagamento de cada professor/academia
+      const methodsMap: Record<string, PaymentIntegrationSettings | null> = {};
+      await Promise.all(enrollList.map(async (enroll) => {
+        try {
+          methodsMap[enroll.professorUid] = await publicApi.getPaymentMethods(enroll.professorUid);
+        } catch {
+          methodsMap[enroll.professorUid] = null;
+        }
+      }));
+      setPaymentMethods(methodsMap);
 
       const now = new Date();
       const rawPayments = await api.payments.list({ studentUid: user.uid }) as Payment[];
@@ -147,7 +159,9 @@ export default function MinhasMensalidades({ onBack }: Props) {
         {enrollments.length > 0 && (
           <div style={{ marginBottom: '1.5rem' }}>
             <p style={{ ...labelStyle, marginBottom: '0.75rem' }}>ACADEMIA VINCULADA</p>
-            {enrollments.map(enroll => (
+            {enrollments.map(enroll => {
+              const methods = paymentMethods[enroll.professorUid];
+              return (
               <div key={enroll.id} style={{ background: '#111', border: `1px solid ${enroll.status === 'active' ? '#1A4A1A' : enroll.status === 'suspended' ? '#3A1A00' : '#333'}`, borderRadius: '0', padding: '1rem', marginBottom: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                   <div>
@@ -177,19 +191,51 @@ export default function MinhasMensalidades({ onBack }: Props) {
                     <p style={labelStyle}>VENCIMENTO</p>
                     <p style={valueStyle}>DIA {enroll.dueDay}</p>
                   </div>
-                  {enroll.pixKey && (
-                    <div style={{ flex: 1, minWidth: '120px' }}>
-                      <p style={labelStyle}>CHAVE PIX</p>
-                      <button
-                        onClick={() => copyPix(enroll.pixKey!)}
-                        style={{ background: 'transparent', border: '1px solid #333', color: '#AAA', fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', padding: '0.2rem 0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.1rem' }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        COPIAR PIX
-                      </button>
-                    </div>
-                  )}
                 </div>
+
+                {/* Métodos de pagamento disponíveis */}
+                {methods && enroll.status === 'active' && (
+                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #222' }}>
+                    <p style={{ ...labelStyle, marginBottom: '0.5rem' }}>FORMAS DE PAGAMENTO</p>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {methods.manualPaymentsEnabled && (
+                        <>
+                          {methods.pixKey && (
+                            <button
+                              onClick={() => copyPix(methods.pixKey!)}
+                              style={{ background: '#1A0F00', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.35rem 0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                              COPIAR PIX
+                            </button>
+                          )}
+                          {methods.pixQrCodeUrl && (
+                            <button
+                              onClick={() => window.open(methods.pixQrCodeUrl!, '_blank', 'noopener,noreferrer')}
+                              style={{ background: '#1A0F00', border: '1px solid #FF8C00', color: '#FF8C00', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.35rem 0.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                              QR CODE PIX
+                            </button>
+                          )}
+                          {!methods.pixKey && !methods.pixQrCodeUrl && (
+                            <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#888' }}>PIX (chave não configurada)</span>
+                          )}
+                        </>
+                      )}
+                      {methods.asaasEnabled && (
+                        <span style={{ background: '#0A1A2A', border: '1px solid #2A6FAF', color: '#5AA9FF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.35rem 0.65rem' }}>
+                          {methods.asaasBillingType === 'PIX' ? 'PIX VIA ASAAS' :
+                           methods.asaasBillingType === 'CREDIT_CARD' ? 'CARTÃO DE CRÉDITO' : 'ONLINE'}
+                        </span>
+                      )}
+                      {!methods.manualPaymentsEnabled && !methods.asaasEnabled && (
+                        <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#666' }}>Nenhum método configurado</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {enroll.status === 'suspended' && (
                   <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: '#1A0800', border: '1px solid #FF8C00', borderRadius: '0' }}>
                     <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#FF8C00', margin: 0 }}>
@@ -198,7 +244,7 @@ export default function MinhasMensalidades({ onBack }: Props) {
                   </div>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         )}
 

@@ -437,6 +437,7 @@ router.post('/professors', requireAuth, requireRole('academy', 'admin'), async (
       academyId: academyUid,
       academy: academy.name,
       isAcademyAdmin: false,
+      mustChangePassword: true,
     } as any);
 
     // Criar link de professor
@@ -697,7 +698,6 @@ router.get('/student-assignments/mine', requireAuth, async (req: AuthRequest, re
     .innerJoin(users, eq(users.uid, academyStudentProfessorAssignments.academyUid))
     .where(and(
       eq(academyStudentProfessorAssignments.professorUid, req.userId!),
-      eq(academyStudentProfessorAssignments.relationType, 'partner'),
       ne(academyStudentProfessorAssignments.status, 'cancelled'),
     ))
     .orderBy(desc(academyStudentProfessorAssignments.createdAt));
@@ -866,6 +866,25 @@ router.patch('/student-assignments/:id/respond', requireAuth, async (req: AuthRe
     } as any);
   }
 
+  res.json(row);
+});
+
+// ─── PATCH /api/academy/student-assignments/:id ──────────────────────────
+// Academia cancela/remove atribuição de aluno
+router.patch('/student-assignments/:id', requireAuth, requireRole('academy', 'admin'), async (req: AuthRequest, res) => {
+  const academyUid = req.userId!;
+  const [existing] = await db.select().from(academyStudentProfessorAssignments)
+    .where(and(
+      eq(academyStudentProfessorAssignments.id, req.params.id),
+      eq(academyStudentProfessorAssignments.academyUid, academyUid),
+    ))
+    .limit(1);
+  if (!existing) { res.status(404).json({ error: 'Atribuicao nao encontrada.' }); return; }
+
+  const [row] = await db.update(academyStudentProfessorAssignments)
+    .set({ status: 'cancelled', updatedAt: new Date() } as any)
+    .where(eq(academyStudentProfessorAssignments.id, existing.id))
+    .returning();
   res.json(row);
 });
 
