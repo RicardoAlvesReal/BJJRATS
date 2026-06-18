@@ -23,6 +23,9 @@ RUN pnpm build
 # ─── Stage 2: Produção ───────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
+# Suporte a UTF-8 (caracteres acentuados)
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
