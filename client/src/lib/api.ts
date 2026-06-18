@@ -23,7 +23,7 @@ async function apiFetch<T>(urlPath: string, options: RequestInit = {}): Promise<
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
   const res = await fetch(`${BASE}${urlPath}`, { ...options, headers, signal: controller.signal, credentials: 'include' }).finally(() => clearTimeout(timeoutId));
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
