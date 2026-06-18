@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import TurnstileWidget from '@/components/TurnstileWidget';
+import { passkeys } from '@/lib/api';
 
 const HERO_BG = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-hero-bg-EvuzUMvwhPb4GgYFs4uUr2.webp';
 const LOGO = '/favicon.png';
@@ -148,6 +149,8 @@ export default function Login() {
                 Esqueci a senha
               </button>
 
+              <PasskeyLoginButton email={email} onSuccess={() => navigate('/app')} />
+
               <TurnstileWidget onSuccess={t => setTurnstileToken(t)} />
 
               <button type="submit" className="bjj-btn-primary" disabled={loading || !turnstileToken} style={{ marginTop: '0.25rem' }}>
@@ -209,4 +212,113 @@ export default function Login() {
       </div>
     </div>
   );
+}
+
+// ─── Passkey (Biometria) ────────────────────────────────────────────────────
+
+function PasskeyLoginButton({ email, onSuccess }: { email: string; onSuccess: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [supported, setSupported] = useState(
+    typeof window !== 'undefined' && !!window.PublicKeyCredential
+  );
+
+  const handleBiometric = async () => {
+    if (!email.trim()) {
+      toast.error('Informe seu email antes de usar a biometria.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // 1. Solicita desafio de autenticação
+      const options = await passkeys.authChallenge(email.trim());
+
+      if (!options || !options.challenge) {
+        toast.error('Nenhuma credencial biométrica encontrada para este email.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Assina com o autenticador do dispositivo
+      options.publicKey.challenge = base64ToBuffer(options.publicKey.challenge);
+      options.publicKey.allowCredentials?.forEach((c: any) => {
+        c.id = base64ToBuffer(c.id);
+      });
+
+      const assertion = await navigator.credentials.get({ publicKey: options.publicKey }) as PublicKeyCredential;
+
+      // 3. Envia a assinatura para o servidor validar
+      const authData = (assertion.response as AuthenticatorAssertionResponse);
+      const result = await passkeys.auth({
+        id: assertion.id,
+        rawId: bufferToBase64(assertion.rawId),
+        response: {
+          authenticatorData: bufferToBase64(authData.authenticatorData),
+          clientDataJSON:    bufferToBase64(authData.clientDataJSON),
+          signature:         bufferToBase64(authData.signature),
+          userHandle:        authData.userHandle ? bufferToBase64(authData.userHandle) : null,
+        },
+        type: assertion.type,
+      });
+
+      if (result.success) {
+        toast.success('Biometria verificada! Redirecionando…');
+        onSuccess();
+      } else {
+        toast.error('Falha na verificação biométrica.');
+      }
+    } catch (err: any) {
+      if (err?.name === 'NotAllowedError') {
+        toast.error('Biometria cancelada ou não disponível.');
+      } else {
+        toast.error(err?.message || 'Erro na autenticação biométrica.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!supported) return null;
+
+  return (
+    <button
+      type="button"
+      className="bjj-btn-outline"
+      onClick={handleBiometric}
+      disabled={loading}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        marginTop: '0.25rem',
+        borderColor: '#2A6B3F',
+        color: '#5EBB7B',
+      }}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+        <path d="M4 22v-4c0-2.21 1.79-4 4-4h8c2.21 0 4 1.79 4 4v4"/>
+        <rect x="3" y="12" width="18" height="8" rx="1"/>
+        <circle cx="12" cy="9" r="1" fill="currentColor"/>
+      </svg>
+      {loading ? 'VERIFICANDO...' : 'ENTRAR COM DIGITAL'}
+    </button>
+  );
+}
+
+// ─── Helpers Base64 ──────────────────────────────────────────────────────────
+
+function base64ToBuffer(b64: string): ArrayBuffer {
+  const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return bytes.buffer;
+}
+
+function bufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }

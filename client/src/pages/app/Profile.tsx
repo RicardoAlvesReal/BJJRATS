@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import api from '@/lib/api';
+import api, { passkeys } from '@/lib/api';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { COLORS } from '@/lib/design';
 import {
@@ -1504,6 +1504,9 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           </div>
         )}
 
+        {/* ── Passkeys (Biometria) ── */}
+        <PasskeyManager />
+
         </motion.div>
     </div>
   );
@@ -1589,4 +1592,204 @@ function MensalidadesCard({ onOpen, userUid }: MensalidadesCardProps) {
       </button>
     </div>
   );
+}
+
+// ─── PasskeyManager ───────────────────────────────────────────────────────────
+// Gerencia biometria (WebAuthn / Passkeys) no Perfil do usuário
+
+function PasskeyManager() {
+  const [credentials, setCredentials] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [deviceName, setDeviceName] = useState('');
+  const [supported, setSupported] = useState(
+    typeof window !== 'undefined' && !!window.PublicKeyCredential
+  );
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      const list = await passkeys.list();
+      setCredentials(list || []);
+    } catch { /* silencioso */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleAdd = async () => {
+    try {
+      setAdding(true);
+      // 1. Pega desafio de registro
+      const options = await passkeys.registerChallenge();
+
+      options.publicKey.user.id = base64ToBuffer(options.publicKey.user.id);
+      options.publicKey.challenge = base64ToBuffer(options.publicKey.challenge);
+      options.publicKey.excludeCredentials?.forEach((c: any) => {
+        c.id = base64ToBuffer(c.id);
+      });
+
+      // 2. Cria a credencial no autenticador do dispositivo
+      const credential = await navigator.credentials.create({ publicKey: options.publicKey }) as PublicKeyCredential;
+
+      // 3. Envia para o servidor
+      const attestationResponse = credential.response as AuthenticatorAttestationResponse;
+      await passkeys.register({
+        id: credential.id,
+        rawId: bufferToBase64(credential.rawId),
+        response: {
+          attestationObject: bufferToBase64(attestationResponse.attestationObject),
+          clientDataJSON: bufferToBase64(attestationResponse.clientDataJSON),
+          transports: (credential as any).response?.getTransports?.() || [],
+        },
+        type: credential.type,
+        deviceName: deviceName.trim() || undefined,
+      });
+
+      toast.success('Biometria cadastrada com sucesso!');
+      setDeviceName('');
+      await load();
+    } catch (err: any) {
+      if (err?.name === 'NotAllowedError') {
+        toast.error('Registro biométrico cancelado.');
+      } else {
+        toast.error(err?.message || 'Erro ao registrar biometria.');
+      }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Remover esta biometria?')) return;
+    try {
+      await passkeys.delete(id);
+      toast.success('Biometria removida.');
+      await load();
+    } catch {
+      toast.error('Erro ao remover biometria.');
+    }
+  };
+
+  if (!supported) return null;
+
+  return (
+    <div className="bjj-card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5EBB7B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+          <path d="M4 22v-4c0-2.21 1.79-4 4-4h8c2.21 0 4 1.79 4 4v4"/>
+          <rect x="3" y="12" width="18" height="8" rx="1"/>
+          <circle cx="12" cy="9" r="1" fill="#5EBB7B"/>
+        </svg>
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#5EBB7B', margin: 0 }}>
+          🔐 BIOMETRIA (PASSKEYS)
+        </p>
+      </div>
+
+      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#666', marginBottom: '0.875rem', lineHeight: 1.5 }}>
+        Use sua digital, Face ID ou PIN do dispositivo para entrar sem precisar digitar senha.
+      </p>
+
+      {/* Lista de credenciais */}
+      {loading ? (
+        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#444' }}>Carregando...</p>
+      ) : credentials.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.875rem' }}>
+          {credentials.map((c: any) => (
+            <div
+              key={c.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.625rem',
+                background: '#0A0A0A',
+                border: '1px solid #1C2A1C',
+                padding: '0.625rem 0.75rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>🔑</span>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: '#CCC', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.deviceName || 'Dispositivo'}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.62rem', color: '#555', marginTop: '0.125rem' }}>
+                    Criado: {new Date(c.createdAt).toLocaleDateString('pt-BR')}
+                    {c.lastUsedAt && <> · Último uso: {new Date(c.lastUsedAt).toLocaleDateString('pt-BR')}</>}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleDelete(c.id)}
+                style={{
+                  background: 'none',
+                  border: '1px solid #2A0000',
+                  color: '#880000',
+                  fontFamily: 'Barlow Condensed, sans-serif',
+                  fontWeight: 700,
+                  fontSize: '0.65rem',
+                  textTransform: 'uppercase',
+                  padding: '0.3rem 0.5rem',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                ✕ REMOVER
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#444', marginBottom: '0.875rem' }}>
+          Nenhuma biometria cadastrada.
+        </p>
+      )}
+
+      {/* Form de adicionar */}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+        <div style={{ flex: 1 }}>
+          <input
+            type="text"
+            value={deviceName}
+            onChange={e => setDeviceName(e.target.value)}
+            placeholder="Nome do dispositivo (opcional)"
+            className="bjj-input"
+            style={{ fontSize: '0.75rem', padding: '0.5rem 0.625rem' }}
+          />
+        </div>
+        <button
+          onClick={handleAdd}
+          disabled={adding}
+          className="bjj-btn-primary"
+          style={{
+            background: adding ? '#1C2A1C' : '#2A6B3F',
+            color: '#FFF',
+            padding: '0.5rem 0.875rem',
+            fontSize: '0.75rem',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          {adding ? '⏳' : '+ BIOMETRIA'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Helpers Base64 (compartilhados) ──────────────────────────────────────────
+
+function base64ToBuffer(b64: string): ArrayBuffer {
+  const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return bytes.buffer;
+}
+
+function bufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }

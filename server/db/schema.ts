@@ -97,6 +97,17 @@ export const settings = pgTable('settings', {
   value: text('value').notNull(),
 });
 
+// ─── passkey_credentials (WebAuthn / biometria) ─────────────────────────────
+export const passkeyCredentials = pgTable('passkey_credentials', {
+  id:          text('id').primaryKey(),       // credential ID (Base64)
+  userUid:     text('user_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  publicKey:   text('public_key').notNull(),  // public key (Base64)
+  counter:     integer('counter').notNull().default(0),
+  deviceName:  text('device_name'),           // "iPhone 16", "Chrome Windows"
+  createdAt:   timestamp('created_at').defaultNow(),
+  lastUsedAt:  timestamp('last_used_at'),
+});
+
 // ─── trainings ──────────────────────────────────────────────────────────────
 export const trainings = pgTable('trainings', {
   id:             text('id').primaryKey(),

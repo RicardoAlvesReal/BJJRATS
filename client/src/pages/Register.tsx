@@ -252,7 +252,9 @@ export default function Register() {
           toast.success(`Solicitação enviada para ${form.academy}! Aguarde aprovação.`);
         } catch { /* silencioso */ }
       } else {
-        toast.success('Bem-vindo ao tatami, Rata! 🥋');
+        const genero = form.sex === 'F' ? 'Rata' : 'Rato';
+        const bemVindo = form.sex === 'F' ? 'Bem-vinda' : 'Bem-vindo';
+        toast.success(`${bemVindo} ao tatami, ${genero}! 🥋`);
       }
       // Aluno novo → direto pra página de planos
       navigate('/pricing');

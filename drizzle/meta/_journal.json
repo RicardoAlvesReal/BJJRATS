@@ -8,6 +8,13 @@
       "when": 1781666514783,
       "tag": "0000_freezing_mach_iv",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782886200000,
+      "tag": "0001_add_passkey_credentials",
+      "breakpoints": true
     }
   ]
 }
