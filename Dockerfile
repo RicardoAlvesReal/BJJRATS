@@ -1,6 +1,9 @@
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
 
+# Suporte a UTF-8 (caracteres acentuados)
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+
 # Habilita pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
