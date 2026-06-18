@@ -130,7 +130,7 @@ export default function PricingPage() {
             Escolha seu plano
           </h1>
           <p style={{ fontFamily: FONTS.condensed, fontSize: '1rem', color: '#666', marginTop: '0.5rem', letterSpacing: '0.05em' }}>
-            BJJRats — O Strava das artes marciais
+            BJJRATS
           </p>
         </motion.div>
 

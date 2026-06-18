@@ -332,6 +332,40 @@ export const auth = {
     apiFetch<{ success: boolean; message: string }>('/api/auth/reset-password/confirm', { method: 'POST', body: JSON.stringify({ token, newPassword }) }),
 };
 
+// ─── Passkeys (WebAuthn / Biometria) ─────────────────────────────────────────
+
+export interface PasskeyCredential {
+  id: string;
+  deviceName: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export const passkeys = {
+  /** Solicita desafio para registrar nova biometria */
+  registerChallenge: () =>
+    apiFetch<any>('/api/passkeys/register-challenge'),
+
+  /** Finaliza registro da credencial biométrica */
+  register: (data: {
+    id: string; rawId: string; response: any; type: string; deviceName?: string;
+  }) => apiFetch<{ success: boolean }>('/api/passkeys/register', { method: 'POST', body: JSON.stringify(data) }),
+
+  /** Solicita desafio para autenticar com biometria */
+  authChallenge: (email: string) =>
+    apiFetch<any>('/api/passkeys/auth-challenge', { method: 'POST', body: JSON.stringify({ email }) }),
+
+  /** Finaliza autenticação biométrica */
+  auth: (data: { id: string; rawId: string; response: any; type: string }) =>
+    apiFetch<{ success: boolean; token: string; user: any }>('/api/passkeys/auth', { method: 'POST', body: JSON.stringify(data) }),
+
+  /** Lista credenciais biométricas do usuário */
+  list: () => apiFetch<PasskeyCredential[]>('/api/passkeys/credentials'),
+
+  /** Remove uma credencial biométrica */
+  delete: (id: string) => apiFetch<{ success: boolean }>(`/api/passkeys/credentials/${id}`, { method: 'DELETE' }),
+};
+
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
 export interface AdminUser extends UserProfile {
