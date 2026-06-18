@@ -303,7 +303,7 @@ function PasskeyLoginButton({ email, onSuccess }: { email: string; onSuccess: ()
         <rect x="3" y="12" width="18" height="8" rx="1"/>
         <circle cx="12" cy="9" r="1" fill="currentColor"/>
       </svg>
-      {loading ? 'VERIFICANDO...' : 'ENTRAR COM DIGITAL'}
+      {loading ? 'VERIFICANDO...' : 'ENTRAR COM BIOMETRIA'}
     </button>
   );
 }
