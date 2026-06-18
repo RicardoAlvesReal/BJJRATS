@@ -29,12 +29,25 @@ export default function PricingPage() {
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [creating, setCreating] = useState(false);
   const [pixData, setPixData] = useState<{ qrCode?: string; copiaECola?: string } | null>(null);
+  const [activeSubscription, setActiveSubscription] = useState<{ id: string; status: string; planId: string } | null>(null);
 
   useEffect(() => {
     api.subscriptions.listPlans()
       .then(setPlans)
       .finally(() => setLoading(false));
-  }, []);
+
+    // Verifica se já tem assinatura ativa
+    if (user) {
+      api.subscriptions.getMy()
+        .then(data => {
+          const sub = data?.subscription;
+          if (sub && ['active', 'trial', 'past_due'].includes(sub.status)) {
+            setActiveSubscription({ id: sub.id, status: sub.status, planId: sub.planId });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user]);
 
   const handleSubscribe = async (planId: string) => {
     if (!user) { navigate('/register'); return; }
@@ -176,6 +189,17 @@ export default function PricingPage() {
         </motion.div>
 
         {/* Plan cards */}
+        {activeSubscription && (
+          <motion.div variants={fadeUp} style={{
+            background: '#1A2A1A', border: '1px solid #2A5A2A',
+            padding: '0.75rem 1rem', textAlign: 'center',
+            marginBottom: '0.5rem', maxWidth: '600px', width: '100%',
+          }}>
+            <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.8rem', color: '#4CAF50', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+              ✅ Você já é assinante! Acesse seu painel para gerenciar sua assinatura.
+            </p>
+          </motion.div>
+        )}
         <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {plans.filter(plan => {
             // Filtra por role do usuário logado usando roleAssigned (não slug)
@@ -243,21 +267,22 @@ export default function PricingPage() {
 
                 <button
                   onClick={() => handleSubscribe(plan.id)}
-                  disabled={creating && selectedPlan === plan.id}
+                  disabled={creating || !!activeSubscription}
+                  title={activeSubscription ? 'Você já possui uma assinatura ativa' : undefined}
                   style={{
-                    background: color,
-                    color: '#FFF',
-                    border: 'none',
+                    background: activeSubscription ? '#2A2A2A' : color,
+                    color: activeSubscription ? '#555' : '#FFF',
+                    border: activeSubscription ? '1px solid #333' : 'none',
                     borderRadius: '6px',
                     padding: '0.75rem',
                     fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.8rem',
                     letterSpacing: '0.1em', textTransform: 'uppercase',
-                    cursor: creating && selectedPlan === plan.id ? 'not-allowed' : 'pointer',
-                    opacity: creating && selectedPlan === plan.id ? 0.6 : 1,
+                    cursor: activeSubscription ? 'not-allowed' : creating && selectedPlan === plan.id ? 'not-allowed' : 'pointer',
+                    opacity: activeSubscription ? 0.5 : creating && selectedPlan === plan.id ? 0.6 : 1,
                     transition: 'all 0.15s',
                   }}
                 >
-                  {creating && selectedPlan === plan.id ? 'CRIANDO...' : 'ASSINAR'}
+                  {creating && selectedPlan === plan.id ? 'CRIANDO...' : activeSubscription ? 'JÁ ASSINANTE' : 'ASSINAR'}
                 </button>
               </div>
             );
