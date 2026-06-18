@@ -19,6 +19,16 @@ build/
 .manus-logs/
 .webdev/
 
+# Database dumps
+*bjjrats-*.sql
+
+# WireGuard / VPN configs
+*.conf
+
+# Environment examples (use .env.example instead)
+.env.development.example
+.env.production.example
+
 # IDE and editor files
 .vscode/
 .idea/
