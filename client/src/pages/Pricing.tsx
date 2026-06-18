@@ -178,11 +178,11 @@ export default function PricingPage() {
         {/* Plan cards */}
         <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {plans.filter(plan => {
-            // Filtra por role do usuário logado
+            // Filtra por role do usuário logado usando roleAssigned (não slug)
             if (!user || user.role === 'superadmin') return true;
-            if (user.role === 'student') return plan.slug === 'aluno';
-            if (user.role === 'professor') return plan.slug === 'professor';
-            if (user.role === 'academy' || user.role === 'admin') return plan.slug === 'academia';
+            if (user.role === 'student') return plan.roleAssigned === 'student';
+            if (user.role === 'professor') return plan.roleAssigned === 'professor';
+            if (user.role === 'academy' || user.role === 'admin') return plan.roleAssigned === 'academy';
             return true;
           }).map((plan, i) => {
             const isPopular = plan.slug === 'professor';

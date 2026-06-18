@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { challenges } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireFeature } from '../middleware/features.js';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/:id', async (req, res) => {
   res.json(row);
 });
 
-router.post('/', requireAuth, async (req: AuthRequest, res) => {
+router.post('/', requireAuth, requireFeature('challenges'), async (req: AuthRequest, res) => {
   const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
 
   // Apenas professor, academy, superadmin e moderadores podem criar desafios

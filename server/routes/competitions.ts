@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { competitions } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireFeature } from '../middleware/features.js';
 
 const router = Router();
 
@@ -13,7 +14,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
   res.json(rows);
 });
 
-router.post('/', requireAuth, async (req: AuthRequest, res) => {
+router.post('/', requireAuth, requireFeature('competitions'), async (req: AuthRequest, res) => {
   const id = nanoid();
   const { name, date, location, category, weightClass, result, notes } = req.body;
   const [row] = await db.insert(competitions).values({

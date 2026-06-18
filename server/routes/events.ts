@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { events } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireFeature } from '../middleware/features.js';
 import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 
 const router = Router();
@@ -110,7 +111,7 @@ router.get('/:id', async (req, res) => {
   res.json(serializeEvent(row));
 });
 
-router.post('/', requireAuth, async (req: AuthRequest, res) => {
+router.post('/', requireAuth, requireFeature('events'), async (req: AuthRequest, res) => {
   if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
     res.status(403).json({ error: 'Professor subordinado a academia nao pode criar eventos.' });
     return;

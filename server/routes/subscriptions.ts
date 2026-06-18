@@ -185,15 +185,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   // Salva no banco
   const subId = nanoid();
   const isTrial = trialDays > 0;
+  const isFree = plan.price === 0;
   const trialEndsAt = isTrial ? new Date(now.getTime() + trialDays * 86400000) : null;
   const periodEnd = new Date(trialEndsAt ?? now);
   periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+  // Plano gratuito: ativo imediatamente (Asaas não gera cobrança/webhook para R$0)
+  const initialStatus = isTrial ? 'trial'
+    : isFree ? 'active'
+    : 'pending';
 
   await db.insert(subscriptions).values({
     id: subId,
     userUid: req.userId!,
     planId,
-    status: isTrial ? 'trial' : 'pending',
+    status: initialStatus,
     asaasId: asaasSub.id,
     asaasCustomerId: customer.id,
     currentPeriodStart: now,

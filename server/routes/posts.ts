@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { posts, comments } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireFeature } from '../middleware/features.js';
 
 const router = Router();
 
@@ -75,7 +76,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/posts
-router.post('/', requireAuth, async (req: AuthRequest, res) => {
+router.post('/', requireAuth, requireFeature('community'), async (req: AuthRequest, res) => {
   const id = nanoid();
   const data = fromClientPost(req.body);
   const [row] = await db.insert(posts).values({ id, authorUid: req.userId!, ...data }).returning();
