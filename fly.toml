@@ -1,34 +1,37 @@
-# Nome da aplicação — troque para o nome que você escolher no Fly.io
-app = "bjjrats"
-primary_region = "gru"  # São Paulo (mais próximo do Brasil)
+# fly.toml app configuration file generated for bjjrats on 2026-06-18T01:07:03Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'bjjrats'
+primary_region = 'gru'
 
 [build]
 
 [env]
-  NODE_ENV = "production"
-  PORT     = "3000"
-  # CORS_ORIGIN e UPLOADS_DIR são configurados via: fly secrets set ...
-  UPLOADS_DIR = "/app/uploads"
+  NODE_ENV = 'production'
+  PORT = '3000'
+  UPLOADS_DIR = '/app/uploads'
+
+[[mounts]]
+  source = 'bjjrats_uploads'
+  destination = '/app/uploads'
+  initial_size = '1gb'
 
 [http_service]
-  internal_port       = 3000
-  force_https         = true
-  auto_stop_machines  = "stop"
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
   [http_service.concurrency]
-    type       = "connections"
+    type = 'connections'
     hard_limit = 25
     soft_limit = 20
 
 [[vm]]
-  memory   = "512mb"
-  cpu_kind = "shared"
-  cpus     = 1
-
-# Volume persistente para uploads de arquivos (fotos de comprovantes, etc.)
-[[mounts]]
-  source      = "bjjrats_uploads"
-  destination = "/app/uploads"
-  initial_size = "1gb"
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512
