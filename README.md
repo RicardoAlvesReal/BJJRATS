@@ -125,7 +125,20 @@ CORS_ORIGIN=http://localhost:3000
 - Tipos: promoção de faixa, convite de matrícula, aprovação de solicitação, anúncios
 - Integração WhatsApp para notificações de cobrança
 
-## 📱 WhatsApp Integration
+## � Segurança
+
+- Redefinição de senha visual no painel superadmin (Dashboard → 🔒 Senha)
+- Script CLI: `npx tsx server/reset-superadmin.ts <email> <senha>`
+- Senha do superadmin inicial: `admin@bjjrats.com` / `Admin@123`
+
+## 🪟 Modal de Assinatura
+
+- Acessível pela sidebar (AppLayout) e header (AcademiaLayout)
+- Modal overlay com portal React — dados do plano, status, forma de pagamento
+- Troca de método PIX/Cartão sem sair do painel
+- Rota `/app/subscription` mantida como página completa (fallback/redirect)
+
+## �📱 WhatsApp Integration
 
 - Conexão via QR Code (Evolution API)
 - Instância separada para academias (`bjjrats_academy_`)
@@ -164,7 +177,27 @@ pnpm check         # TypeScript type check
 
 ```bash
 fly deploy -a bjjrats
+fly deploy -a bjjrats-dev -c fly.dev.toml
 fly secrets set ASAAS_API_KEY=... ASAAS_WEBHOOK_TOKEN=...
+```
+
+### Conexão com banco remoto
+
+```bash
+# WireGuard (uma vez)
+fly wireguard create
+# Importar .conf no cliente WireGuard
+
+# Depois, DBeaver:
+# Host: bjjrats-db-prod.flycast / Port: 5432
+# Database: bjjrats / User: bjjrats_app
+```
+
+### Restore de dump local para produção
+
+```bash
+fly proxy 15433:5432 -a bjjrats-db-prod
+psql "postgres://user:pass@localhost:15433/db?sslmode=disable" -f dump.sql
 ```
 
 ---
