@@ -114,6 +114,31 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     planId: string; billingType?: string; cpfCnpj?: string; phone?: string; paymentMethod?: string;
   };
 
+  // ⛔ Bloqueia criação de nova assinatura se já existe uma ativa/trial/past_due
+  const [existingSub] = await db
+    .select({ id: subscriptions.id, status: subscriptions.status, planId: subscriptions.planId })
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.userUid, req.userId!),
+        or(
+          eq(subscriptions.status, 'active'),
+          eq(subscriptions.status, 'trial'),
+          eq(subscriptions.status, 'past_due'),
+        ),
+      ),
+    )
+    .limit(1);
+
+  if (existingSub) {
+    res.status(409).json({
+      error: 'Você já possui uma assinatura ativa. Cancele a atual antes de assinar um novo plano.',
+      code: 'duplicate_subscription',
+      existingSubscription: { id: existingSub.id, status: existingSub.status, planId: existingSub.planId },
+    });
+    return;
+  }
+
   // Busca o plano
   const [plan] = await db
     .select()

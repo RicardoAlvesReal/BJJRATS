@@ -31,7 +31,7 @@ export function useFeatures(): UseFeaturesResult {
 
   useEffect(() => {
     let cancelled = false;
-    api.subscriptions.my()
+    api.subscriptions.getMy()
       .then(data => {
         if (cancelled) return;
         const sub = data?.subscription;
