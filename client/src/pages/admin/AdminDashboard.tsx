@@ -134,18 +134,18 @@ export default function AdminDashboard() {
             {isSuperAdmin ? 'Visão geral da plataforma' : 'Visão geral da sua academia'}
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="bjj-btn-ghost"
-          style={{ fontSize: '0.7rem', padding: '0.4rem 0.75rem' }}
-        >
-          {refreshing ? 'ATUALIZANDO...' : '↻ ATUALIZAR'}
-        </button>
+        <div className="flex items-center gap-2">
+          {isSuperAdmin && <PasswordResetModal />}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="bjj-btn-ghost"
+            style={{ fontSize: '0.7rem', padding: '0.4rem 0.75rem' }}
+          >
+            {refreshing ? 'ATUALIZANDO...' : '↻ ATUALIZAR'}
+          </button>
+        </div>
       </motion.div>
-
-      {/* Redefinir senha (superadmin) */}
-      {isSuperAdmin && <PasswordResetCard />}
 
       {/* Cards de usuários */}
       <motion.div variants={fadeUp}>
@@ -347,14 +347,14 @@ export function RoleBadge({ role }: { role?: string }) {
   );
 }
 
-// ─── Password Reset Card ──────────────────────────────────────────────────
+// ─── Password Reset Modal ─────────────────────────────────────────────────
 
-function PasswordResetCard() {
+function PasswordResetModal() {
   const { user } = useAuth();
+  const [open, setOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
 
   const handleReset = async () => {
     if (!newPassword || newPassword.length < 6) {
@@ -368,10 +368,10 @@ function PasswordResetCard() {
     setSaving(true);
     try {
       await api.users.update(user!.uid, { password: newPassword });
-      toast.success('Senha redefinida com sucesso!');
+      toast.success('Senha redefinida!');
+      setOpen(false);
       setNewPassword('');
       setConfirmPassword('');
-      setShowForm(false);
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao redefinir senha');
     } finally {
@@ -379,89 +379,101 @@ function PasswordResetCard() {
     }
   };
 
-  if (!showForm) {
-    return (
-      <motion.div variants={fadeUp} className="bjj-card" style={{ padding: '1rem', marginBottom: '1rem', border: '1px solid #333' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>
-              🔒 Segurança
-            </p>
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555', margin: '0.15rem 0 0' }}>
-              Redefina a senha da sua conta superadmin
-            </p>
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            style={{
-              background: '#CC0000', color: '#FFF', border: 'none',
-              fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.65rem',
-              textTransform: 'uppercase', letterSpacing: '0.08em',
-              padding: '0.4rem 0.8rem', cursor: 'pointer',
-            }}
-          >
-            Redefinir senha
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
+  const handleClose = () => {
+    setOpen(false);
+    setNewPassword('');
+    setConfirmPassword('');
+  };
 
   return (
-    <motion.div variants={fadeUp} className="bjj-card" style={{ padding: '1.25rem', marginBottom: '1rem', border: '2px solid #CC000044' }}>
-      <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.8rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.75rem' }}>
-        🔒 Redefinir senha do superadmin
-      </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '360px' }}>
-        <input
-          type="password"
-          placeholder="Nova senha (mínimo 6 caracteres)"
-          value={newPassword}
-          onChange={e => setNewPassword(e.target.value)}
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title="Redefinir senha"
+        style={{
+          background: 'transparent', border: '1px solid #333',
+          color: '#888', cursor: 'pointer',
+          fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.65rem',
+          textTransform: 'uppercase', letterSpacing: '0.06em',
+          padding: '0.3rem 0.6rem',
+        }}
+      >
+        🔒 Senha
+      </button>
+
+      {open && (
+        <div
           style={{
-            background: '#0A0A0A', border: '1px solid #333', color: '#FFF',
-            fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem',
-            padding: '0.55rem 0.75rem', outline: 'none',
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.8)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
           }}
-        />
-        <input
-          type="password"
-          placeholder="Confirme a nova senha"
-          value={confirmPassword}
-          onChange={e => setConfirmPassword(e.target.value)}
-          style={{
-            background: '#0A0A0A', border: '1px solid #333', color: '#FFF',
-            fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem',
-            padding: '0.55rem 0.75rem', outline: 'none',
-          }}
-        />
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            onClick={handleReset}
-            disabled={saving}
+          onClick={handleClose}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
             style={{
-              background: '#CC0000', color: '#FFF', border: 'none',
-              fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.7rem',
-              textTransform: 'uppercase', letterSpacing: '0.08em',
-              padding: '0.5rem 1rem', cursor: saving ? 'not-allowed' : 'pointer',
-              opacity: saving ? 0.7 : 1,
+              background: '#111', border: '2px solid #CC000044',
+              padding: '1.5rem', maxWidth: '380px', width: '90%',
             }}
+            onClick={e => e.stopPropagation()}
           >
-            {saving ? 'Salvando...' : 'Salvar nova senha'}
-          </button>
-          <button
-            onClick={() => { setShowForm(false); setNewPassword(''); setConfirmPassword(''); }}
-            style={{
-              background: 'transparent', color: '#888', border: '1px solid #333',
-              fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.7rem',
-              textTransform: 'uppercase', letterSpacing: '0.08em',
-              padding: '0.5rem 1rem', cursor: 'pointer',
-            }}
-          >
-            Cancelar
-          </button>
+            <p style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '1rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 1rem' }}>
+              🔒 Redefinir senha
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <input
+                type="password"
+                placeholder="Nova senha (mínimo 6 caracteres)"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                autoFocus
+                style={{
+                  background: '#0A0A0A', border: '1px solid #333', color: '#FFF',
+                  fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem',
+                  padding: '0.55rem 0.75rem', outline: 'none',
+                }}
+              />
+              <input
+                type="password"
+                placeholder="Confirme a nova senha"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                style={{
+                  background: '#0A0A0A', border: '1px solid #333', color: '#FFF',
+                  fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem',
+                  padding: '0.55rem 0.75rem', outline: 'none',
+                }}
+              />
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <button onClick={handleReset} disabled={saving}
+                  style={{
+                    flex: 1, background: '#CC0000', color: '#FFF', border: 'none',
+                    fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.7rem',
+                    textTransform: 'uppercase', letterSpacing: '0.08em',
+                    padding: '0.5rem', cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.7 : 1,
+                  }}
+                >
+                  {saving ? 'Salvando...' : 'Salvar'}
+                </button>
+                <button onClick={handleClose}
+                  style={{
+                    flex: 1, background: 'transparent', color: '#888',
+                    border: '1px solid #333',
+                    fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.7rem',
+                    textTransform: 'uppercase', letterSpacing: '0.08em',
+                    padding: '0.5rem', cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </motion.div>
         </div>
-      </div>
-    </motion.div>
+      )}
+    </>
   );
 }

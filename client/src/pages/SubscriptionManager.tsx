@@ -34,9 +34,10 @@ function isPanelAccessBlocked(sub: Subscription | null, graceDays: number) {
   return new Date() >= lockDate;
 }
 
-export default function SubscriptionManager() {
+export default function SubscriptionManager({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
+  const isCompact = !!compact;
   const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
@@ -157,13 +158,15 @@ export default function SubscriptionManager() {
   const panelAccessBlocked = isPanelAccessBlocked(sub, graceDays);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center px-4 py-12">
+    <div className={isCompact ? '' : 'min-h-screen bg-[#0A0A0A] flex flex-col items-center px-4 py-12'}>
       <motion.div initial="hidden" animate="show" variants={staggerContainer} className="w-full" style={{ maxWidth: '500px' }}>
-        <motion.div variants={fadeUp} className="text-center mb-8">
-          <h1 style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.5rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
-            Minha assinatura
-          </h1>
-        </motion.div>
+        {!isCompact && (
+          <motion.div variants={fadeUp} className="text-center mb-8">
+            <h1 style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.5rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+              Minha assinatura
+            </h1>
+          </motion.div>
+        )}
 
         <motion.div variants={fadeUp} className="bjj-card" style={{ padding: '1.5rem' }}>
           {/* Plan info */}

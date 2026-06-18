@@ -17,6 +17,7 @@ import Professores from './app/Professores';
 import Goals from './app/Goals';
 import TrainingShareModal, { type TrainingData as ShareTrainingData, type ShareUserData } from './app/TrainingShareModal';
 import ProfessorPanel from './app/ProfessorPanel';
+import SubscriptionModal from './SubscriptionModal';
 import NotificationBell from '@/components/NotificationBell';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -88,6 +89,7 @@ export default function AppLayout() {
   const [editExtraTraining, setEditExtraTraining] = useState<import('@/pages/app/NewTraining').ExtraTrainingData | null>(null);
   const [shareData, setShareData] = useState<ShareTrainingData | null>(null);
   const [showProfessorPanel, setShowProfessorPanel] = useState(false);
+  const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const professorPanelDismissedRef = useRef(false);
   const { profile, user, updateProfileData, logout } = useAuth();
 
@@ -625,7 +627,7 @@ export default function AppLayout() {
             </svg>
             <span>NOVO TREINO</span>
           </button>
-          <button className="bjj-sidebar-logout-btn" onClick={() => window.location.href = '/app/subscription'} style={{ color: '#AAA', borderColor: '#333' }}>
+          <button className="bjj-sidebar-logout-btn" onClick={() => setSubscriptionOpen(true)} style={{ color: '#AAA', borderColor: '#333' }}>
             <CreditCard size={13} strokeWidth={2} />
             <span>ASSINATURA</span>
           </button>
@@ -692,6 +694,8 @@ export default function AppLayout() {
           </button>
         ))}
       </nav>
+
+      <SubscriptionModal open={subscriptionOpen} onClose={() => setSubscriptionOpen(false)} />
     </div>
   );
 }

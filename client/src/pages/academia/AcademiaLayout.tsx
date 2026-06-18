@@ -15,6 +15,7 @@ import AcademiaProfessores from './AcademiaProfessores';
 import AcademiaFinanceiro from './AcademiaFinanceiro';
 import AcademiaWhatsapp from './AcademiaWhatsapp';
 import AcademiaPromocoes from './AcademiaPromocoes';
+import SubscriptionModal from '../SubscriptionModal';
 
 type AcademiaTab = 'dashboard' | 'users' | 'professors' | 'promotions' | 'financeiro' | 'whatsapp' | 'crm' | 'community';
 
@@ -35,6 +36,7 @@ export default function AcademiaLayout() {
   const [tab, setTab] = useState<AcademiaTab>('dashboard');
   const [uploading, setUploading] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
+  const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const checkWhatsApp = useCallback(async () => {
@@ -125,7 +127,7 @@ export default function AcademiaLayout() {
         <div className="flex items-center gap-3">
           <NotificationBell placement="inline" />
           <button
-            onClick={() => navigate('/app/subscription')}
+            onClick={() => setSubscriptionOpen(true)}
             style={{
               background: 'transparent',
               color: '#AAA',
@@ -210,6 +212,8 @@ export default function AcademiaLayout() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <SubscriptionModal open={subscriptionOpen} onClose={() => setSubscriptionOpen(false)} />
     </div>
   );
 }
