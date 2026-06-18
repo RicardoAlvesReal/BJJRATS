@@ -11,6 +11,10 @@ COPY package.json pnpm-lock.yaml ./
 COPY patches/ ./patches/
 RUN pnpm install --frozen-lockfile
 
+# Chave pública do Turnstile (disponível no build do Vite)
+ARG VITE_TURNSTILE_SITE_KEY
+ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
+
 # Copia o código fonte e faz o build
 COPY . .
 RUN pnpm build

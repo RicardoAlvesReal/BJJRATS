@@ -29,7 +29,7 @@ export default function PrivacyPolicy() {
 
           <Section title="1. Introdução">
             <p>
-              O BJJRats ("nós", "nosso" ou "aplicativo") é um aplicativo de rastreamento de treinos de Jiu-Jitsu Brasileiro desenvolvido por Roberto Abreu. Esta Política de Privacidade descreve como coletamos, usamos e protegemos suas informações pessoais quando você utiliza nosso aplicativo móvel e website.
+              O BJJRats ("nós", "nosso" ou "aplicativo") é um aplicativo de rastreamento de treinos de Jiu-Jitsu brasileiro, arquitetado por RATS SISTEMAS e desenvolvido por RAOS Tecnologia. Esta Política de Privacidade descreve como coletamos, usamos e protegemos suas informações pessoais quando você utiliza nosso aplicativo móvel e website.
             </p>
             <p style={{ marginTop: '1rem' }}>
               Ao usar o BJJRats, você concorda com as práticas descritas nesta política.
@@ -136,7 +136,7 @@ export default function PrivacyPolicy() {
             </p>
             <div style={{ marginTop: '1rem', padding: '1rem', background: '#111', borderLeft: '3px solid #CC0000', borderRadius: '0 4px 4px 0' }}>
               <p><strong style={{ color: '#FFFFFF' }}>BJJRats</strong></p>
-              <p>Responsável: Roberto Abreu</p>
+              <p>Responsável: RATS SISTEMAS</p>
               <p>E-mail: <a href="mailto:contato@thebjjrats.com" style={{ color: '#CC0000' }}>contato@thebjjrats.com</a></p>
               <p>Website: <a href="https://www.thebjjrats.com" style={{ color: '#CC0000' }}>www.thebjjrats.com</a></p>
             </div>
@@ -146,8 +146,16 @@ export default function PrivacyPolicy() {
       </div>
 
       {/* Footer */}
-      <div style={{ borderTop: '1px solid #1A1A1A', padding: '1.5rem 2rem', textAlign: 'center', color: '#444', fontSize: '0.8125rem' }}>
-        © 2026 BJJRats. Todos os direitos reservados.
+      <div style={{ borderTop: '1px solid #1A1A1A', padding: '1.5rem 2rem', textAlign: 'center' }}>
+        <p style={{ color: '#555', fontSize: '0.8rem', margin: '0 0 0.5rem', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          © 2026 BJJRats. Todos os direitos reservados.
+        </p>
+        <p style={{ color: '#444', fontSize: '0.7rem', margin: 0, fontFamily: 'Barlow, sans-serif' }}>
+          Arquitetado por{' '}
+          <span style={{ color: '#888', fontWeight: 600 }}>RATS SISTEMAS</span>
+          {' '}· Desenvolvido por{' '}
+          <a href="https://raostecnologia.com.br" target="_blank" rel="noopener noreferrer" style={{ color: '#CC0000', textDecoration: 'none', fontWeight: 600 }}>RAOS Tecnologia</a>
+        </p>
       </div>
     </div>
   );

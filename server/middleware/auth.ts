@@ -18,12 +18,14 @@ export interface AuthRequest extends Request {
 }
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
+  // Lê token do cookie HTTP-only primeiro (mais seguro), fallback para header
+  const cookieToken = (req as any).cookies?.token;
+  const headerToken = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null;
+  const token = cookieToken || headerToken;
+  if (!token) {
     res.status(401).json({ error: 'Não autorizado' });
     return;
   }
-  const token = header.slice(7);
   try {
     const payload = jwt.verify(token, JWT_SECRET) as { uid: string; role?: string; communityModerator?: boolean };
     req.userId   = payload.uid;

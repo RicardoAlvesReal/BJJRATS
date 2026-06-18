@@ -3,21 +3,24 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, Redirect } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import CookieConsent from "./components/CookieConsent";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import api from '@/lib/api';
 import Landing from "./pages/Landing";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Terms from "./pages/Terms";
 import Support from "./pages/Support";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AppLayout from "./pages/AppLayout";
 import AdminLayout from "./pages/admin/AdminLayout";
-import AdminLogin from "./pages/admin/AdminLogin";import AcademiaLayout from './pages/academia/AcademiaLayout';import PublicPost from "./pages/public/PublicPost";
+import AcademiaLayout from './pages/academia/AcademiaLayout';import PublicPost from "./pages/public/PublicPost";
 import PublicEvent from "./pages/public/PublicEvent";
 import PublicChallenge from './pages/public/PublicChallenge';
 import PublicTrial from './pages/public/PublicTrial';
 import Pricing from './pages/Pricing';
+import ResetPassword from './pages/ResetPassword';
 import SubscriptionManager from './pages/SubscriptionManager';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -40,7 +43,11 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
         }
         const { subscription } = await api.subscriptions.getMy();
         if (subscription) {
-          if (subscription.status === 'past_due') {
+          // Pagamento pendente — redireciona pro billing
+          if (subscription.status === 'pending') {
+            setHasAccess(false);
+            setIsPastDue(false);
+          } else if (subscription.status === 'past_due') {
             // Verifica período de carência
             try {
               const pubSettings = await api.settings.public();
@@ -111,7 +118,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function AdminRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (!user) return <Redirect to="/admin/login" />;
+  if (!user) return <Redirect to="/login" />;
   if (user.role !== 'superadmin') return <Redirect to="/app" />;
   return <Component />;
 }
@@ -178,11 +185,11 @@ function Router() {
     <Switch>
       <Route path="/" component={Landing} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
+      <Route path="/terms" component={Terms} />
       <Route path="/support" component={Support} />
       <Route path="/login" component={() => <PublicRoute component={Login} />} />
       <Route path="/register" component={() => <PublicRoute component={Register} />} />
       <Route path="/app"   component={() => <ProtectedRoute component={AppLayout} />} />
-      <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin" component={() => <AdminRoute     component={AdminLayout} />} />
       <Route path="/academia" component={() => <AcademiaRoute component={AcademiaLayout} />} />
       <Route path="/post/:postId" component={PublicPost} />
@@ -192,6 +199,7 @@ function Router() {
       <Route path="/trial/professor/:targetId" component={() => <PublicTrial targetKind="professor" />} />
       <Route path="/trial/:academyId" component={() => <PublicTrial />} />
       <Route path="/pricing" component={Pricing} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/app/subscription" component={() => <AuthenticatedRoute component={SubscriptionManager} />} />
       <Route component={() => <Redirect to="/" />} />
     </Switch>
@@ -206,6 +214,7 @@ function App() {
           <TooltipProvider>
             <Toaster position="top-center" />
             <Router />
+            <CookieConsent />
           </TooltipProvider>
         </AuthProvider>
       </ThemeProvider>

@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import api, { type Plan } from '@/lib/api';
+import { openExternalUrl } from '@/lib/native';
 import { useAuth } from '@/contexts/AuthContext';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
@@ -24,7 +26,9 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [billingType, setBillingType] = useState<BillingType>('PIX');
+  const [cpfCnpj, setCpfCnpj] = useState('');
   const [creating, setCreating] = useState(false);
+  const [pixData, setPixData] = useState<{ qrCode?: string; copiaECola?: string } | null>(null);
 
   useEffect(() => {
     api.subscriptions.listPlans()
@@ -37,10 +41,37 @@ export default function PricingPage() {
     setSelectedPlan(planId);
     setCreating(true);
     try {
-      const result = await api.subscriptions.create({ planId, billingType });
-      const paymentUrl = result.subscription.payment?.invoiceUrl || result.subscription.payment?.bankSlipUrl;
-      if (paymentUrl) {
-        window.location.href = paymentUrl;
+      if (billingType === 'PIX' && (!cpfCnpj || cpfCnpj.replace(/\\D/g, '').length < 11)) {
+        alert('Para pagamento via PIX é obrigatório informar o CPF ou CNPJ.');
+        setCreating(false);
+        setSelectedPlan(null);
+        return;
+      }
+      const result = await api.subscriptions.create({ planId, billingType, cpfCnpj });
+      const payment = result.subscription.payment;
+
+      // PIX: mostra QR code no modal
+      if (billingType === 'PIX') {
+        if (payment?.pixQrCode) {
+          setPixData({
+            qrCode: payment.pixQrCode,
+            copiaECola: (payment as any).pixCopiaECola || '',
+          });
+        } else {
+          alert('Não foi possível gerar o QR Code PIX. Tente novamente.');
+        }
+        setCreating(false);
+        return;
+      }
+
+      // Cartão: abre checkout em nova aba
+      if (billingType === 'CREDIT_CARD') {
+        const paymentUrl = payment?.invoiceUrl || payment?.bankSlipUrl;
+        if (paymentUrl) {
+          openExternalUrl(paymentUrl);
+        }
+        setCreating(false);
+        navigate('/app/subscription');
         return;
       }
 
@@ -103,8 +134,27 @@ export default function PricingPage() {
           </p>
         </motion.div>
 
-        {/* Payment method selector */}
-        <motion.div variants={fadeUp} className="flex justify-center gap-2 mb-8">
+        {/* CPF/CNPJ — apenas para PIX */}
+        {billingType === 'PIX' && (
+          <div className="flex justify-center mb-3">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="CPF ou CNPJ (obrigatório)"
+              value={cpfCnpj}
+              onChange={e => setCpfCnpj(e.target.value.replace(/\D/g, ''))}
+              maxLength={14}
+              style={{
+                background: '#1A1A1A', border: '1px solid #333', color: '#FFF',
+                fontFamily: FONTS.condensed, fontSize: '0.9rem',
+                padding: '0.65rem 1rem', width: '280px', textAlign: 'center',
+                outline: 'none', letterSpacing: '0.05em',
+              }}
+            />
+          </div>
+        )}
+        <motion.div variants={fadeUp} className="flex flex-col items-center gap-3 mb-6">
+          <div className="flex justify-center gap-2">
           {(['PIX', 'CREDIT_CARD'] as BillingType[]).map(bt => (
             <button
               key={bt}
@@ -122,11 +172,19 @@ export default function PricingPage() {
               {bt === 'CREDIT_CARD' ? 'Cartão' : 'PIX'}
             </button>
           ))}
+          </div>
         </motion.div>
 
         {/* Plan cards */}
         <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.map((plan, i) => {
+          {plans.filter(plan => {
+            // Filtra por role do usuário logado
+            if (!user || user.role === 'superadmin') return true;
+            if (user.role === 'student') return plan.slug === 'aluno';
+            if (user.role === 'professor') return plan.slug === 'professor';
+            if (user.role === 'academy' || user.role === 'admin') return plan.slug === 'academia';
+            return true;
+          }).map((plan, i) => {
             const isPopular = plan.slug === 'professor';
             const color = planColors[plan.slug] || '#FFF';
             return (
@@ -162,7 +220,7 @@ export default function PricingPage() {
                 <div style={{ marginBottom: '1.25rem' }}>
                   <span style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '2.25rem', color }}>R$ {plan.price.toFixed(2)}</span>
                   <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>/mês</span>
-                  {plan.trialDays && plan.trialDays > 0 && (
+                  {plan.trialDays > 0 && (
                     <div style={{ marginTop: '0.25rem' }}>
                       <span style={{
                         background: '#3B82F6', color: '#FFF', fontFamily: FONTS.condensed, fontWeight: 800,
@@ -212,6 +270,47 @@ export default function PricingPage() {
           </p>
         )}
       </motion.div>
+
+      {/* Modal PIX */}
+      {pixData && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)', padding: '1rem' }}
+          onClick={() => { setPixData(null); navigate('/app/subscription'); }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#111', border: '1px solid #222', borderRadius: '12px', padding: '2rem', maxWidth: '420px', width: '100%', textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+            <h2 style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '1.5rem', color: '#FFF', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+              Pagamento <span style={{ color: '#22C55E' }}>PIX</span>
+            </h2>
+            <p style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#888', marginBottom: '1.5rem' }}>
+              Escaneie o QR code ou copie o código PIX
+            </p>
+
+            {pixData.qrCode ? (
+              <img src={`data:image/png;base64,${pixData.qrCode}`} alt="QR Code PIX"
+                style={{ width: '200px', height: '200px', margin: '0 auto 1rem', background: '#FFF', padding: '0.5rem', borderRadius: '8px' }} />
+            ) : (
+              <div style={{ width: '200px', height: '200px', margin: '0 auto 1rem', background: '#1A1A1A', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontFamily: FONTS.condensed, fontSize: '0.8rem' }}>
+                QR Code não disponível
+              </div>
+            )}
+
+            {pixData.copiaECola && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(pixData.copiaECola!); alert('Código PIX copiado!'); }}
+                  style={{ background: '#1A1A1A', border: '1px dashed #333', color: '#AAA', fontFamily: 'monospace', fontSize: '0.65rem', padding: '0.6rem', width: '100%', cursor: 'pointer', borderRadius: '6px', wordBreak: 'break-all', textAlign: 'left' }}>
+                  📋 {pixData.copiaECola.substring(0, 80)}...
+                </button>
+              </div>
+            )}
+
+            <button onClick={() => { setPixData(null); navigate('/app/subscription'); }}
+              style={{ background: '#CC0000', color: '#FFF', border: 'none', fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.85rem', letterSpacing: '0.1em', padding: '0.75rem 2rem', cursor: 'pointer', borderRadius: '6px', textTransform: 'uppercase', width: '100%' }}>
+              JÁ PAGUEI
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

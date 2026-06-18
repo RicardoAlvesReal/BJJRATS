@@ -1,6 +1,6 @@
 /**
  * Camada de acesso à API REST.
- * Todas as chamadas passam pelo token JWT armazenado em localStorage.
+ * Autenticação via cookie HTTP-only (primário) com fallback para localStorage.
  */
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
@@ -24,12 +24,12 @@ async function apiFetch<T>(urlPath: string, options: RequestInit = {}): Promise<
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
-  const res = await fetch(`${BASE}${urlPath}`, { ...options, headers, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
+  const res = await fetch(`${BASE}${urlPath}`, { ...options, headers, signal: controller.signal, credentials: 'include' }).finally(() => clearTimeout(timeoutId));
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     const err = new Error(body.error || res.statusText) as any;
     err.status = res.status;
-    err.code = body.error;
+    err.code = body.code || body.error;
     err.body = body;
     throw err;
   }
@@ -318,13 +318,18 @@ export const auth = {
   register: (data: Record<string, unknown>) =>
     apiFetch<{ token: string; user: UserProfile }>('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
 
-  login: (email: string, password: string) =>
-    apiFetch<{ token: string; user: UserProfile }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string, turnstileToken?: string) =>
+    apiFetch<{ token: string; user: UserProfile }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password, turnstileToken }) }),
 
   me: () => apiFetch<UserProfile>('/api/auth/me'),
 
+  logout: () => apiFetch<{ success: boolean }>('/api/auth/logout', { method: 'POST' }),
+
   resetPassword: (email: string) =>
     apiFetch<{ message: string }>('/api/auth/reset-password', { method: 'POST', body: JSON.stringify({ email }) }),
+
+  confirmResetPassword: (token: string, newPassword: string) =>
+    apiFetch<{ success: boolean; message: string }>('/api/auth/reset-password/confirm', { method: 'POST', body: JSON.stringify({ token, newPassword }) }),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
@@ -622,6 +627,10 @@ export const users = {
   get: (uid: string) => apiFetch<UserProfile>(`/api/users/${uid}`),
   update: (uid: string, data: Partial<UserProfile>) =>
     apiFetch<UserProfile>(`/api/users/${uid}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  /** Exclui permanentemente a própria conta e todos os dados (LGPD Art. 18) */
+  deleteAccount: (uid: string) =>
+    apiFetch<{ success: boolean; message: string }>(`/api/users/${uid}/account`, { method: 'DELETE' }),
 };
 
 // ─── Trainings ────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
+import TurnstileWidget from '@/components/TurnstileWidget';
 
 const HERO_BG = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-hero-bg-EvuzUMvwhPb4GgYFs4uUr2.webp';
 const LOGO = '/favicon.png';
@@ -17,20 +18,22 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return toast.error('Preencha todos os campos');
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email, password, turnstileToken);
       navigate('/app');
     } catch (err: any) {
-      const msg = err.code === 'auth/invalid-credential'
-        ? 'Email ou senha incorretos'
-        : err.code === 'auth/too-many-requests'
-        ? 'Muitas tentativas. Tente novamente mais tarde.'
-        : 'Erro ao fazer login';
+      const code = err?.code || err?.body?.code;
+      const msg =
+        code === 'auth/user-not-found' ? 'Email não encontrado' :
+        code === 'auth/wrong-password' ? 'Senha incorreta' :
+        code === 'auth/too-many-requests' ? 'Muitas tentativas. Tente novamente mais tarde.' :
+        err?.message || 'Erro ao fazer login';
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -145,7 +148,9 @@ export default function Login() {
                 Esqueci a senha
               </button>
 
-              <button type="submit" className="bjj-btn-primary" disabled={loading} style={{ marginTop: '0.25rem' }}>
+              <TurnstileWidget onSuccess={t => setTurnstileToken(t)} />
+
+              <button type="submit" className="bjj-btn-primary" disabled={loading || !turnstileToken} style={{ marginTop: '0.25rem' }}>
                 {loading ? 'ENTRANDO...' : 'ENTRAR NO TATAMI'}
               </button>
 
@@ -184,6 +189,22 @@ export default function Login() {
               <button type="button" className="bjj-btn-outline" onClick={() => setShowReset(false)}>VOLTAR</button>
             </form>
           )}
+        </div>
+
+        {/* RAOS Tecnologia */}
+        <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #1A1A1A', textAlign: 'center' }}>
+          <a href="https://raostecnologia.com.br" target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}
+          >
+            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#555', opacity: 0.4, transition: 'opacity 0.2s' }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.4')}
+            >Desenvolvido por</span>
+            <img src="/raos-logo.png" alt="RAOS Tecnologia" style={{ height: '24px', width: 'auto', objectFit: 'contain', opacity: 0.65, transition: 'opacity 0.2s' }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.65')}
+            />
+          </a>
         </div>
       </div>
     </div>

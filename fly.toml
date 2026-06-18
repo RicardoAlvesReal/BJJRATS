@@ -3,6 +3,8 @@ app = "bjjrats"
 primary_region = "gru"  # São Paulo (mais próximo do Brasil)
 
 [build]
+  [build.args]
+    VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADm4HnOK8P1JV2Ss"
 
 [env]
   NODE_ENV = "production"

@@ -123,11 +123,12 @@ temp/
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 
-# Images
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.bmp
-*.svg
-*.ico
+# Images (apenas uploads de usuários — preserva assets do app)
+uploads/**/*.jpg
+uploads/**/*.jpeg
+uploads/**/*.png
+uploads/**/*.gif
+uploads/**/*.bmp
+uploads/**/*.svg
+uploads/**/*.ico
+uploads/**/*.webp
