@@ -8,6 +8,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import LegalModal from '@/components/LegalModal';
+import { TermsContent, PrivacyContent } from '@/lib/legalContent';
+import TurnstileWidget from '@/components/TurnstileWidget';
 import { LocateFixed } from 'lucide-react';
 
 const LOGO = '/favicon.png';
@@ -48,6 +51,10 @@ export default function Register() {
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<Role>(null);
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [legalModal, setLegalModal] = useState<'terms' | 'privacy' | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [locatingAcademy, setLocatingAcademy] = useState(false);
 
   // Upload refs
@@ -193,7 +200,10 @@ export default function Register() {
     if (!isValidEmail(form.email)) return toast.error('Informe um email valido');
     if (!isValidWhatsApp(form.phone)) return toast.error('Informe um WhatsApp valido com DDD');
     if (form.password.length < 6) return toast.error('Senha deve ter no mínimo 6 caracteres');
+    if (!/[a-zA-Z]/.test(form.password) || !/[0-9]/.test(form.password))
+      return toast.error('A senha deve conter letras e números');
     if (form.password !== form.confirmPassword) return toast.error('Senhas não conferem');
+    if (!acceptPrivacy) return toast.error('Você precisa aceitar a Política de Privacidade');
     setStep(2);
   };
 
@@ -228,6 +238,7 @@ export default function Register() {
         heightCm: form.heightCm,
         bjjSince: form.bjjSince,
         role: 'student',
+        turnstileToken,
       });
 
       if (form.selectedAcademyUid) {
@@ -243,7 +254,8 @@ export default function Register() {
       } else {
         toast.success('Bem-vindo ao tatami, Rata! 🥋');
       }
-      navigate('/app');
+      // Aluno novo → direto pra página de planos
+      navigate('/pricing');
     } catch (err: any) {
       toast.error(err.status === 409 ? 'Este email já está cadastrado' : err.body?.error || 'Erro ao criar conta');
     } finally {
@@ -280,6 +292,7 @@ export default function Register() {
         heightCm: form.heightCm,
         bjjSince: form.bjjSince,
         role: role === 'academy' ? 'academy' : 'professor',
+        turnstileToken,
         isAcademyAdmin: role === 'academy',
         academyName: form.academyName,
         academyAddress: form.academyAddress,
@@ -314,7 +327,7 @@ export default function Register() {
 
       const msg = role === 'academy' ? 'Academia cadastrada! Bem-vindo! 🏛️' : 'Academia cadastrada! Bem-vindo, Professor! 🏫';
       toast.success(msg);
-      navigate('/app');
+      navigate('/pricing');
     } catch (err: any) {
       toast.error(err.status === 409 ? 'Este email já está cadastrado' : err.body?.error || 'Erro ao criar conta');
     } finally {
@@ -387,13 +400,64 @@ export default function Register() {
             </div>
             <div>
               <label className="bjj-label">Senha</label>
-              <input type="password" className="bjj-input" placeholder="Mínimo 6 caracteres" value={form.password} onChange={e => update('password', e.target.value)} />
+              <div style={{ position: 'relative' }}>
+                <input type={showPassword ? 'text' : 'password'} className="bjj-input" placeholder="Letras, números e caracteres especiais" value={form.password} onChange={e => update('password', e.target.value)} style={{ paddingRight: '2.5rem' }} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}>
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  )}
+                </button>
+              </div>
+              {form.password.length > 0 && <PasswordStrength password={form.password} />}
             </div>
             <div>
               <label className="bjj-label">Confirmar senha</label>
-              <input type="password" className="bjj-input" placeholder="Repita a senha" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} />
+              <div style={{ position: 'relative' }}>
+                <input type={showPassword ? 'text' : 'password'} className="bjj-input" placeholder="Repita a senha" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} style={{ paddingRight: '2.5rem' }} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}>
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  )}
+                </button>
+              </div>
             </div>
-            <button type="submit" className="bjj-btn-primary" style={{ marginTop: '0.5rem' }}>PRÓXIMO →</button>
+            {/* LGPD Consent */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <input
+                type="checkbox"
+                id="privacyConsent"
+                checked={acceptPrivacy}
+                onChange={e => setAcceptPrivacy(e.target.checked)}
+                style={{ marginTop: '0.2rem', cursor: 'pointer', accentColor: '#CC0000', width: '16px', height: '16px', flexShrink: 0 }}
+              />
+              <label htmlFor="privacyConsent" style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', lineHeight: 1.4, cursor: 'pointer' }}>
+                Li e aceito os{' '}
+                <span onClick={() => setLegalModal('terms')} style={{ color: '#CC0000', textDecoration: 'underline', cursor: 'pointer' }}>Termos de Uso</span>
+                {' '}e a{' '}
+                <span onClick={() => setLegalModal('privacy')} style={{ color: '#CC0000', textDecoration: 'underline', cursor: 'pointer' }}>Política de Privacidade</span>.
+              </label>
+            </div>
+
+            {(() => {
+              const step1Valid = form.name.trim() && form.email.trim() && form.phone.trim() && form.password && form.confirmPassword && acceptPrivacy;
+              return (
+                <button type="submit" className="bjj-btn-primary"
+                  disabled={!step1Valid}
+                  style={{
+                    marginTop: '0.5rem',
+                    opacity: step1Valid ? 1 : 0.45,
+                    cursor: step1Valid ? 'pointer' : 'not-allowed',
+                    transition: 'opacity 0.2s ease',
+                  }}
+                >PRÓXIMO →</button>
+              );
+            })()}
           </form>
         </div>
       )}
@@ -467,6 +531,11 @@ export default function Register() {
       {/* ── PASSO 3: Perfil de Atleta (Aluno e Professor) ── */}
       {step === 3 && (
         <div className="flex-1 px-6 py-8">
+          {/* Card do plano específico */}
+          {role === 'student' && <PlanCard icon="🥋" name="Aluno" price="19,90" color="#3B82F6" features={['Registro de treinos', 'Histórico completo', 'Sequência (streak)', 'Comunidade', 'Conquistas', 'Competições', 'Metas e desafios']} />}
+          {role === 'professor' && <PlanCard icon="👨‍🏫" name="Professor Particular" price="47,90" color="#8B5CF6" features={['Todas as funções de atleta', 'Alunos ilimitados', 'Matrículas e pagamentos', 'Promoções de faixa', 'Chamada (check-in)', 'Agenda de aulas', 'Atendimento exclusivo']} />}
+          {role === 'academy' && <PlanCard icon="🏛️" name="Academia" price="97,90" color="#CC0000" features={['Dashboard administrativo', 'Gestão de usuários', 'CRM completo', 'Múltiplos professores', 'Relatórios', 'Analytics financeiro', 'Todos os recursos professores']} />}
+
           <form onSubmit={handleStep3} className="flex flex-col gap-5">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1.1rem', textTransform: 'uppercase', color: '#888', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
               PERFIL DE LUTADOR
@@ -618,8 +687,10 @@ export default function Register() {
               </div>
             </div>
 
-            <button type="submit" disabled={loading}
-              style={{ background: role === 'professor' || role === 'academy' ? '#CC0000' : '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '0.5rem' }}>
+            <TurnstileWidget onSuccess={t => setTurnstileToken(t)} />
+
+            <button type="submit" disabled={loading || (role === 'student' && !turnstileToken)}
+              style={{ background: '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: (loading || (role === 'student' && !turnstileToken)) ? 'not-allowed' : 'pointer', opacity: (loading || (role === 'student' && !turnstileToken)) ? 0.45 : 1, marginTop: '0.5rem', transition: 'opacity 0.2s ease' }}>
               {loading ? 'CRIANDO CONTA...' : role === 'professor' || role === 'academy' ? 'PRÓXIMO →' : 'ENTRAR NO TATAMI 🥋'}
             </button>
           </form>
@@ -740,13 +811,125 @@ export default function Register() {
                 Após criar sua conta, escolha um plano de assinatura para liberar todos os recursos.
               </p>
 
-            <button type="submit" disabled={loading}
-              style={{ background: '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+            <TurnstileWidget onSuccess={t => setTurnstileToken(t)} />
+
+            <button type="submit" disabled={loading || !turnstileToken}
+              style={{ background: '#CC0000', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '1rem', border: 'none', cursor: (loading || !turnstileToken) ? 'not-allowed' : 'pointer', opacity: (loading || !turnstileToken) ? 0.45 : 1, transition: 'opacity 0.2s ease' }}>
               {loading ? 'CRIANDO CONTA...' : 'CADASTRAR 🏛️'}
             </button>
           </form>
         </div>
       )}
+
+      {/* Modais legais (não tiram o usuário da página de cadastro) */}
+      <LegalModal open={legalModal === 'terms'} title="Termos de Uso" onClose={() => setLegalModal(null)}>
+        <TermsContent />
+      </LegalModal>
+
+      <LegalModal open={legalModal === 'privacy'} title="Política de Privacidade" onClose={() => setLegalModal(null)}>
+        <PrivacyContent />
+      </LegalModal>
+
+      {/* RAOS Tecnologia */}
+      <div style={{ marginTop: 'auto', padding: '0.75rem 1rem', borderTop: '1px solid #1A1A1A', textAlign: 'center' }}>
+        <a href="https://raostecnologia.com.br" target="_blank" rel="noopener noreferrer"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}
+        >
+          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.55rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#555', opacity: 0.4, transition: 'opacity 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.4')}
+          >Desenvolvido por</span>
+          <img src="/raos-logo.png" alt="RAOS Tecnologia" style={{ height: '24px', width: 'auto', objectFit: 'contain', opacity: 0.65, transition: 'opacity 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.65')}
+          />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/** Card do plano exibido no passo 3 do cadastro */
+function PlanCard({ icon, name, price, color, features }: { icon: string; name: string; price: string; color: string; features: string[] }) {
+  return (
+    <div style={{
+      background: '#111',
+      border: `2px solid ${color}`,
+      padding: '1rem',
+      marginBottom: '1.25rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.5rem',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <span style={{ fontSize: '1.5rem' }}>{icon}</span>
+        <div>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1, margin: 0 }}>
+            Plano {name}
+          </p>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color, margin: 0 }}>
+            R$ {price} / mês
+          </p>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 0.75rem' }}>
+        {features.slice(0, 4).map(f => (
+          <span key={f} style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#777', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <span style={{ color, fontWeight: 700 }}>✓</span> {f}
+          </span>
+        ))}
+        {features.length > 4 && (
+          <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555' }}>+{features.length - 4} itens</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Medidor de força da senha */
+function PasswordStrength({ password }: { password: string }) {
+  let score = 0;
+  if (password.length >= 6) score++;
+  if (password.length >= 10) score++;
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^a-zA-Z0-9]/.test(password)) score++;
+
+  const levels = [
+    { label: 'Muito fraca', color: '#CC0000', min: 0 },
+    { label: 'Fraca', color: '#E67E00', min: 1 },
+    { label: 'Média', color: '#E6C300', min: 2 },
+    { label: 'Forte', color: '#22C55E', min: 4 },
+    { label: 'Muito forte', color: '#0EA5E9', min: 5 },
+  ];
+
+  const level = [...levels].reverse().find(l => score >= l.min)!;
+  const pct = Math.min(100, (score / 5) * 100);
+
+  return (
+    <div style={{ marginTop: '0.4rem' }}>
+      <div style={{ height: '4px', background: '#1A1A1A', borderRadius: '2px', overflow: 'hidden' }}>
+        <div style={{
+          height: '100%',
+          width: `${pct}%`,
+          background: level.color,
+          borderRadius: '2px',
+          transition: 'width 0.3s ease, background 0.3s ease',
+        }} />
+      </div>
+      <span style={{
+        fontFamily: 'Barlow Condensed, sans-serif',
+        fontSize: '0.65rem',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.1em',
+        color: level.color,
+        display: 'block',
+        marginTop: '0.2rem',
+        transition: 'color 0.3s ease',
+      }}>
+        {level.label}
+      </span>
     </div>
   );
 }

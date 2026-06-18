@@ -37,15 +37,13 @@ interface AuthContextType {
   /** Compatibilidade: alias de `user` */
   profile: UserProfile | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, turnstileToken?: string) => Promise<void>;
   register: (data: RegisterData) => Promise<string>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfileData: (data: Partial<UserProfile>) => Promise<void>;
 }
-
-const TOKEN_KEY = 'bjjrats_token';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -59,36 +57,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [confirmPass, setConfirmPass] = useState('');
   const [changingPass, setChangingPass] = useState(false);
 
-  // Restaurar sessão ao montar
+  // Restaurar sessão via cookie HTTP-only
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) { setLoading(false); return; }
-
     api.auth.me()
       .then(u => {
         setUser(u);
         if ((u as any).mustChangePassword) setShowChangePassword(true);
       })
-      .catch(() => localStorage.removeItem(TOKEN_KEY))
+      .catch(() => { /* Cookie expirado ou inexistente */ })
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const { token, user: u } = await api.auth.login(email, password);
-    localStorage.setItem(TOKEN_KEY, token);
+  const login = async (email: string, password: string, turnstileToken?: string) => {
+    const { user: u } = await api.auth.login(email, password, turnstileToken);
     setUser(u);
     if ((u as any).mustChangePassword) setShowChangePassword(true);
   };
 
   const register = async (data: RegisterData) => {
-    const { token, user: u } = await api.auth.register(data as unknown as Record<string, unknown>);
-    localStorage.setItem(TOKEN_KEY, token);
+    const { user: u } = await api.auth.register(data as unknown as Record<string, unknown>);
     setUser(u);
     return u.uid;
   };
 
   const logout = async () => {
-    localStorage.removeItem(TOKEN_KEY);
+    await api.auth.logout().catch(() => {});
     setUser(null);
   };
 

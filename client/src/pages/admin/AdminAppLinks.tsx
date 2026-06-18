@@ -71,6 +71,25 @@ export default function AdminAppLinks() {
           </Field>
 
           <div style={{ borderTop: '1px solid #222', paddingTop: '1rem', marginTop: '0.5rem' }}>
+            <p style={{ ...mutedStyle, marginBottom: '0.75rem' }}>Landing Page</p>
+
+            <Field label="Plano em destaque (MAIS POPULAR)">
+              <select
+                style={inputStyle}
+                value={settings.popular_plan_slug ?? 'professor'}
+                onChange={e => setField('popular_plan_slug', e.target.value)}
+              >
+                <option value="aluno">🥋 Aluno — R$ 19,90</option>
+                <option value="professor">👨‍🏫 Professor Particular — R$ 47,90</option>
+                <option value="academia">🏛️ Academia — R$ 97,90</option>
+              </select>
+              <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', display: 'block', marginTop: '0.25rem' }}>
+                Plano que recebe o selo "MAIS POPULAR" na página de preços.
+              </span>
+            </Field>
+          </div>
+
+          <div style={{ borderTop: '1px solid #222', paddingTop: '1rem', marginTop: '0.5rem' }}>
             <p style={{ ...mutedStyle, marginBottom: '0.75rem' }}>Cobrança</p>
 
             <Field label="Tolerância de inadimplência (dias)">

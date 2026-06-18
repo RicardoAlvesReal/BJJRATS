@@ -108,4 +108,34 @@ router.patch('/:uid', requireAuth, async (req: AuthRequest, res) => {
   res.json(safe);
 });
 
+// DELETE /api/users/:uid/account — Exclusão da própria conta (LGPD Art. 18)
+router.delete('/:uid/account', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    // Apenas o próprio usuário pode deletar a própria conta
+    if (req.userId !== req.params.uid) {
+      return res.status(403).json({ error: 'Você só pode excluir sua própria conta.' });
+    }
+
+    // Verifica se o usuário existe
+    const [user] = await db.select({ uid: users.uid, role: users.role }).from(users).where(eq(users.uid, req.params.uid)).limit(1);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    // Superadmin não pode se auto-deletar por segurança
+    if (user.role === 'superadmin') {
+      return res.status(403).json({ error: 'Superadmin não pode excluir a própria conta por esta via.' });
+    }
+
+    // Exclui o usuário (CASCADE no banco remove registros relacionados)
+    await db.delete(users).where(eq(users.uid, req.params.uid));
+
+    console.log(`[LGPD] Conta deletada: ${req.params.uid} — ${new Date().toISOString()}`);
+    res.json({ success: true, message: 'Conta e todos os dados associados foram excluídos permanentemente.' });
+  } catch (err) {
+    console.error('[LGPD] Erro ao deletar conta:', err);
+    res.status(500).json({ error: 'Erro interno ao excluir conta.' });
+  }
+});
+
 export default router;

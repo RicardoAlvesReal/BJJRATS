@@ -639,6 +639,13 @@ export default function AppLayout() {
             </svg>
             <span>SAIR</span>
           </button>
+
+          {/* RAOS Tecnologia */}
+          <a href="https://raostecnologia.com.br" target="_blank" rel="noopener noreferrer"
+            className="flex items-center justify-center mt-3 pt-3 border-t border-[#1A1A1A] no-underline group"
+          >
+            <img src="/raos-logo.png" alt="RAOS Tecnologia" className="h-[20px] w-auto object-contain opacity-45 group-hover:opacity-100 transition-opacity" />
+          </a>
         </div>
       </aside>
 

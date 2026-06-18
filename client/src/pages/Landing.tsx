@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { fadeUpReveal as fadeUp } from '@/lib/animations';
+import LegalModal from '@/components/LegalModal';
+import { TermsContent, PrivacyContent, SupportContent } from '@/lib/legalContent';
 
 const HERO_BG = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-hero-bg-EvuzUMvwhPb4GgYFs4uUr2.webp';
 const LOGO = '/favicon.png';
@@ -35,7 +37,7 @@ const FEATURES_COMUNIDADE = [
 
 const LANDING_PLANS = [
   { slug: 'aluno', icon: '🥋', name: 'Aluno', desc: 'Registre treinos, acompanhe sua evolução e participe da comunidade.', price: 19.90, color: '#3B82F6', popular: false, features: ['Registro de treinos', 'Histórico completo', 'Sequência (streak)', 'Comunidade', 'Conquistas', 'Competições', 'Metas e desafios'] },
-  { slug: 'professor', icon: '👨‍🏫', name: 'Professor Particular', desc: 'Gerencie seus alunos com exclusividade e acompanhe cada um.', price: 47.90, color: '#8B5CF6', popular: true, features: ['Painel do professor', 'Alunos ilimitados', 'Matrículas e pagamentos', 'Promoções de faixa', 'Chamada (check-in)', 'Agenda de aulas', 'Atendimento exclusivo'] },
+  { slug: 'professor', icon: '👨‍🏫', name: 'Professor Particular', desc: 'Gerencie seus alunos com exclusividade e acompanhe cada um.', price: 47.90, color: '#8B5CF6', popular: false, features: ['Painel do professor', 'Alunos ilimitados', 'Matrículas e pagamentos', 'Promoções de faixa', 'Chamada (check-in)', 'Agenda de aulas', 'Atendimento exclusivo'] },
   { slug: 'academia', icon: '🏛️', name: 'Academia', desc: 'Gestão completa com múltiplos professores, CRM e relatórios.', price: 97.90, color: '#CC0000', popular: false, features: ['Dashboard administrativo', 'Gestão de usuários', 'CRM completo', 'Múltiplos professores', 'Relatórios', 'Analytics financeiro', 'Todos os recursos professores'] },
 ];
 
@@ -124,6 +126,8 @@ export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [appStoreUrl, setAppStoreUrl] = useState('');
   const [playStoreUrl, setPlayStoreUrl] = useState('');
+  const [popularPlanSlug, setPopularPlanSlug] = useState('professor');
+  const [legalModal, setLegalModal] = useState<'terms' | 'privacy' | 'support' | null>(null);
   const { scrollY } = useScroll();
   const heroParallax = useTransform(scrollY, [0, 500], [0, 120]);
   const heroOpacity = useTransform(scrollY, [0, 400], [1, 0.6]);
@@ -149,6 +153,7 @@ export default function Landing() {
       .then(data => {
         if (data.app_store_url) setAppStoreUrl(data.app_store_url);
         if (data.play_store_url) setPlayStoreUrl(data.play_store_url);
+        if (data.popular_plan_slug) setPopularPlanSlug(data.popular_plan_slug);
       })
       .catch(() => {});
   }, []);
@@ -418,7 +423,9 @@ export default function Landing() {
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {LANDING_PLANS.map((plan, i) => (
+            {LANDING_PLANS.map((plan, i) => {
+              const isPopular = plan.slug === popularPlanSlug;
+              return (
               <motion.div
                 key={plan.slug}
                 initial={{ opacity: 0, y: 30 }}
@@ -427,13 +434,13 @@ export default function Landing() {
                 transition={{ delay: i * 0.1, duration: 0.4 }}
                 className="rounded-xl flex flex-col"
                 style={{
-                  background: plan.popular ? '#111' : '#0D0D0D',
-                  border: plan.popular ? '2px solid ' + plan.color : '1px solid #222',
+                  background: isPopular ? '#111' : '#0D0D0D',
+                  border: isPopular ? '2px solid ' + plan.color : '1px solid #222',
                   padding: '1.75rem 1.5rem',
                   position: 'relative',
                 }}
               >
-                {plan.popular && (
+                {isPopular && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[0.55rem] font-black uppercase tracking-[0.12em] px-3 py-1 rounded-full"
                     style={{ background: plan.color, color: '#FFF' }}
                   >MAIS POPULAR</span>
@@ -461,7 +468,7 @@ export default function Landing() {
                   ASSINAR
                 </button>
               </motion.div>
-            ))}
+            )})}
           </div>
         </div>
       </section>
@@ -548,16 +555,35 @@ export default function Landing() {
               </svg>
               @BJJRATS
             </a>
-            <a href="/support" className="text-[0.65rem] text-[#555] uppercase tracking-[0.1em] no-underline transition-colors hover:text-[#CC0000] font-['Barlow_Condensed']">Suporte</a>
-            <a href="/privacy-policy" className="text-[0.65rem] text-[#555] uppercase tracking-[0.1em] no-underline transition-colors hover:text-[#CC0000] font-['Barlow_Condensed']">Privacidade</a>
-            <a href="/admin" className="text-[0.65rem] text-[#333] uppercase tracking-[0.1em] no-underline transition-colors hover:text-[#CC0000] font-['Barlow_Condensed'] flex items-center gap-1.5">
-              🔒 Área Restrita
-            </a>
+            <span onClick={() => setLegalModal('support')} className="text-[0.65rem] text-[#555] uppercase tracking-[0.1em] no-underline transition-colors hover:text-[#CC0000] font-['Barlow_Condensed'] cursor-pointer">Suporte</span>
+            <span onClick={() => setLegalModal('terms')} className="text-[0.65rem] text-[#555] uppercase tracking-[0.1em] no-underline transition-colors hover:text-[#CC0000] font-['Barlow_Condensed'] cursor-pointer">Termos</span>
+            <span onClick={() => setLegalModal('privacy')} className="text-[0.65rem] text-[#555] uppercase tracking-[0.1em] no-underline transition-colors hover:text-[#CC0000] font-['Barlow_Condensed'] cursor-pointer">Privacidade</span>
           </div>
 
           <p className="text-[0.65rem] text-[#333] uppercase tracking-[0.1em] font-['Barlow_Condensed']">
             © 2026 THE BJJRATS. TODOS OS DIREITOS RESERVADOS.
           </p>
+        </div>
+
+        {/* Modais legais */}
+      <LegalModal open={legalModal === 'terms'} title="Termos de Uso" onClose={() => setLegalModal(null)}>
+        <TermsContent />
+      </LegalModal>
+
+      <LegalModal open={legalModal === 'privacy'} title="Política de Privacidade" onClose={() => setLegalModal(null)}>
+        <PrivacyContent />
+      </LegalModal>
+
+      <LegalModal open={legalModal === 'support'} title="Suporte" onClose={() => setLegalModal(null)}>
+        <SupportContent />
+      </LegalModal>
+
+        {/* RAOS Tecnologia */}
+        <div className="max-w-[1200px] mx-auto mt-6 pt-5 border-t border-[#111] flex justify-center">
+          <a href="https://raostecnologia.com.br" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 no-underline group transition-opacity">
+            <span className="text-[0.55rem] font-bold uppercase tracking-[0.12em] text-[#555] font-['Barlow_Condensed'] opacity-40 group-hover:opacity-70 transition-opacity">Desenvolvido por</span>
+            <img src="/raos-logo.png" alt="RAOS Tecnologia" className="h-[26px] w-auto object-contain opacity-65 group-hover:opacity-100 transition-opacity" />
+          </a>
         </div>
       </footer>
 

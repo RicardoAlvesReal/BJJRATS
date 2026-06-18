@@ -32,11 +32,12 @@ router.get('/public', async (_req, res) => {
   const rows = await db
     .select()
     .from(settings)
-    .where(inArray(settings.key, ['app_store_url', 'play_store_url', 'past_due_grace_days']));
+    .where(inArray(settings.key, ['app_store_url', 'play_store_url', 'past_due_grace_days', 'popular_plan_slug']));
   const map: Record<string, string> = {};
   for (const row of rows) map[row.key] = row.value;
   // Garante fallback se não estiver configurado
   if (!map.past_due_grace_days) map.past_due_grace_days = '3';
+  if (!map.popular_plan_slug) map.popular_plan_slug = 'professor';
   res.json(map);
 });
 

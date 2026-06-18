@@ -6,9 +6,9 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { academyProfessorLinks, users, plans, subscriptions, settings } from '../db/schema.js';
 import {
-  createCustomer, findCustomer, createSubscription as asaasCreateSub,
+  createCustomer, findCustomer, updateCustomer, createSubscription as asaasCreateSub,
   cancelSubscription as asaasCancelSub, getSubscription, updateSubscription,
-  listSubscriptionPayments, parseWebhook,
+  listSubscriptionPayments, getPixQrCode, parseWebhook,
   type AsaasWebhookEvent,
 } from '../services/asaas.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
@@ -138,24 +138,32 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
-  // Cria ou reutiliza customer no Asaas
+  // Cria ou reutiliza customer no Asaas (sempre garante CPF)
   const customerPhone = String(phone || user.phone || '').trim() || undefined;
+  const cleanCpf = (cpfCnpj || '').replace(/\D/g, '');
   let customer = await findCustomer(user.email);
   if (!customer) {
     customer = await createCustomer({
       name: user.name,
       email: user.email,
-      cpfCnpj,
+      cpfCnpj: cleanCpf || undefined,
       phone: customerPhone,
     });
+  } else if (cleanCpf && cleanCpf.length >= 11) {
+    // Atualiza CPF se o customer já existia sem ele
+    try {
+      customer = await updateCustomer(customer.id, { cpfCnpj: cleanCpf });
+    } catch (e) {
+      console.warn('[subscriptions] Não foi possível atualizar CPF do customer:', e);
+    }
   }
 
   const trialDays = plan.trialDays ?? 0;
   const now = new Date();
 
-  // Próximo vencimento: trialDays + 7 dias a partir de hoje
+  // Próximo vencimento: trialDays + 30 dias a partir de hoje
   const nextDue = new Date();
-  nextDue.setDate(nextDue.getDate() + trialDays + 7);
+  nextDue.setDate(nextDue.getDate() + trialDays + 30);
   const nextDueStr = nextDue.toISOString().split('T')[0];
 
   const normalizedBillingType = String(billingType || paymentMethod || 'PIX').toLowerCase();
@@ -185,7 +193,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     id: subId,
     userUid: req.userId!,
     planId,
-    status: isTrial ? 'trial' : 'active',
+    status: isTrial ? 'trial' : 'pending',
     asaasId: asaasSub.id,
     asaasCustomerId: customer.id,
     currentPeriodStart: now,
@@ -194,7 +202,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   });
 
   let firstPayment:
-    | { id: string; invoiceUrl?: string; bankSlipUrl?: string; status: string }
+    | { id: string; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string; pixCopiaECola?: string; status: string }
     | null = null;
 
   try {
@@ -204,10 +212,26 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     ) ?? asaasPayments[0];
 
     if (payablePayment) {
+      let pixQr = payablePayment.pixQrCode || (payablePayment as any).pixQrCodeUrl || '';
+      let pixCopia = (payablePayment as any).pixCopiaECola || (payablePayment as any).payload || (payablePayment as any).pixTransaction || '';
+
+      // Se for PIX sem QR code, busca via endpoint dedicado
+      if (bt === 'PIX' && !pixQr) {
+        try {
+          const pixData = await getPixQrCode(payablePayment.id);
+          pixQr = pixData.encodedImage || '';
+          pixCopia = pixCopia || pixData.payload || '';
+        } catch (e) {
+          console.warn('[subscriptions] Erro ao buscar PIX QR code:', e);
+        }
+      }
+
       firstPayment = {
         id: payablePayment.id,
         invoiceUrl: payablePayment.invoiceUrl,
         bankSlipUrl: payablePayment.bankSlipUrl,
+        pixQrCode: pixQr,
+        pixCopiaECola: pixCopia,
         status: payablePayment.status,
       };
     }

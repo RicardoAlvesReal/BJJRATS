@@ -74,6 +74,10 @@ export interface AsaasPayment {
   bankSlipUrl?: string;
   transactionReceiptUrl?: string;
   pixQrCode?: string;
+  pixQrCodeUrl?: string;
+  pixCopiaECola?: string;
+  payload?: string;
+  pixTransaction?: string;
   externalReference?: string;
 }
 
@@ -97,6 +101,11 @@ export async function findCustomer(email: string, config?: AsaasRequestConfig): 
   if (isDevMode(config)) return null;
   const result = await request<{ data: AsaasCustomer[] }>('GET', `/customers?email=${encodeURIComponent(email)}`, undefined, config);
   return result.data?.[0] ?? null;
+}
+
+export async function updateCustomer(id: string, data: { cpfCnpj?: string; phone?: string }, config?: AsaasRequestConfig): Promise<AsaasCustomer> {
+  if (isDevMode(config)) return { id, name: '', email: '', cpfCnpj: data.cpfCnpj };
+  return request<AsaasCustomer>('PUT', `/customers/${id}`, data, config);
 }
 
 // ─── Subscriptions ─────────────────────────────────────────────────────────
@@ -203,6 +212,19 @@ export async function createPayment(data: {
     description: data.description,
     externalReference: data.externalReference,
   }, config);
+}
+
+export interface AsaasPixQrCode {
+  encodedImage: string;   // base64 PNG
+  payload: string;        // copia e cola
+  expirationDate: string;
+}
+
+export async function getPixQrCode(paymentId: string, config?: AsaasRequestConfig): Promise<AsaasPixQrCode> {
+  if (isDevMode(config)) {
+    return { encodedImage: '', payload: 'dev-pix-payload', expirationDate: new Date().toISOString() };
+  }
+  return request<AsaasPixQrCode>('GET', `/payments/${paymentId}/pixQrCode`, undefined, config);
 }
 
 export async function testConnection(config?: AsaasRequestConfig): Promise<void> {
