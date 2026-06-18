@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { trainings, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireFeature } from '../middleware/features.js';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/trainings
-router.post('/', requireAuth, async (req: AuthRequest, res) => {
+router.post('/', requireAuth, requireFeature('training_tracking'), async (req: AuthRequest, res) => {
   const { uid, createdAt: _ca, updatedAt: _ua, ...rest } = req.body;
   const ownerUid = uid || req.userId!;
   const id = nanoid();

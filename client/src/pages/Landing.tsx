@@ -4,6 +4,13 @@ import { motion, useScroll, useTransform } from 'framer-motion';
 import { fadeUpReveal as fadeUp } from '@/lib/animations';
 import LegalModal from '@/components/LegalModal';
 import { TermsContent, PrivacyContent, SupportContent } from '@/lib/legalContent';
+import api, { type Plan } from '@/lib/api';
+
+const ROLE_META: Record<string, { icon: string; color: string }> = {
+  student:   { icon: '🥋',   color: '#3B82F6' },
+  professor: { icon: '👨‍🏫', color: '#8B5CF6' },
+  academy:   { icon: '🏛️',  color: '#CC0000' },
+};
 
 const HERO_BG = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663343500922/eZPracQhphsa87KDbjhHAd/bjjrats-hero-bg-EvuzUMvwhPb4GgYFs4uUr2.webp';
 const LOGO = '/favicon.png';
@@ -35,11 +42,7 @@ const FEATURES_COMUNIDADE = [
   { num: '04', icon: '🔍', title: 'Busca de Academias', desc: 'Encontre academias cadastradas no BJJRats, veja avaliações de alunos e conecte-se com a equipe mais próxima.' },
 ];
 
-const LANDING_PLANS = [
-  { slug: 'aluno', icon: '🥋', name: 'Aluno', desc: 'Registre treinos, acompanhe sua evolução e participe da comunidade.', price: 19.90, color: '#3B82F6', popular: false, features: ['Registro de treinos', 'Histórico completo', 'Sequência (streak)', 'Comunidade', 'Conquistas', 'Competições', 'Metas e desafios'] },
-  { slug: 'professor', icon: '👨‍🏫', name: 'Professor Particular', desc: 'Gerencie seus alunos com exclusividade e acompanhe cada um.', price: 47.90, color: '#8B5CF6', popular: false, features: ['Painel do professor', 'Alunos ilimitados', 'Matrículas e pagamentos', 'Promoções de faixa', 'Chamada (check-in)', 'Agenda de aulas', 'Atendimento exclusivo'] },
-  { slug: 'academia', icon: '🏛️', name: 'Academia', desc: 'Gestão completa com múltiplos professores, CRM e relatórios.', price: 97.90, color: '#CC0000', popular: false, features: ['Dashboard administrativo', 'Gestão de usuários', 'CRM completo', 'Múltiplos professores', 'Relatórios', 'Analytics financeiro', 'Todos os recursos professores'] },
-];
+const LANDING_PLANS: never[] = []; // removido — agora dinâmico do banco
 
 const AppleSVG = () => (
   <svg width="20" height="24" viewBox="0 0 814 1000" fill="#AAA" xmlns="http://www.w3.org/2000/svg">
@@ -127,6 +130,7 @@ export default function Landing() {
   const [appStoreUrl, setAppStoreUrl] = useState('');
   const [playStoreUrl, setPlayStoreUrl] = useState('');
   const [popularPlanSlug, setPopularPlanSlug] = useState('professor');
+  const [landingPlans, setLandingPlans] = useState<Plan[]>([]);
   const [legalModal, setLegalModal] = useState<'terms' | 'privacy' | 'support' | null>(null);
   const { scrollY } = useScroll();
   const heroParallax = useTransform(scrollY, [0, 500], [0, 120]);
@@ -155,6 +159,10 @@ export default function Landing() {
         if (data.play_store_url) setPlayStoreUrl(data.play_store_url);
         if (data.popular_plan_slug) setPopularPlanSlug(data.popular_plan_slug);
       })
+      .catch(() => {});
+
+    api.subscriptions.listPlans()
+      .then(setLandingPlans)
       .catch(() => {});
   }, []);
 
@@ -423,7 +431,8 @@ export default function Landing() {
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {LANDING_PLANS.map((plan, i) => {
+            {landingPlans.map((plan, i) => {
+              const meta = ROLE_META[plan.roleAssigned] || ROLE_META.student;
               const isPopular = plan.slug === popularPlanSlug;
               return (
               <motion.div
@@ -435,25 +444,27 @@ export default function Landing() {
                 className="rounded-xl flex flex-col"
                 style={{
                   background: isPopular ? '#111' : '#0D0D0D',
-                  border: isPopular ? '2px solid ' + plan.color : '1px solid #222',
+                  border: isPopular ? '2px solid ' + meta.color : '1px solid #222',
                   padding: '1.75rem 1.5rem',
                   position: 'relative',
                 }}
               >
                 {isPopular && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[0.55rem] font-black uppercase tracking-[0.12em] px-3 py-1 rounded-full"
-                    style={{ background: plan.color, color: '#FFF' }}
+                    style={{ background: meta.color, color: '#FFF' }}
                   >MAIS POPULAR</span>
                 )}
-                <div className="text-[2rem] mb-1">{plan.icon}</div>
+                <div className="text-[2rem] mb-1">{meta.icon}</div>
                 <h3 className="text-[1.1rem] font-black uppercase tracking-[0.1em] text-white font-['Barlow_Condensed'] m-0">{plan.name}</h3>
-                <p className="text-[0.75rem] text-[#666] font-['Barlow_Condensed'] mb-4" style={{ minHeight: '2.5rem' }}>{plan.desc}</p>
+                <p className="text-[0.75rem] text-[#666] font-['Barlow_Condensed'] mb-4" style={{ minHeight: '2.5rem' }}>{plan.description || plan.name}</p>
                 <div className="mb-5">
-                  <span className="text-[2rem] font-black font-['Barlow_Condensed']" style={{ color: plan.color }}>R$ {plan.price.toFixed(2)}</span>
-                  <span className="text-[0.7rem] text-[#666] font-['Barlow_Condensed']">/mês</span>
+                  <span className="text-[2rem] font-black font-['Barlow_Condensed']" style={{ color: meta.color }}>
+                    {plan.price === 0 ? 'GRÁTIS' : `R$ ${plan.price.toFixed(2)}`}
+                  </span>
+                  {plan.price > 0 && <span className="text-[0.7rem] text-[#666] font-['Barlow_Condensed']">/mês</span>}
                 </div>
                 <ul className="list-none p-0 m-0 flex-1 flex flex-col gap-1.5 mb-6">
-                  {plan.features.map(f => (
+                  {(plan.features || []).slice(0, 7).map(f => (
                     <li key={f} className="flex items-center gap-2 text-[0.8rem] text-[#BBB] font-['Barlow_Condensed']">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
                       {f}
@@ -463,7 +474,7 @@ export default function Landing() {
                 <button
                   onClick={() => navigate('/pricing')}
                   className="w-full text-white text-[0.8rem] font-black uppercase tracking-[0.1em] py-3 border-none rounded-lg cursor-pointer transition-all font-['Barlow_Condensed']"
-                  style={{ background: plan.color }}
+                  style={{ background: meta.color }}
                 >
                   ASSINAR
                 </button>
