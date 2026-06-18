@@ -5,8 +5,9 @@ import { LayoutDashboard, CalendarCheck, School, GraduationCap, Users, Target, U
 import { pageVariant as pageVariants, pageTransition, overlayVariant as overlayVariants, modalVariant as modalVariants } from '@/lib/animations';
 import { COLORS } from '@/lib/design';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
-import api from '@/lib/api';
+import api, { passkeys } from '@/lib/api';
 import { toast } from 'sonner';
+import BiometricEnrollPrompt from '@/components/BiometricEnrollPrompt';
 import Dashboard from './app/Dashboard';
 import History from './app/History';
 import Community from './app/Community';
@@ -122,6 +123,7 @@ export default function AppLayout() {
     : TABS;
 
   const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -135,6 +137,25 @@ export default function AppLayout() {
       return () => clearTimeout(t);
     }
   }, [profile, user]);
+
+  // ── Biometric enrollment prompt (após primeiro login) ────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const key = `biometric_prompt_dismissed_${user.uid}`;
+    if (localStorage.getItem(key) === '1') return;
+    if (typeof window === 'undefined' || !window.PublicKeyCredential) return;
+
+    // Pequeno delay para não competir com o prompt da foto
+    const t = setTimeout(async () => {
+      try {
+        const creds = await passkeys.list();
+        if (!creds || creds.length === 0) {
+          setShowBiometricPrompt(true);
+        }
+      } catch { /* ignora erro */ }
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [user]);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -570,6 +591,14 @@ export default function AppLayout() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Biometric Enrollment Prompt (pós-login) */}
+      {showBiometricPrompt && user && (
+        <BiometricEnrollPrompt
+          userUid={user.uid}
+          onClose={() => setShowBiometricPrompt(false)}
+        />
+      )}
 
       {/* Sidebar — Desktop only */}
       <aside className={`bjj-sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
