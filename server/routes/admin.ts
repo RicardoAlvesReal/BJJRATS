@@ -904,23 +904,33 @@ router.post(
   requireAuth,
   requireRole('superadmin'),
   async (req: AuthRequest, res) => {
-    const { name, slug, description, price, roleAssigned, features, trialDays } = req.body as {
-      name: string; slug: string; description?: string; price: number;
-      roleAssigned: string; features?: string[]; trialDays?: number;
-    };
-    if (!name || !slug || price == null || !roleAssigned) {
-      res.status(400).json({ error: 'name, slug, price e roleAssigned são obrigatórios' });
-      return;
+    try {
+      const { name, slug, description, price, roleAssigned, features, trialDays } = req.body as {
+        name: string; slug: string; description?: string; price: number;
+        roleAssigned: string; features?: string[]; trialDays?: number;
+      };
+      if (!name || !slug || price == null || !roleAssigned) {
+        res.status(400).json({ error: 'name, slug, price e roleAssigned são obrigatórios' });
+        return;
+      }
+      const normalizedRoleAssigned = normalizePlanRole(roleAssigned);
+      if (!normalizedRoleAssigned) {
+        res.status(400).json({ error: 'roleAssigned invalido' });
+        return;
+      }
+      const id = nanoid();
+      await db.insert(plans).values({ id, name, slug, description, price, roleAssigned: normalizedRoleAssigned, features: features || [], trialDays: trialDays ?? 0 });
+      const [plan] = await db.select().from(plans).where(eq(plans.id, id)).limit(1);
+      res.status(201).json(plan);
+    } catch (err: any) {
+      // Trata slug duplicado (constraint unique)
+      if (err?.code === '23505' || (err?.message || '').includes('duplicate key')) {
+        res.status(409).json({ error: 'Já existe um plano com esse slug. Escolha outro identificador.' });
+        return;
+      }
+      console.error('[admin] Erro ao criar plano:', err);
+      res.status(500).json({ error: 'Erro interno ao criar plano.' });
     }
-    const normalizedRoleAssigned = normalizePlanRole(roleAssigned);
-    if (!normalizedRoleAssigned) {
-      res.status(400).json({ error: 'roleAssigned invalido' });
-      return;
-    }
-    const id = nanoid();
-    await db.insert(plans).values({ id, name, slug, description, price, roleAssigned: normalizedRoleAssigned, features: features || [], trialDays: trialDays ?? 0 });
-    const [plan] = await db.select().from(plans).where(eq(plans.id, id)).limit(1);
-    res.status(201).json(plan);
   }
 );
 
@@ -931,31 +941,40 @@ router.put(
   requireAuth,
   requireRole('superadmin'),
   async (req: AuthRequest, res) => {
-    const [existing] = await db.select().from(plans).where(eq(plans.id, req.params.id)).limit(1);
-    if (!existing) { res.status(404).json({ error: 'Plano não encontrado' }); return; }
-    const { name, slug, description, price, roleAssigned, features, trialDays, isActive } = req.body as {
-      name?: string; slug?: string; description?: string; price?: number;
-      roleAssigned?: string; features?: string[]; trialDays?: number; isActive?: boolean;
-    };
-    const updates: Record<string, unknown> = {};
-    if (name !== undefined) updates.name = name;
-    if (slug !== undefined) updates.slug = slug;
-    if (description !== undefined) updates.description = description;
-    if (price !== undefined) updates.price = price;
-    if (roleAssigned !== undefined) {
-      const normalizedRoleAssigned = normalizePlanRole(roleAssigned);
-      if (!normalizedRoleAssigned) {
-        res.status(400).json({ error: 'roleAssigned invalido' });
+    try {
+      const [existing] = await db.select().from(plans).where(eq(plans.id, req.params.id)).limit(1);
+      if (!existing) { res.status(404).json({ error: 'Plano não encontrado' }); return; }
+      const { name, slug, description, price, roleAssigned, features, trialDays, isActive } = req.body as {
+        name?: string; slug?: string; description?: string; price?: number;
+        roleAssigned?: string; features?: string[]; trialDays?: number; isActive?: boolean;
+      };
+      const updates: Record<string, unknown> = {};
+      if (name !== undefined) updates.name = name;
+      if (slug !== undefined) updates.slug = slug;
+      if (description !== undefined) updates.description = description;
+      if (price !== undefined) updates.price = price;
+      if (roleAssigned !== undefined) {
+        const normalizedRoleAssigned = normalizePlanRole(roleAssigned);
+        if (!normalizedRoleAssigned) {
+          res.status(400).json({ error: 'roleAssigned invalido' });
+          return;
+        }
+        updates.roleAssigned = normalizedRoleAssigned;
+      }
+      if (features !== undefined) updates.features = features;
+      if (trialDays !== undefined) updates.trialDays = trialDays;
+      if (isActive !== undefined) updates.isActive = isActive;
+      await db.update(plans).set(updates).where(eq(plans.id, req.params.id));
+      const [updated] = await db.select().from(plans).where(eq(plans.id, req.params.id)).limit(1);
+      res.json(updated);
+    } catch (err: any) {
+      if (err?.code === '23505' || (err?.message || '').includes('duplicate key')) {
+        res.status(409).json({ error: 'Já existe um plano com esse slug. Escolha outro identificador.' });
         return;
       }
-      updates.roleAssigned = normalizedRoleAssigned;
+      console.error('[admin] Erro ao atualizar plano:', err);
+      res.status(500).json({ error: 'Erro interno ao atualizar plano.' });
     }
-    if (features !== undefined) updates.features = features;
-    if (trialDays !== undefined) updates.trialDays = trialDays;
-    if (isActive !== undefined) updates.isActive = isActive;
-    await db.update(plans).set(updates).where(eq(plans.id, req.params.id));
-    const [updated] = await db.select().from(plans).where(eq(plans.id, req.params.id)).limit(1);
-    res.json(updated);
   }
 );
 
