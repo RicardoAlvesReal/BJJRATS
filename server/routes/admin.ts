@@ -40,7 +40,7 @@ function normalizePlanRole(role: unknown): 'academy' | 'professor' | 'student' |
 }
 
 // ─── GET /api/admin/users ─────────────────────────────────────────────────────
-// Lista usuários com role abaixo do solicitante
+// Lista usuários com role abaixo do solicitante + info de assinatura/pagamento
 router.get(
   '/users',
   requireAuth,
@@ -50,7 +50,8 @@ router.get(
     const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
     const { search } = req.query as Record<string, string>;
 
-    let query = db
+    // Busca usuários com LEFT JOIN em subscriptions + plans
+    const rows = await db
       .select({
         uid:         users.uid,
         name:        users.name,
@@ -67,8 +68,57 @@ router.get(
         createdAt:   users.createdAt,
         communityModerator: users.communityModerator,
         trialEndsAt: users.trialEndsAt,
+        // Assinatura ativa
+        subStatus:   subscriptions.status,
+        subPlanId:   subscriptions.planId,
+        subPlanName: plans.name,
+        subPlanPrice: plans.price,
+        subCurrentPeriodEnd: subscriptions.currentPeriodEnd,
       })
-      .from(users);
+      .from(users)
+      .leftJoin(
+        subscriptions,
+        and(
+          eq(subscriptions.userUid, users.uid),
+          or(
+            eq(subscriptions.status, 'active'),
+            eq(subscriptions.status, 'trial'),
+            eq(subscriptions.status, 'past_due'),
+          ),
+        ),
+      )
+      .leftJoin(plans, eq(plans.id, subscriptions.planId));
+
+    // Pega o último pagamento de cada usuário
+    const userIds = rows.map(r => r.uid);
+    let lastPaymentsMap = new Map<string, { date: string; amount: number }>();
+    if (userIds.length > 0) {
+      // Subquery: último pagamento pago por usuário
+      const paymentRows = await db
+        .select({
+          studentUid: payments.studentUid,
+          paidAt: payments.paidAt,
+          amount: payments.amount,
+        })
+        .from(payments)
+        .where(
+          and(
+            inArray(payments.studentUid, userIds),
+            eq(payments.status, 'paid'),
+          ),
+        )
+        .orderBy(desc(payments.paidAt));
+
+      // Pega só o mais recente por usuário
+      for (const p of paymentRows) {
+        if (!lastPaymentsMap.has(p.studentUid)) {
+          lastPaymentsMap.set(p.studentUid, {
+            date: p.paidAt as unknown as string,
+            amount: Number(p.amount),
+          });
+        }
+      }
+    }
 
     const conditions: any[] = [];
     if (academyUid) {
@@ -91,12 +141,48 @@ router.get(
       );
     }
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      // Re-filter since we already fetched
     }
 
-    const all = await query;
-    const filtered = all.filter((u) => canManage(actorRole, u.role ?? 'student'));
-    res.json({ users: filtered });
+    const all = rows.filter((u) => {
+      if (!canManage(actorRole, u.role ?? 'student')) return false;
+      if (search) {
+        const s = search.toLowerCase();
+        const haystack = [
+          u.name, u.email, u.academy, u.academyName, u.academyCity,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(s)) return false;
+      }
+      return true;
+    });
+
+    const usersWithSubs = all.map(u => ({
+      uid: u.uid,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      isAcademyAdmin: u.isAcademyAdmin,
+      belt: u.belt,
+      stripes: u.stripes,
+      academyId: u.academyId,
+      academyName: u.academyName,
+      academy: u.academy,
+      academyCity: u.academyCity,
+      phone: u.phone,
+      createdAt: u.createdAt,
+      communityModerator: u.communityModerator,
+      trialEndsAt: u.trialEndsAt,
+      subscription: u.subStatus ? {
+        status: u.subStatus,
+        planId: u.subPlanId,
+        planName: u.subPlanName,
+        planPrice: u.subPlanPrice,
+        currentPeriodEnd: u.subCurrentPeriodEnd,
+      } : null,
+      lastPayment: lastPaymentsMap.get(u.uid) || null,
+    }));
+
+    res.json({ users: usersWithSubs });
   }
 );
 
@@ -463,6 +549,7 @@ router.get(
       recentSubPayments,
       pastDueSubs,
       allSubs,
+      recentPayments,
     ] = await Promise.all([
       // 1. Contagem de assinaturas por status
       db
@@ -549,6 +636,22 @@ router.get(
         })
         .from(subscriptions)
         .leftJoin(plans, eq(plans.id, subscriptions.planId)),
+
+      // 7. Últimos pagamentos (reais, da tabela payments)
+      db
+        .select({
+          id: payments.id,
+          studentUid: payments.studentUid,
+          studentName: users.name,
+          amount: payments.amount,
+          status: payments.status,
+          dueDate: payments.dueDate,
+          paidAt: payments.paidAt,
+        })
+        .from(payments)
+        .leftJoin(users, eq(users.uid, payments.studentUid))
+        .orderBy(desc(payments.paidAt), desc(payments.dueDate))
+        .limit(20),
     ]);
 
     // MRR = soma dos preços dos planos ativos
@@ -580,11 +683,6 @@ router.get(
         cancelled: cancelledCount,
         total: activeCount + trialCount + pastDueCount,
       },
-      revenueMonthly: revenueMonthly.map(r => ({
-        month: r.month,
-        total: 0, // sem dados de pagamento local
-        count: Number(r.count),
-      })),
       recentSubscriptions: recentSubPayments.map(s => ({
         id: s.id,
         userUid: s.userUid,
@@ -601,10 +699,18 @@ router.get(
         planPrice: Number(s.planPrice) || 0,
         periodEnd: s.currentPeriodEnd?.toISOString() || null,
       })),
-      // Campos mantidos para compatibilidade com tipo existente (não usados pelo superadmin)
+      // Campos para compatibilidade com tipo CrmData do frontend
       leads: [],
       revenueMonthly: revenueMonthly.map(r => ({ month: r.month, total: 0, count: Number(r.count) })),
-      recentPayments: [],
+      recentPayments: recentPayments.map(p => ({
+        id: p.id,
+        studentUid: p.studentUid,
+        studentName: p.studentName || null,
+        amount: Number(p.amount) || 0,
+        status: p.status || null,
+        dueDate: p.dueDate ? new Date(p.dueDate).toISOString() : null,
+        paidAt: p.paidAt ? new Date(p.paidAt).toISOString() : null,
+      })),
       leadsDetail: [],
       studentStats: { active: activeCount, suspended: pastDueCount, cancelled: cancelledCount, total: activeCount + trialCount + pastDueCount },
       enrollmentEvolution: revenueMonthly.map(r => ({ month: r.month, newEnrollments: Number(r.count) })),

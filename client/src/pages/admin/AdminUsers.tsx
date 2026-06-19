@@ -203,35 +203,54 @@ export default function AdminUsers() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Barlow Condensed, sans-serif' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #CC0000' }}>
-                {['Nome', 'E-mail', 'Role', 'Mod', 'Trial', 'Faixa', 'Academia', 'Ações'].map((h) => (
+                {['Nome', 'E-mail', 'Role', 'Plano', 'Valor', 'Vencimento', 'Últ. Pag.', 'Conta', 'Ações'].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {filtered.map((u) => {
+                const sub = u.subscription;
+                const pay = u.lastPayment;
+                const createdAt = u.createdAt ? new Date(u.createdAt) : null;
+                const accountDays = createdAt
+                  ? Math.floor((Date.now() - createdAt.getTime()) / 86400000)
+                  : 0;
+                return (
                 <tr key={u.uid} style={{ borderBottom: '1px solid #1A1A1A' }}>
                   <td style={tdStyle}>{u.name}</td>
                   <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>{u.email}</td>
                   <td style={tdStyle}><RoleBadge role={u.role} /></td>
                   <td style={tdStyle}>
-                    {u.communityModerator ? (
-                      <span style={{ color: '#00CC00', fontSize: '0.75rem', fontWeight: 700 }}>✓</span>
-                    ) : (
-                      <span style={{ color: '#555', fontSize: '0.75rem' }}>—</span>
-                    )}
-                  </td>
-                  <td style={tdStyle}>
-                    {u.trialEndsAt && new Date(u.trialEndsAt) > new Date() ? (
-                      <span style={{ color: '#3B82F6', fontSize: '0.7rem', fontWeight: 700 }}>
-                        {Math.ceil((new Date(u.trialEndsAt).getTime() - Date.now()) / 86400000)}d
+                    {sub ? (
+                      <span style={{
+                        color: sub.status === 'active' ? '#4CAF50' : sub.status === 'trial' ? '#3B82F6' : '#E87722',
+                        fontSize: '0.75rem', fontWeight: 700,
+                      }}>
+                        {sub.planName || sub.planId}
+                        {sub.status === 'trial' && ' (trial)'}
+                        {sub.status === 'past_due' && ' (atrasado)'}
                       </span>
                     ) : (
                       <span style={{ color: '#555', fontSize: '0.75rem' }}>—</span>
                     )}
                   </td>
-                  <td style={{ ...tdStyle, color: '#AAA' }}>{u.belt ?? '—'}</td>
-                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>{u.academyName || u.academy || '—'}</td>
+                  <td style={{ ...tdStyle, color: '#AAA' }}>
+                    {sub ? `R$ ${(sub.planPrice ?? 0).toFixed(2)}` : '—'}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>
+                    {sub?.currentPeriodEnd
+                      ? new Date(sub.currentPeriodEnd).toLocaleDateString('pt-BR')
+                      : '—'}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>
+                    {pay
+                      ? `${new Date(pay.date).toLocaleDateString('pt-BR')} (R$ ${pay.amount.toFixed(2)})`
+                      : '—'}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#666', fontSize: '0.75rem' }}>
+                    {accountDays > 0 ? `${accountDays}d` : 'Hoje'}
+                  </td>
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       {me?.role === 'superadmin' && (

@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { academyStudentProfessorAssignments, enrollments, promotions, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireActiveEnrollment } from '../middleware/enrollment.js';
 
 const router = Router();
 
@@ -93,7 +94,10 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
   res.json(rows.map(serializePromotion));
 });
 
-router.post('/', requireAuth, async (req: AuthRequest, res) => {
+router.post('/', requireAuth, requireActiveEnrollment(req => ({
+  professorUid: req.userId!,
+  studentUid: req.body?.studentUid,
+})), async (req: AuthRequest, res) => {
   const id = nanoid();
   const body = req.body as Record<string, unknown>;
   const studentUid = asText(body.studentUid);
