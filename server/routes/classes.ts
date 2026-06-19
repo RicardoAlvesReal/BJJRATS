@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { classSchedules, classCheckIns, enrollments, notifications } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import { requireActiveEnrollment } from '../middleware/enrollment.js';
 import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
 import { sendNotificationsWhatsApp } from '../services/notificationWhatsApp.js';
 import { sendNotificationsEmail } from '../services/notificationEmail.js';
@@ -185,7 +186,10 @@ router.get('/check-ins', requireAuth, async (req: AuthRequest, res) => {
   res.json(rows);
 });
 
-router.post('/check-ins', requireAuth, async (req: AuthRequest, res) => {
+router.post('/check-ins', requireAuth, requireActiveEnrollment(req => ({
+  professorUid: req.body?.professorUid,
+  studentUid: req.userId!,
+})), async (req: AuthRequest, res) => {
   const id = nanoid();
   const [row] = await db.insert(classCheckIns).values({ id, studentUid: req.userId!, ...req.body }).returning();
   res.status(201).json(row);

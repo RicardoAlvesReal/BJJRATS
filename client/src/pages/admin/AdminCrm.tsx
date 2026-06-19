@@ -97,7 +97,7 @@ export default function AdminCrm() {
 // ─── Overview ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ data, onRefresh }: { data: CrmData; onRefresh: () => void }) {
-  const { revenue, studentStats, defaultingStudents } = data;
+  const { revenue, studentStats, defaultingStudents, recentPayments } = data;
   const mrr = revenue?.mrr ?? revenue?.projectedMonthly ?? 0;
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show">
@@ -148,6 +148,35 @@ function OverviewTab({ data, onRefresh }: { data: CrmData; onRefresh: () => void
                   <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC' }}>{p.studentName || p.id}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.85rem', color: '#CC0000' }}>R$ {Number(p.amount).toFixed(2)}</span>
+                    <PaymentBadge status={p.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Recent Payments */}
+      {(recentPayments?.length ?? 0) > 0 && (
+        <motion.div variants={fadeUp}>
+          <p className="bjj-label">ÚLTIMOS PAGAMENTOS</p>
+          <div className="bjj-card" style={{ padding: '1.25rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {recentPayments?.slice(0, 10).map(p => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid #1A1A1A', flexWrap: 'wrap', gap: '0.3rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.85rem', color: '#CCC', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.studentName || p.studentUid || '—'}
+                    </span>
+                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.65rem', color: '#555' }}>
+                      {p.paidAt ? new Date(p.paidAt).toLocaleDateString('pt-BR') : p.dueDate ? `Vence ${new Date(p.dueDate).toLocaleDateString('pt-BR')}` : '—'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                    <span style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.85rem', color: p.status === 'paid' ? '#22C55E' : '#E87722' }}>
+                      R$ {Number(p.amount).toFixed(2)}
+                    </span>
                     <PaymentBadge status={p.status} />
                   </div>
                 </div>

@@ -372,6 +372,17 @@ export interface AdminUser extends UserProfile {
   role: string;
   communityModerator?: boolean;
   trialEndsAt?: string | null;
+  subscription?: {
+    status: string;
+    planId: string;
+    planName: string;
+    planPrice: number;
+    currentPeriodEnd: string;
+  } | null;
+  lastPayment?: {
+    date: string;
+    amount: number;
+  } | null;
 }
 
 export const admin = {
