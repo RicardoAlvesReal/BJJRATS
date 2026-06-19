@@ -298,7 +298,7 @@ export default function AdminUsers() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
