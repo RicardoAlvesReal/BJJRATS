@@ -98,7 +98,7 @@ export default function AdminCrm() {
 
 function OverviewTab({ data, onRefresh }: { data: CrmData; onRefresh: () => void }) {
   const { revenue, studentStats, defaultingStudents, recentPayments } = data;
-  const mrr = revenue?.mrr ?? revenue?.projectedMonthly ?? 0;
+  const mrr = revenue?.projectedMonthly ?? 0;
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show">
 
@@ -178,6 +178,28 @@ function OverviewTab({ data, onRefresh }: { data: CrmData; onRefresh: () => void
                       R$ {Number(p.amount).toFixed(2)}
                     </span>
                     <PaymentBadge status={p.status} />
+                    {p.status === 'paid' && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Estornar R$ ${Number(p.amount).toFixed(2)} de ${p.studentName || p.studentUid}?`)) return;
+                          try {
+                            await api.admin.refundPayment(p.id);
+                            alert('Estorno realizado com sucesso!');
+                            onRefresh();
+                          } catch (e: any) {
+                            alert(e?.message || 'Erro ao estornar.');
+                          }
+                        }}
+                        style={{
+                          background: 'transparent', border: '1px solid #CC000044', color: '#CC0000',
+                          fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.6rem',
+                          textTransform: 'uppercase', letterSpacing: '0.05em',
+                          padding: '0.15rem 0.4rem', cursor: 'pointer',
+                        }}
+                      >
+                        ↩ ESTORNAR
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

@@ -459,6 +459,13 @@ export const admin = {
 
   getMetrics: () => apiFetch<AdminMetrics>('/api/admin/metrics'),
 
+  /** Estorna um pagamento via Asaas (superadmin) */
+  refundPayment: (paymentId: string, value?: number) =>
+    apiFetch<{ success: boolean; refund: { id: string; value: number; status: string; description: string } }>(
+      `/api/admin/payments/${paymentId}/refund`,
+      { method: 'POST', body: JSON.stringify({ value }) },
+    ),
+
   // Community moderation (superadmin)
   community: {
     stats: () => apiFetch<CommunityStats>('/api/admin/community/stats'),

@@ -15,6 +15,7 @@ import {
   saveCompanyEmailSettings,
   sendCompanyEmail,
 } from '../services/companyEmail.js';
+import { refundPayment } from '../services/asaas.js';
 
 const router = Router();
 
@@ -50,7 +51,29 @@ router.get(
     const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
     const { search } = req.query as Record<string, string>;
 
-    // Busca usuários com LEFT JOIN em subscriptions + plans
+    // Subquery: pega a melhor assinatura por usuário (active > trial > past_due)
+    const bestSub = db
+      .selectDistinctOn([subscriptions.userUid], {
+        userUid: subscriptions.userUid,
+        status: subscriptions.status,
+        planId: subscriptions.planId,
+        currentPeriodEnd: subscriptions.currentPeriodEnd,
+      })
+      .from(subscriptions)
+      .where(
+        or(
+          eq(subscriptions.status, 'active'),
+          eq(subscriptions.status, 'trial'),
+          eq(subscriptions.status, 'past_due'),
+        ),
+      )
+      .orderBy(
+        subscriptions.userUid,
+        sql`CASE ${subscriptions.status} WHEN 'active' THEN 1 WHEN 'trial' THEN 2 WHEN 'past_due' THEN 3 ELSE 4 END`,
+      )
+      .as('best_sub');
+
+    // Busca usuários com LEFT JOIN na melhor assinatura
     const rows = await db
       .select({
         uid:         users.uid,
@@ -69,25 +92,15 @@ router.get(
         communityModerator: users.communityModerator,
         trialEndsAt: users.trialEndsAt,
         // Assinatura ativa
-        subStatus:   subscriptions.status,
-        subPlanId:   subscriptions.planId,
+        subStatus:   bestSub.status,
+        subPlanId:   bestSub.planId,
         subPlanName: plans.name,
         subPlanPrice: plans.price,
-        subCurrentPeriodEnd: subscriptions.currentPeriodEnd,
+        subCurrentPeriodEnd: bestSub.currentPeriodEnd,
       })
       .from(users)
-      .leftJoin(
-        subscriptions,
-        and(
-          eq(subscriptions.userUid, users.uid),
-          or(
-            eq(subscriptions.status, 'active'),
-            eq(subscriptions.status, 'trial'),
-            eq(subscriptions.status, 'past_due'),
-          ),
-        ),
-      )
-      .leftJoin(plans, eq(plans.id, subscriptions.planId));
+      .leftJoin(bestSub, eq(bestSub.userUid, users.uid))
+      .leftJoin(plans, eq(plans.id, bestSub.planId));
 
     // Pega o último pagamento de cada usuário
     const userIds = rows.map(r => r.uid);
@@ -156,31 +169,37 @@ router.get(
       return true;
     });
 
-    const usersWithSubs = all.map(u => ({
-      uid: u.uid,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      isAcademyAdmin: u.isAcademyAdmin,
-      belt: u.belt,
-      stripes: u.stripes,
-      academyId: u.academyId,
-      academyName: u.academyName,
-      academy: u.academy,
-      academyCity: u.academyCity,
-      phone: u.phone,
-      createdAt: u.createdAt,
-      communityModerator: u.communityModerator,
-      trialEndsAt: u.trialEndsAt,
-      subscription: u.subStatus ? {
-        status: u.subStatus,
-        planId: u.subPlanId,
-        planName: u.subPlanName,
-        planPrice: u.subPlanPrice,
-        currentPeriodEnd: u.subCurrentPeriodEnd,
-      } : null,
-      lastPayment: lastPaymentsMap.get(u.uid) || null,
-    }));
+    const usersWithSubs = all.map(u => {
+      const manualPayment = lastPaymentsMap.get(u.uid);
+      return {
+        uid: u.uid,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        isAcademyAdmin: u.isAcademyAdmin,
+        belt: u.belt,
+        stripes: u.stripes,
+        academyId: u.academyId,
+        academyName: u.academyName,
+        academy: u.academy,
+        academyCity: u.academyCity,
+        phone: u.phone,
+        createdAt: u.createdAt,
+        communityModerator: u.communityModerator,
+        trialEndsAt: u.trialEndsAt,
+        subscription: u.subStatus ? {
+          status: u.subStatus,
+          planId: u.subPlanId,
+          planName: u.subPlanName,
+          planPrice: u.subPlanPrice,
+          currentPeriodEnd: u.subCurrentPeriodEnd,
+        } : null,
+        // Fallback: se não tem pagamento manual, usa a subscription como referência
+        lastPayment: manualPayment || (u.subStatus && u.subPlanPrice
+          ? { date: u.createdAt as unknown as string, amount: Number(u.subPlanPrice) }
+          : null),
+      };
+    });
 
     res.json({ users: usersWithSubs });
   }
@@ -1155,6 +1174,26 @@ router.put(
     const map: Record<string, string> = {};
     for (const row of rows) map[row.key] = row.value;
     res.json(map);
+  }
+);
+
+// ─── POST /api/admin/payments/:paymentId/refund ───────────────────────────
+// Estorna um pagamento via Asaas (superadmin)
+router.post(
+  '/payments/:paymentId/refund',
+  requireAuth,
+  requireRole('superadmin'),
+  async (req: AuthRequest, res) => {
+    const { paymentId } = req.params;
+    const { value } = req.body as { value?: number };
+
+    try {
+      const result = await refundPayment(paymentId, value);
+      res.json({ success: true, refund: result });
+    } catch (err: any) {
+      console.error('[admin] Erro ao estornar pagamento:', err);
+      res.status(500).json({ error: err?.message || 'Erro ao processar estorno.' });
+    }
   }
 );
 
