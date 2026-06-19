@@ -16,6 +16,7 @@ import {
   sendCompanyEmail,
 } from '../services/companyEmail.js';
 import { refundPayment } from '../services/asaas.js';
+import { listSubscriptionPayments } from '../services/asaas.js';
 
 const router = Router();
 
@@ -169,8 +170,47 @@ router.get(
       return true;
     });
 
+    // Busca pagamentos reais do Asaas para usuários com assinatura ativa
+    const asaasPaymentMap = new Map<string, { date: string; amount: number }>();
+    const usersWithAsaas = all.filter(u => u.subStatus && (u as any).asaasSubId);
+    if (usersWithAsaas.length > 0) {
+      await Promise.all(usersWithAsaas.map(async (u) => {
+        try {
+          const subRow = await db
+            .select({ asaasId: subscriptions.asaasId })
+            .from(subscriptions)
+            .where(
+              and(
+                eq(subscriptions.userUid, u.uid),
+                or(
+                  eq(subscriptions.status, 'active'),
+                  eq(subscriptions.status, 'trial'),
+                  eq(subscriptions.status, 'past_due'),
+                ),
+              ),
+            )
+            .limit(1);
+          const asaasSubId = subRow[0]?.asaasId;
+          if (!asaasSubId) return;
+          const payments = await listSubscriptionPayments(asaasSubId);
+          const lastPaid = payments
+            .filter(p => p.status === 'RECEIVED' || p.status === 'CONFIRMED')
+            .sort((a, b) => new Date(b.paymentDate || b.dueDate).getTime() - new Date(a.paymentDate || a.dueDate).getTime())[0];
+          if (lastPaid) {
+            asaasPaymentMap.set(u.uid, {
+              date: lastPaid.paymentDate || lastPaid.dueDate,
+              amount: lastPaid.value,
+            });
+          }
+        } catch {
+          // silencioso — falha na API do Asaas não bloqueia a listagem
+        }
+      }));
+    }
+
     const usersWithSubs = all.map(u => {
       const manualPayment = lastPaymentsMap.get(u.uid);
+      const asaasPayment = asaasPaymentMap.get(u.uid);
       return {
         uid: u.uid,
         name: u.name,
@@ -194,10 +234,8 @@ router.get(
           planPrice: u.subPlanPrice,
           currentPeriodEnd: u.subCurrentPeriodEnd,
         } : null,
-        // Fallback: se não tem pagamento manual, usa a subscription como referência
-        lastPayment: manualPayment || (u.subStatus && u.subPlanPrice
-          ? { date: u.createdAt as unknown as string, amount: Number(u.subPlanPrice) }
-          : null),
+        // Prioridade: pagamento manual > Asaas > sem dados
+        lastPayment: manualPayment || asaasPayment || null,
       };
     });
 
