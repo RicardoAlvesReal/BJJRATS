@@ -698,27 +698,60 @@ router.get(
         .from(subscriptions)
         .leftJoin(plans, eq(plans.id, subscriptions.planId)),
 
-      // 7. Últimos pagamentos (reais, da tabela payments)
-      db
-        .select({
-          id: payments.id,
-          studentUid: payments.studentUid,
-          studentName: users.name,
-          amount: payments.amount,
-          status: payments.status,
-          dueDate: payments.dueDate,
-          paidAt: payments.paidAt,
-        })
-        .from(payments)
-        .leftJoin(users, eq(users.uid, payments.studentUid))
-        .orderBy(desc(payments.paidAt), desc(payments.dueDate))
-        .limit(20),
+      // 7. Últimos pagamentos — VIA ASAAS (substitui query local)
+      Promise.resolve([]),
     ]);
 
     // MRR = soma dos preços dos planos ativos
     const mrr = activeSubs
       .filter(s => s.status === 'active')
       .reduce((sum, s) => sum + (Number(s.planPrice) || 0), 0);
+
+    // Busca pagamentos reais do Asaas para assinaturas ativas
+    const asaasRecentPayments: {
+      id: string; studentUid: string; studentName: string | null;
+      amount: number; status: string; dueDate: string | null; paidAt: string | null;
+    }[] = [];
+    const subsWithAsaas = await Promise.all(
+      activeSubs.map(async (s) => {
+        try {
+          const payments = await listSubscriptionPayments(s.id);
+          return { userUid: s.userUid, payments };
+        } catch { return null; }
+      })
+    );
+    for (const entry of subsWithAsaas) {
+      if (!entry) continue;
+      for (const p of entry.payments) {
+        if (['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(p.status)) {
+          asaasRecentPayments.push({
+            id: p.id,
+            studentUid: entry.userUid,
+            studentName: null, // será preenchido abaixo
+            amount: p.value,
+            status: 'paid',
+            dueDate: p.dueDate,
+            paidAt: p.paymentDate || p.dueDate,
+          });
+        }
+      }
+    }
+    asaasRecentPayments.sort((a, b) =>
+      new Date(b.paidAt || b.dueDate || '').getTime() - new Date(a.paidAt || a.dueDate || '').getTime()
+    );
+
+    // Preenche nomes dos usuários
+    const asaasUserIds = [...new Set(asaasRecentPayments.map(p => p.studentUid))];
+    if (asaasUserIds.length > 0) {
+      const userRows = await db
+        .select({ uid: users.uid, name: users.name })
+        .from(users)
+        .where(inArray(users.uid, asaasUserIds));
+      const nameMap = new Map(userRows.map(u => [u.uid, u.name]));
+      for (const p of asaasRecentPayments) {
+        p.studentName = nameMap.get(p.studentUid) || null;
+      }
+    }
 
     // Total de assinantes (active + trial + past_due)
     const activeCount = Number(subCounts.find(s => s.status === 'active')?.count ?? 0);
@@ -763,7 +796,7 @@ router.get(
       // Campos para compatibilidade com tipo CrmData do frontend
       leads: [],
       revenueMonthly: revenueMonthly.map(r => ({ month: r.month, total: 0, count: Number(r.count) })),
-      recentPayments: recentPayments.map(p => ({
+      recentPayments: asaasRecentPayments.slice(0, 20).map(p => ({
         id: p.id,
         studentUid: p.studentUid,
         studentName: p.studentName || null,
