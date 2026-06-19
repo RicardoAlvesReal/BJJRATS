@@ -68,6 +68,7 @@ export interface AsaasPayment {
   value: number;
   netValue: number;
   dueDate: string;
+  paymentDate?: string;
   status: string;
   billingType: string;
   invoiceUrl?: string;

@@ -194,8 +194,12 @@ router.get(
           if (!asaasSubId) return;
           const payments = await listSubscriptionPayments(asaasSubId);
           const lastPaid = payments
-            .filter(p => p.status === 'RECEIVED' || p.status === 'CONFIRMED')
-            .sort((a, b) => new Date(b.paymentDate || b.dueDate).getTime() - new Date(a.paymentDate || a.dueDate).getTime())[0];
+            .filter(p => ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(p.status))
+            .sort((a, b) => {
+              const da = new Date(a.paymentDate || a.dueDate).getTime();
+              const db = new Date(b.paymentDate || b.dueDate).getTime();
+              return db - da;
+            })[0];
           if (lastPaid) {
             asaasPaymentMap.set(u.uid, {
               date: lastPaid.paymentDate || lastPaid.dueDate,
