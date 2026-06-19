@@ -242,3 +242,26 @@ export interface AsaasWebhookEvent {
 export function parseWebhook(body: unknown): AsaasWebhookEvent {
   return body as AsaasWebhookEvent;
 }
+
+// ─── Refund / Estorno ──────────────────────────────────────────────────────
+
+export interface AsaasRefundResult {
+  id: string;
+  value: number;
+  status: string;
+  description: string;
+}
+
+/** Estorna um pagamento (total ou parcial) */
+export async function refundPayment(
+  paymentId: string,
+  value?: number,
+  config?: AsaasRequestConfig,
+): Promise<AsaasRefundResult> {
+  return request<AsaasRefundResult>(
+    'POST',
+    `/payments/${paymentId}/refund`,
+    value != null ? { value } : undefined,
+    config,
+  );
+}
