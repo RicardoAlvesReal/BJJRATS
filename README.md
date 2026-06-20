@@ -27,6 +27,7 @@ bjjrats/
 │   │       ├── admin/         # Painel Superadmin
 │   │       ├── academia/      # Painel da Academia
 │   │       ├── app/           # App do aluno/professor
+│   │       │   └── professor/ # Sub-componentes do ProfessorPanel (extraídos por tamanho)
 │   │       └── public/        # Páginas públicas
 ├── server/                    # Backend Express
 │   ├── db/                    # Schema, migrations, seeds
