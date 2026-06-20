@@ -1590,16 +1590,16 @@ function PasskeyManager() {
     try {
       setAdding(true);
       // 1. Pega desafio de registro
-      const options = await passkeys.registerChallenge();
+      const publicKey = await passkeys.registerChallenge();
 
-      options.publicKey.user.id = base64ToBuffer(options.publicKey.user.id);
-      options.publicKey.challenge = base64ToBuffer(options.publicKey.challenge);
-      options.publicKey.excludeCredentials?.forEach((c: any) => {
+      publicKey.user.id = base64ToBuffer(publicKey.user.id);
+      publicKey.challenge = base64ToBuffer(publicKey.challenge);
+      publicKey.excludeCredentials?.forEach((c: any) => {
         c.id = base64ToBuffer(c.id);
       });
 
       // 2. Cria a credencial no autenticador do dispositivo
-      const credential = await navigator.credentials.create({ publicKey: options.publicKey }) as PublicKeyCredential;
+      const credential = await navigator.credentials.create({ publicKey }) as PublicKeyCredential;
 
       // 3. Envia para o servidor
       const attestationResponse = credential.response as AuthenticatorAttestationResponse;

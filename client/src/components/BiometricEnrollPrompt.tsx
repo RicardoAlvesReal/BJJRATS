@@ -17,17 +17,23 @@ export default function BiometricEnrollPrompt({ userUid, onClose }: Props) {
   const handleEnroll = async () => {
     try {
       setLoading(true);
-      const options = await passkeys.registerChallenge();
-      options.publicKey.user.id = base64ToBuffer(options.publicKey.user.id);
-      options.publicKey.challenge = base64ToBuffer(options.publicKey.challenge);
-      if (options.publicKey.excludeCredentials) {
-        options.publicKey.excludeCredentials.forEach((c: any) => {
+      const publicKey = await passkeys.registerChallenge();
+      console.log('[BiometricEnroll] registerChallenge response:', publicKey);
+      if (!publicKey || !publicKey.user) {
+        toast.error('Erro ao comunicar com o servidor. Tente novamente.');
+        setLoading(false);
+        return;
+      }
+      publicKey.user.id = base64ToBuffer(publicKey.user.id);
+      publicKey.challenge = base64ToBuffer(publicKey.challenge);
+      if (publicKey.excludeCredentials) {
+        publicKey.excludeCredentials.forEach((c: any) => {
           c.id = base64ToBuffer(c.id);
         });
       }
 
       const credential = await navigator.credentials.create({
-        publicKey: options.publicKey,
+        publicKey,
       }) as PublicKeyCredential;
 
       const attResp = credential.response as AuthenticatorAttestationResponse;

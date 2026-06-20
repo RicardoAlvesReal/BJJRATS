@@ -15,15 +15,27 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 
 router.post('/', requireAuth, requireFeature('goals'), async (req: AuthRequest, res) => {
   const id = nanoid();
-  const [row] = await db.insert(goals).values({ id, uid: req.userId!, ...req.body }).returning();
+  const body = req.body || {};
+  // Filtra campos undefined/null + garante title obrigatório
+  const clean: Record<string, unknown> = { id, uid: req.userId! };
+  for (const [k, v] of Object.entries(body)) {
+    if (v !== undefined && v !== null) clean[k] = v;
+  }
+  if (!clean.title) clean.title = 'Nova Meta';
+  const [row] = await db.insert(goals).values(clean).returning();
   res.status(201).json(row);
 });
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ uid: goals.uid }).from(goals).where(eq(goals.id, req.params.id)).limit(1);
   if (!existing || existing.uid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
-  const { id: _id, uid: _uid, ...data } = req.body;
-  const [row] = await db.update(goals).set(data).where(eq(goals.id, req.params.id)).returning();
+  const { id: _id, uid: _uid, ...body } = req.body || {};
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (v !== undefined && v !== null) clean[k] = v;
+  }
+  if (Object.keys(clean).length === 0) { res.json(existing); return; }
+  const [row] = await db.update(goals).set(clean).where(eq(goals.id, req.params.id)).returning();
   res.json(row);
 });
 

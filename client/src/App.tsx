@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, Redirect } from "wouter";
@@ -181,23 +181,32 @@ function PublicRoute({ component: Component }: { component: React.ComponentType 
 }
 
 function Router() {
+  const AppRoute = useMemo(() => () => <ProtectedRoute component={AppLayout} />, []);
+  const AdminRouteWrapped = useMemo(() => () => <AdminRoute component={AdminLayout} />, []);
+  const AcademiaRouteWrapped = useMemo(() => () => <AcademiaRoute component={AcademiaLayout} />, []);
+  const LoginRoute = useMemo(() => () => <PublicRoute component={Login} />, []);
+  const RegisterRoute = useMemo(() => () => <PublicRoute component={Register} />, []);
+  const TrialAcademiaRoute = useMemo(() => () => <PublicTrial targetKind="academy" />, []);
+  const TrialProfessorRoute = useMemo(() => () => <PublicTrial targetKind="professor" />, []);
+  const TrialRoute = useMemo(() => () => <PublicTrial />, []);
+
   return (
     <Switch>
       <Route path="/" component={Landing} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/terms" component={Terms} />
       <Route path="/support" component={Support} />
-      <Route path="/login" component={() => <PublicRoute component={Login} />} />
-      <Route path="/register" component={() => <PublicRoute component={Register} />} />
-      <Route path="/app"   component={() => <ProtectedRoute component={AppLayout} />} />
-      <Route path="/admin" component={() => <AdminRoute     component={AdminLayout} />} />
-      <Route path="/academia" component={() => <AcademiaRoute component={AcademiaLayout} />} />
+      <Route path="/login" component={LoginRoute} />
+      <Route path="/register" component={RegisterRoute} />
+      <Route path="/app"   component={AppRoute} />
+      <Route path="/admin" component={AdminRouteWrapped} />
+      <Route path="/academia" component={AcademiaRouteWrapped} />
       <Route path="/post/:postId" component={PublicPost} />
       <Route path="/evento/:eventId" component={PublicEvent} />
       <Route path="/desafio/:challengeId" component={PublicChallenge} />
-      <Route path="/trial/academia/:targetId" component={() => <PublicTrial targetKind="academy" />} />
-      <Route path="/trial/professor/:targetId" component={() => <PublicTrial targetKind="professor" />} />
-      <Route path="/trial/:academyId" component={() => <PublicTrial />} />
+      <Route path="/trial/academia/:targetId" component={TrialAcademiaRoute} />
+      <Route path="/trial/professor/:targetId" component={TrialProfessorRoute} />
+      <Route path="/trial/:academyId" component={TrialRoute} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/app/subscription" component={() => <AuthenticatedRoute component={SubscriptionManager} />} />

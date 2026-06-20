@@ -91,6 +91,7 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   if (!isModOrSuper && existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const { id: _id, authorUid: _au, ...rest } = req.body;
   const data = fromClientPost(rest);
+  if (Object.keys(data).length === 0) { res.json(toClientPost(existing)); return; }
   const [row] = await db.update(posts).set(data).where(eq(posts.id, req.params.id)).returning();
   res.json(toClientPost(row));
 });

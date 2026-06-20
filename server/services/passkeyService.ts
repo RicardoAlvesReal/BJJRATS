@@ -5,8 +5,8 @@ import { db } from '../db/index.js';
 import { passkeyCredentials } from '../db/schema.js';
 
 const RP_NAME = 'BJJRats';
-const RP_ID = process.env.CLIENT_URL ? new URL(process.env.CLIENT_URL).hostname : 'thebjjrats.com';
-const RP_ORIGIN = process.env.CLIENT_URL || 'https://thebjjrats.com';
+const RP_ID = process.env.RP_ID || (process.env.CLIENT_URL ? new URL(process.env.CLIENT_URL).hostname : (process.env.NODE_ENV === 'production' ? 'thebjjrats.com' : 'localhost'));
+const RP_ORIGIN = process.env.RP_ORIGIN || process.env.CLIENT_URL || (process.env.NODE_ENV === 'production' ? 'https://thebjjrats.com' : 'http://localhost:5173');
 
 /** Gera um desafio aleatório para registro ou autenticação */
 export function generateChallenge(): string {
@@ -46,7 +46,6 @@ export function registrationOptions(uid: string, userName: string) {
     ],
     timeout: 60000,
     authenticatorSelection: {
-      authenticatorAttachment: 'platform' as const,
       requireResidentKey: true,
       userVerification: 'required' as const,
     },
@@ -68,14 +67,14 @@ export function authenticationOptions() {
 export async function saveCredential(data: {
   id: string;
   uid: string;
-  publicKey: string;
-  counter: number;
+  publicKey?: string;
+  counter?: number;
   deviceName?: string;
 }) {
   await db.insert(passkeyCredentials).values({
     id: data.id,
     userUid: data.uid,
-    publicKey: data.publicKey,
+    publicKey: data.publicKey || '',
     counter: data.counter || 0,
     deviceName: data.deviceName || 'Dispositivo desconhecido',
   });

@@ -241,12 +241,12 @@ function PasskeyLoginButton({ email, onSuccess }: { email: string; onSuccess: ()
       }
 
       // 2. Assina com o autenticador do dispositivo
-      options.publicKey.challenge = base64ToBuffer(options.publicKey.challenge);
-      options.publicKey.allowCredentials?.forEach((c: any) => {
+      options.challenge = base64ToBuffer(options.challenge);
+      options.allowCredentials?.forEach((c: any) => {
         c.id = base64ToBuffer(c.id);
       });
 
-      const assertion = await navigator.credentials.get({ publicKey: options.publicKey }) as PublicKeyCredential;
+      const assertion = await navigator.credentials.get({ publicKey: options }) as PublicKeyCredential;
 
       // 3. Envia a assinatura para o servidor validar
       const authData = (assertion.response as AuthenticatorAssertionResponse);
