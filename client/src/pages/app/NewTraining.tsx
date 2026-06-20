@@ -137,7 +137,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(
-    editExtraTraining?.trainingPhoto || editTraining?.trainingPhoto || null
+    (editExtraTraining as any)?.trainingPhotoUrl || (editExtraTraining as any)?.trainingPhoto || (editTraining as any)?.trainingPhotoUrl || (editTraining as any)?.trainingPhoto || null
   );
 
   // Sugestoes cadastradas para preencher academia/professor no treino
@@ -360,9 +360,19 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
       const xpGained = calcXPLocal();
 
       // Upload da foto se houver novo arquivo selecionado
-      let trainingPhotoUrl: string | null = editTraining?.trainingPhoto || null;
+      let trainingPhotoUrl: string | null =
+        (editExtraTraining as any)?.trainingPhotoUrl ||
+        (editExtraTraining as any)?.trainingPhoto ||
+        (editTraining as any)?.trainingPhotoUrl ||
+        (editTraining as any)?.trainingPhoto ||
+        null;
       if (photoFile) {
         trainingPhotoUrl = await uploadTrainingPhoto(photoFile);
+        if (!trainingPhotoUrl) {
+          toast.error('Nao foi possivel enviar a foto do treino. Tente novamente.');
+          setLoading(false);
+          return;
+        }
       }
       // Se foto foi removida (preview null e sem novo arquivo)
       if (!photoPreview && !photoFile) {

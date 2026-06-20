@@ -8,28 +8,38 @@ import { requireFeature } from '../middleware/features.js';
 
 const router = Router();
 
+function serializeTraining(row: typeof trainings.$inferSelect) {
+  return {
+    ...row,
+    trainingPhoto: row.trainingPhotoUrl,
+  };
+}
+
 // GET /api/trainings?uid=...
 router.get('/', requireAuth, async (req: AuthRequest, res) => {
   const uid = (req.query.uid as string) || req.userId!;
   const rows = await db.select().from(trainings)
     .where(eq(trainings.uid, uid))
     .orderBy(desc(trainings.trainingDate));
-  res.json(rows);
+  res.json(rows.map(serializeTraining));
 });
 
 // GET /api/trainings/:id
 router.get('/:id', requireAuth, async (req, res) => {
   const [row] = await db.select().from(trainings).where(eq(trainings.id, req.params.id)).limit(1);
   if (!row) { res.status(404).json({ error: 'Treino não encontrado' }); return; }
-  res.json(row);
+  res.json(serializeTraining(row));
 });
 
 // POST /api/trainings
 router.post('/', requireAuth, requireFeature('training_tracking'), async (req: AuthRequest, res) => {
-  const { uid, createdAt: _ca, updatedAt: _ua, ...rest } = req.body;
+  const { uid, createdAt: _ca, updatedAt: _ua, trainingPhoto, trainingPhotoUrl, ...rest } = req.body;
   const ownerUid = uid || req.userId!;
   const id = nanoid();
-  const [row] = await db.insert(trainings).values({ id, uid: ownerUid, ...rest }).returning();
+  const values: Record<string, unknown> = { id, uid: ownerUid, ...rest };
+  const photoUrl = trainingPhotoUrl ?? trainingPhoto;
+  if (photoUrl !== undefined) values.trainingPhotoUrl = photoUrl || null;
+  const [row] = await db.insert(trainings).values(values).returning();
 
   // Atualiza estatísticas do usuário
   const duration = Number(rest.duration) || 0;
@@ -54,7 +64,7 @@ router.post('/', requireAuth, requireFeature('training_tracking'), async (req: A
     }).where(eq(users.uid, ownerUid));
   }
 
-  res.status(201).json(row);
+  res.status(201).json(serializeTraining(row));
 });
 
 // PATCH /api/trainings/:id
@@ -62,9 +72,11 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ uid: trainings.uid }).from(trainings).where(eq(trainings.id, req.params.id)).limit(1);
   if (!existing) { res.status(404).json({ error: 'Não encontrado' }); return; }
   if (existing.uid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
-  const { id: _id, uid: _uid, createdAt: _ca, updatedAt: _ua, ...data } = req.body;
+  const { id: _id, uid: _uid, createdAt: _ca, updatedAt: _ua, trainingPhoto, trainingPhotoUrl, ...data } = req.body;
+  const photoUrl = trainingPhotoUrl ?? trainingPhoto;
+  if (photoUrl !== undefined) (data as any).trainingPhotoUrl = photoUrl || null;
   const [row] = await db.update(trainings).set(data).where(eq(trainings.id, req.params.id)).returning();
-  res.json(row);
+  res.json(serializeTraining(row));
 });
 
 // DELETE /api/trainings/:id

@@ -255,8 +255,9 @@ export const payments = pgTable('payments', {
   amount:       real('amount').notNull(),
   dueDate:      timestamp('due_date'),
   paidAt:       timestamp('paid_at'),
-  status:       text('status').default('pending'),    // 'pending'|'paid'|'overdue'|'suspended'
+  status:       text('status').default('pending'),    // 'pending'|'paid'|'overdue'|'pending_approval'
   pixLink:      text('pix_link'),
+  receiptUrl:   text('receipt_url'),
   createdAt:    timestamp('created_at').defaultNow(),
 });
 
@@ -285,6 +286,21 @@ export const academyRequests = pgTable('academy_requests', {
   studentBelt:    text('student_belt'),
   professorUid:   text('professor_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
   academyName:    text('academy_name'),
+  status:         text('status').default('pending'),  // 'pending'|'accepted'|'rejected'
+  createdAt:      timestamp('created_at').defaultNow(),
+});
+
+// ─── professor_requests ────────────────────────────────────────────────────
+// Aluno solicita vínculo a professor particular
+export const professorRequests = pgTable('professor_requests', {
+  id:             text('id').primaryKey(),
+  studentUid:     text('student_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  studentName:    text('student_name'),
+  studentEmail:   text('student_email'),
+  studentPhoto:   text('student_photo'),
+  studentBelt:    text('student_belt'),
+  professorUid:   text('professor_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  professorName:  text('professor_name'),
   status:         text('status').default('pending'),  // 'pending'|'accepted'|'rejected'
   createdAt:      timestamp('created_at').defaultNow(),
 });
@@ -354,6 +370,23 @@ export const classCheckIns = pgTable('class_check_ins', {
   studentUid:  text('student_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
   checkInDate: text('check_in_date'),
   createdAt:   timestamp('created_at').defaultNow(),
+});
+
+// ─── booked_slots ────────────────────────────────────────────────────────────
+// Aluno agenda aula em horário disponível do professor/academia
+export const bookedSlots = pgTable('booked_slots', {
+  id:            text('id').primaryKey(),
+  professorUid:  text('professor_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  studentUid:    text('student_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  studentName:   text('student_name'),
+  scheduleId:    text('schedule_id').references(() => classSchedules.id, { onDelete: 'set null' }),
+  date:          text('date').notNull(),          // 'YYYY-MM-DD'
+  time:          text('time').notNull(),          // 'HH:MM'
+  durationMin:   integer('duration_min').default(60),
+  className:     text('class_name'),
+  notes:         text('notes'),
+  status:        text('status').default('confirmed'), // 'confirmed' | 'cancelled' | 'completed'
+  createdAt:     timestamp('created_at').defaultNow(),
 });
 
 // ─── promotions ──────────────────────────────────────────────────────────────

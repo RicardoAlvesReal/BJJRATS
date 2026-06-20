@@ -46,6 +46,11 @@ export function requireFeature(featureKey: string) {
         .limit(1);
 
       if (!sub) {
+        // Em desenvolvimento, permite acesso sem assinatura
+        if (process.env.NODE_ENV !== 'production') {
+          next();
+          return;
+        }
         res.status(403).json({
           error: 'Assinatura necessária.',
           code: 'subscription_required',

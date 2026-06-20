@@ -237,7 +237,14 @@ export function startFinancialAutomationJobs() {
     }
   };
 
-  const startupTimer = setTimeout(() => void run('startup'), startupDelayMs);
+  const startupTimer = setTimeout(() => {
+    // Em dev, não roda sweep no startup (hot reload causaria múltiplos disparos)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[financial-automation] startup sweep ignorado (dev mode)');
+      return;
+    }
+    void run('startup');
+  }, startupDelayMs);
   startupTimer.unref?.();
 
   const intervalTimer = setInterval(() => void run('interval'), intervalMs);

@@ -60,6 +60,7 @@ export interface AsaasSubscription {
   status: string;
   cycle: string;
   deleted: boolean;
+  invoiceUrl?: string;
 }
 
 export interface AsaasPayment {

@@ -20,6 +20,8 @@ import notificationsRouter from "./routes/notifications.js";
 import paymentsRouter      from "./routes/payments.js";
 import enrollmentsRouter   from "./routes/enrollments.js";
 import academyReqRouter    from "./routes/academy-requests.js";
+import professorReqRouter  from "./routes/professor-requests.js";
+import bookedSlotsRouter  from "./routes/booked-slots.js";
 import classesRouter       from "./routes/classes.js";
 import promotionsRouter    from "./routes/promotions.js";
 import achievementsRouter  from "./routes/achievements.js";
@@ -68,6 +70,8 @@ async function startServer() {
   app.use("/api/payments",         paymentsRouter);
   app.use("/api/enrollments",      enrollmentsRouter);
   app.use("/api/academy-requests", academyReqRouter);
+  app.use("/api/professor-requests", professorReqRouter);
+  app.use("/api/booked-slots", bookedSlotsRouter);
   app.use("/api/classes",          classesRouter);
   app.use("/api/promotions",       promotionsRouter);
   app.use("/api/achievements",     achievementsRouter);

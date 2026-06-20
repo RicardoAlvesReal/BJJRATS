@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { and, desc, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { events } from '../db/schema.js';
+import { events, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { requireFeature } from '../middleware/features.js';
 import { isInternalAcademyProfessor } from '../services/academyProfessorAccess.js';
@@ -32,6 +32,28 @@ function read(body: any, ...keys: string[]) {
     if (Object.prototype.hasOwnProperty.call(body, key)) return body[key];
   }
   return undefined;
+}
+
+function normalizeUidList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  return [...new Set(
+    value
+      .filter((uid): uid is string => typeof uid === 'string' && uid.trim().length > 0)
+      .map(uid => uid.trim())
+  )];
+}
+
+function isRegistrationOnlyPatch(body: any) {
+  const allowed = new Set(['registrations', 'rsvps']);
+  const ignored = new Set(['id', 'uid', 'creatorUid', 'authorUid', 'createdByUid']);
+  const keys = Object.keys(body ?? {}).filter(key => !ignored.has(key));
+  return keys.length > 0 && keys.every(key => allowed.has(key));
+}
+
+function keepsOtherRegistrations(current: string[], next: string[], userId: string) {
+  const currentOthers = new Set(current.filter(uid => uid !== userId));
+  const nextOthers = new Set(next.filter(uid => uid !== userId));
+  return currentOthers.size === nextOthers.size && [...currentOthers].every(uid => nextOthers.has(uid));
 }
 
 function nullable(value: unknown) {
@@ -124,10 +146,56 @@ router.post('/', requireAuth, requireFeature('events'), async (req: AuthRequest,
 });
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const [existing] = await db.select({ creatorUid: events.creatorUid, academyId: events.academyId }).from(events).where(eq(events.id, req.params.id)).limit(1);
+  const [existing] = await db.select({
+    creatorUid: events.creatorUid,
+    academyId: events.academyId,
+    slots: events.slots,
+    registrationsClosed: events.registrationsClosed,
+    rsvps: events.rsvps,
+    registrationNames: events.registrationNames,
+    registrationBelts: events.registrationBelts,
+  }).from(events).where(eq(events.id, req.params.id)).limit(1);
   if (!existing) { res.status(404).json({ error: 'Evento nao encontrado' }); return; }
   const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
   const isAcademyOwner = (req.userRole === 'academy' || req.userRole === 'admin') && existing.academyId === req.userId;
+
+  if (!isModOrSuper && !isAcademyOwner && existing.creatorUid !== req.userId && isRegistrationOnlyPatch(req.body)) {
+    const current = normalizeUidList(existing.rsvps) ?? [];
+    const next = normalizeUidList(read(req.body, 'registrations', 'rsvps'));
+    if (!next) { res.status(400).json({ error: 'Lista de inscricoes invalida' }); return; }
+    if (!keepsOtherRegistrations(current, next, req.userId!)) {
+      res.status(403).json({ error: 'Voce so pode alterar a sua propria inscricao' });
+      return;
+    }
+
+    const wasRegistered = current.includes(req.userId!);
+    const isRegistering = next.includes(req.userId!);
+    if (!wasRegistered && isRegistering) {
+      if (existing.registrationsClosed) { res.status(409).json({ error: 'Inscricoes encerradas para este evento' }); return; }
+      if (existing.slots && current.length >= existing.slots) { res.status(409).json({ error: 'Evento lotado' }); return; }
+    }
+
+    const names = existing.registrationNames && typeof existing.registrationNames === 'object' && !Array.isArray(existing.registrationNames)
+      ? { ...(existing.registrationNames as Record<string, string>) }
+      : {};
+    const belts = existing.registrationBelts && typeof existing.registrationBelts === 'object' && !Array.isArray(existing.registrationBelts)
+      ? { ...(existing.registrationBelts as Record<string, string>) }
+      : {};
+
+    if (isRegistering) {
+      const [student] = await db.select({ name: users.name, belt: users.belt }).from(users).where(eq(users.uid, req.userId!)).limit(1);
+      names[req.userId!] = student?.name || 'Atleta';
+      belts[req.userId!] = student?.belt || 'Branca';
+    } else {
+      delete names[req.userId!];
+      delete belts[req.userId!];
+    }
+
+    const [row] = await db.update(events).set({ rsvps: next, registrationNames: names, registrationBelts: belts }).where(eq(events.id, req.params.id)).returning();
+    res.json(serializeEvent(row));
+    return;
+  }
+
   if (!isModOrSuper && !isAcademyOwner && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const data = normalizeEventPayload(req.body);
   const [row] = await db.update(events).set(data).where(eq(events.id, req.params.id)).returning();

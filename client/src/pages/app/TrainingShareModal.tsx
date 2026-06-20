@@ -5,9 +5,16 @@
 // Card 3: MÉTRICAS      — grid limpo, hierarquia tipográfica clara
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { SESSION_TYPES, MODALITIES, INTENSITY_LABELS, SATISFACTION_LABELS } from '@/lib/bjjrats-constants';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import {
+  drawInstagramShareCard,
+  SHARE_CANVAS_HEIGHT,
+  SHARE_CANVAS_WIDTH,
+  type InstagramShareTemplate,
+} from '@/lib/trainingShareCards';
 
 export interface TrainingData {
   trainingDate?: string;
@@ -20,6 +27,7 @@ export interface TrainingData {
   notes?: string;
   academy?: string;
   professor?: string;
+  trainingPhoto?: string;
   trainingPhotoUrl?: string;
   xp?: number;
   extraData?: { activity: string; distance: number; calories: number; pace: string | null };
@@ -45,7 +53,7 @@ interface Props {
   currentUserBelt?: string;
 }
 
-type Template = 'card_foto_treino' | 'card_foto_perfil' | 'card_metricas';
+type Template = InstagramShareTemplate;
 
 const BELT_HEX: Record<string, string> = {
   Branca: '#FFFFFF', Azul: '#2563EB', Roxa: '#7C3AED', Marrom: '#92400E', Preta: '#1F2937',
@@ -99,6 +107,20 @@ function drawCircleImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, c
 function clipRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fn: () => void) {
   ctx.save();
   ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  fn();
+  ctx.restore();
+}
+
+function clipRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, fn: () => void) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.clip();
   fn();
   ctx.restore();
 }
@@ -639,8 +661,11 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [trainingPhoto, setTrainingPhoto] = useState<HTMLImageElement | null>(null);
   const [profilePhoto, setProfilePhoto] = useState<HTMLImageElement | null>(null);
+  const [brandLogo, setBrandLogo] = useState<HTMLImageElement | null>(null);
+  const [appLinks, setAppLinks] = useState<{ playStoreUrl: string; appStoreUrl: string }>({ playStoreUrl: '', appStoreUrl: '' });
   const [photosReady, setPhotosReady] = useState(false);
   const [postingFeed, setPostingFeed] = useState<'academy' | 'community' | null>(null);
+  const trainingPhotoSrc = training.trainingPhotoUrl || training.trainingPhoto || '';
 
   useEffect(() => {
     let cancelled = false;
@@ -650,31 +675,46 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
         img.onload = () => resolve(img); img.onerror = () => resolve(null); img.src = url;
       });
     const load = async () => {
-      const [tp, pp] = await Promise.all([
-        training.trainingPhotoUrl ? loadImg(training.trainingPhotoUrl) : Promise.resolve(null),
+      const [tp, pp, logo] = await Promise.all([
+        trainingPhotoSrc ? loadImg(trainingPhotoSrc) : Promise.resolve(null),
         user?.photoURL ? loadImg(user.photoURL) : Promise.resolve(null),
+        loadImg('/favicon.png'),
       ]);
-      if (!cancelled) { setTrainingPhoto(tp); setProfilePhoto(pp); setPhotosReady(true); }
+      if (!cancelled) { setTrainingPhoto(tp); setProfilePhoto(pp); setBrandLogo(logo); setPhotosReady(true); }
     };
     load();
     return () => { cancelled = true; };
-  }, [training.trainingPhotoUrl, user?.photoURL]);
+  }, [trainingPhotoSrc, user?.photoURL]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.settings.public()
+      .then(settings => {
+        if (cancelled) return;
+        setAppLinks({
+          playStoreUrl: String(settings.play_store_url || '').trim(),
+          appStoreUrl: String(settings.app_store_url || '').trim(),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setAppLinks({ playStoreUrl: '', appStoreUrl: '' });
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const renderCard = useCallback((tmpl: Template) => {
     const canvas = canvasRef.current;
     if (!canvas || !photosReady) return;
     setPreviewLoading(true);
-    canvas.width = 1080; canvas.height = 1080;
+    canvas.width = SHARE_CANVAS_WIDTH; canvas.height = SHARE_CANVAS_HEIGHT;
     const ctx = canvas.getContext('2d');
     if (!ctx) { setPreviewLoading(false); return; }
     try {
-      if (tmpl === 'card_foto_treino') drawCard1(ctx, training, user, trainingPhoto);
-      else if (tmpl === 'card_foto_perfil') drawCard2(ctx, training, user, profilePhoto);
-      else drawCard3(ctx, training, user);
+      drawInstagramShareCard(ctx, tmpl, training, user, { trainingPhoto, brandLogo });
       setPreviewUrl(canvas.toDataURL('image/png'));
     } catch (e) { console.error('Canvas error:', e); setPreviewUrl(null); }
     setPreviewLoading(false);
-  }, [photosReady, training, user, trainingPhoto, profilePhoto]);
+  }, [photosReady, training, user, trainingPhoto, brandLogo]);
 
   useEffect(() => { if (photosReady) renderCard(template); }, [template, photosReady, renderCard]);
 
@@ -693,11 +733,92 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
     try {
       const blob = await (await fetch(previewUrl)).blob();
       const file = new File([blob], 'bjjrats-treino.png', { type: 'image/png' });
+      const caption = buildRichInstagramCaption();
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Meu treino no BJJRats' });
+        await navigator.share({ files: [file], title: 'Meu treino no BJJRats', text: caption });
       } else { handleDownload(); }
     } catch { handleDownload(); }
   };
+
+  const buildInstagramCaption = () => {
+    const sess = SESSION_TYPES.find(s => s.id === training.sessionType) || SESSION_TYPES[0];
+    const mod = MODALITIES.find(m => m.id === training.modality) || MODALITIES[0];
+    const intensity = INTENSITY_LABELS[training.intensity || 3] || 'Médio';
+    const lines = [
+      `🥋 ${training.trainingDate || 'Hoje'} · ${user?.name || 'Atleta'}`,
+      `⏱️ ${training.duration || 0} min · ${mod.label}`,
+      `🔥 Intensidade: ${intensity}`,
+      '',
+      '#BJJRats #BJJ',
+      '#BrazilianJiuJitsu #JiuJitsu',
+      '#Treino #DiarioDoGuerreiro',
+      training.academy ? `#${String(training.academy).replace(/\s+/g, '')}` : '',
+      sess.label ? `#${String(sess.label).replace(/\s+/g, '')}` : '',
+    ].filter(Boolean);
+    return lines.join('\n');
+  };
+
+  const buildRichInstagramCaption = () => {
+    const sess = SESSION_TYPES.find(s => s.id === training.sessionType) || SESSION_TYPES[0];
+    const mod = MODALITIES.find(m => m.id === training.modality) || MODALITIES[0];
+    const intensity = INTENSITY_LABELS[training.intensity || 3] || 'Medio';
+    const satisfaction = SATISFACTION_LABELS[training.satisfaction || 4] || '';
+    const techniqueCount = Object.values(training.techniques || {}).reduce((sum, items) => sum + items.length, 0);
+    const cleanHash = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+    const appLinkLines = [
+      appLinks.playStoreUrl ? `Android: ${appLinks.playStoreUrl}` : '',
+      appLinks.appStoreUrl ? `iPhone: ${appLinks.appStoreUrl}` : '',
+    ].filter(Boolean);
+    const lines = [
+      'Treino registrado no BJJRats',
+      `${training.trainingDate || 'Hoje'} · ${user?.name || 'Atleta'}`,
+      '',
+      `Duracao: ${training.duration || 0} min`,
+      `Modalidade: ${mod.label}`,
+      `Tipo: ${sess.label}`,
+      `Intensidade: ${intensity}`,
+      satisfaction ? `Satisfacao: ${satisfaction}` : '',
+      `Tecnicas: ${techniqueCount}`,
+      training.academy ? `Academia: ${training.academy}` : '',
+      training.professor ? `Professor: ${training.professor}` : '',
+      training.notes ? `"${training.notes}"` : '',
+      appLinkLines.length ? '' : '',
+      appLinkLines.length ? 'Baixe o app BJJRats:' : '',
+      ...appLinkLines,
+      '',
+      '#BJJRats #BJJ',
+      '#BrazilianJiuJitsu #JiuJitsu',
+      '#Treino #DiarioDoGuerreiro',
+      '#JiuJitsuBrasil #ArteSuave',
+      training.academy ? `#${cleanHash(String(training.academy))}` : '',
+      training.professor ? `#${cleanHash(String(training.professor))}` : '',
+      sess.label ? `#${cleanHash(String(sess.label))}` : '',
+    ].filter(Boolean);
+    return lines.join('\n');
+  };
+
+  const handleCopyCaption = async () => {
+    try {
+      await navigator.clipboard.writeText(buildRichInstagramCaption());
+      toast.success('Legenda copiada');
+    } catch {
+      toast.error('Nao foi possivel copiar a legenda');
+    }
+  };
+
+  const handleOpenInstagram = async () => {
+    if (disabled) return;
+    handleDownload();
+    try {
+      await navigator.clipboard.writeText(buildRichInstagramCaption());
+    } catch {
+      // O navegador pode bloquear clipboard sem permissao.
+    }
+    window.open('https://www.instagram.com/', '_blank', 'noopener,noreferrer');
+    toast.success('Imagem salva e legenda copiada. Abra o Instagram e selecione o arquivo gerado.');
+  };
+
+  const instagramCaption = buildRichInstagramCaption();
 
   const TEMPLATES: { id: Template; icon: string; label: string; desc: string }[] = [
     { id: 'card_foto_treino', icon: '🖼️', label: 'FOTO TREINO', desc: 'Foto como fundo' },
@@ -705,8 +826,13 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
     { id: 'card_metricas',    icon: '📊', label: 'MÉTRICAS',    desc: 'Análise completa' },
   ];
 
-  const noTrainingPhoto = template === 'card_foto_treino' && !trainingPhoto;
-  const noProfilePhoto  = template === 'card_foto_perfil' && !profilePhoto;
+  const noTrainingPhoto = (template === 'card_foto_treino' || template === 'card_foto_perfil') && !trainingPhoto;
+  const noProfilePhoto  = false;
+  const SHARE_TEMPLATES: { id: Template; icon: string; label: string; desc: string }[] = [
+    { id: 'card_foto_treino', icon: '🔥', label: 'Bold', desc: 'Arrojado' },
+    { id: 'card_foto_perfil', icon: '⚪', label: 'Minimal', desc: 'Limpo' },
+    { id: 'card_metricas', icon: '📊', label: 'Stats', desc: 'Dados' },
+  ];
   const disabled = generating || previewLoading || !previewUrl;
 
   // Gera texto resumido do treino para o post
@@ -737,7 +863,7 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
         authorPhotoURL: user?.photoURL || null,
         text: buildTrainingText(),
         // Incluir a foto do treino para exibir no feed da comunidade e da academia
-        photoURL: training.trainingPhotoUrl || '',
+        photoURL: trainingPhotoSrc || '',
         type: 'treino',
         likes: [],
         isAcademyPost: false,
@@ -771,7 +897,7 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
           text: postData.text,
           type: 'post',
           pinned: false,
-          photoURL: training.trainingPhotoUrl || '',
+          photoURL: trainingPhotoSrc || '',
           academyId: currentUserAcademyId,
           trainingData: postData.trainingData,
         });
@@ -801,15 +927,92 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
         <button onClick={onClose} style={{ background: '#1A1A1A', border: '1px solid #2A2A2A', color: '#777', width: '38px', height: '38px', borderRadius: '4px', cursor: 'pointer', fontSize: '20px', flexShrink: 0 }}>×</button>
       </div>
 
+      <p style={{ width: '100%', maxWidth: '460px', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.16em', color: '#555', margin: '0 0 0.625rem' }}>
+        ESCOLHA O TEMPLATE
+      </p>
+
       {/* Seletor de template */}
-      <div style={{ width: '100%', maxWidth: '460px', display: 'flex', gap: '0.5rem', marginBottom: '0.875rem' }}>
-        {TEMPLATES.map(t => (
-          <button key={t.id} onClick={() => setTemplate(t.id)} style={{ flex: 1, padding: '0.625rem 0.25rem', border: `2px solid ${template === t.id ? '#CC0000' : '#222'}`, background: template === t.id ? '#1A0000' : '#111', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', borderRadius: '4px' }}>
-            <span style={{ fontSize: '1.3rem' }}>{t.icon}</span>
-            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: template === t.id ? '#CC0000' : '#555' }}>{t.label}</span>
-            <span style={{ fontFamily: "'Barlow', sans-serif", fontSize: '0.6rem', color: '#3A3A3A', textAlign: 'center', lineHeight: 1.2 }}>{t.desc}</span>
-          </button>
-        ))}
+      <div style={{ width: '100%', maxWidth: '460px', display: 'flex', gap: '0.625rem', marginBottom: '0.875rem' }}>
+        {SHARE_TEMPLATES.map(t => {
+          const selected = template === t.id;
+          return (
+            <motion.button
+              key={t.id}
+              type="button"
+              onClick={() => setTemplate(t.id)}
+              initial={false}
+              animate={{
+                scale: selected ? 1.035 : 1,
+                y: selected ? -3 : 0,
+                borderColor: selected ? '#CC0000' : '#242424',
+                boxShadow: selected ? '0 14px 32px rgba(204, 0, 0, 0.22)' : '0 0 0 rgba(0, 0, 0, 0)',
+              }}
+              whileHover={{ y: selected ? -3 : -2 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+              style={{
+                flex: 1,
+                minHeight: '104px',
+                padding: '0.75rem 0.35rem 0.9rem',
+                border: '2px solid #242424',
+                background: selected ? '#160000' : '#111',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                borderRadius: '18px',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              <motion.span
+                aria-hidden
+                initial={false}
+                animate={{ scaleX: selected ? 1 : 0, opacity: selected ? 1 : 0 }}
+                transition={{ duration: 0.28, ease: 'easeOut' }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  transformOrigin: 'left center',
+                  background: 'linear-gradient(135deg, rgba(204,0,0,0.34), rgba(230,50,115,0.14))',
+                  zIndex: 0,
+                }}
+              />
+              <motion.span
+                aria-hidden
+                initial={false}
+                animate={{ scaleX: selected ? 1 : 0 }}
+                transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+                style={{
+                  position: 'absolute',
+                  left: '14px',
+                  right: '14px',
+                  bottom: '9px',
+                  height: '3px',
+                  borderRadius: '999px',
+                  background: '#CC0000',
+                  transformOrigin: 'left center',
+                  zIndex: 1,
+                }}
+              />
+              <motion.span
+                animate={{ scale: selected ? 1.16 : 1, rotate: selected ? -4 : 0 }}
+                transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+                style={{ fontSize: '1.35rem', position: 'relative', zIndex: 2 }}
+              >
+                {t.icon}
+              </motion.span>
+              <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: selected ? '#FF3D3D' : '#666', position: 'relative', zIndex: 2 }}>
+                {t.label}
+              </span>
+              <span style={{ fontFamily: "'Barlow', sans-serif", fontSize: '0.62rem', color: selected ? '#A8A8A8' : '#3A3A3A', textAlign: 'center', lineHeight: 1.2, position: 'relative', zIndex: 2 }}>
+                {t.desc}
+              </span>
+            </motion.button>
+          );
+        })}
       </div>
 
       {/* Aviso foto ausente */}
@@ -821,23 +1024,71 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
         </div>
       )}
 
+      <p style={{ width: '100%', maxWidth: '460px', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.16em', color: '#555', margin: '0.5rem 0 0.625rem' }}>
+        PREVIEW DO POST
+      </p>
+
       {/* Preview */}
       <div style={{ width: '100%', maxWidth: '460px', display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
-        {previewLoading ? (
-          <div style={{ width: '320px', height: '320px', background: '#111', border: '1px solid #222', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#444', fontSize: '0.75rem', fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase' }}>Gerando card...</span>
-          </div>
-        ) : previewUrl ? (
-          <img src={previewUrl} alt="Preview" style={{ width: '320px', height: '320px', objectFit: 'contain', border: '1px solid #222', borderRadius: '4px' }} />
-        ) : (
-          <div style={{ width: '320px', height: '320px', background: '#111', border: '1px solid #222', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: '#444', fontSize: '0.75rem', fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase' }}>Erro ao gerar</span>
-          </div>
-        )}
+        <AnimatePresence mode="wait">
+          {previewLoading ? (
+            <motion.div
+              key="preview-loading"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: -8 }}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+              style={{ width: 'min(390px, 100%)', aspectRatio: `${SHARE_CANVAS_WIDTH} / ${SHARE_CANVAS_HEIGHT}`, background: '#111', border: '1px solid #222', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+            >
+              <span style={{ color: '#444', fontSize: '0.75rem', fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase' }}>Gerando card...</span>
+            </motion.div>
+          ) : previewUrl ? (
+            <motion.img
+              key={`preview-${template}`}
+              src={previewUrl}
+              alt="Preview"
+              initial={{ opacity: 0, scale: 0.96, rotate: -0.35, y: 10 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, rotate: 0.25, y: -8 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              style={{ width: 'min(390px, 100%)', maxHeight: '62vh', objectFit: 'contain', border: '1px solid #222', borderRadius: '18px', boxShadow: '0 22px 50px rgba(0,0,0,0.42)' }}
+            />
+          ) : (
+            <motion.div
+              key="preview-error"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: -8 }}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
+              style={{ width: 'min(390px, 100%)', aspectRatio: `${SHARE_CANVAS_WIDTH} / ${SHARE_CANVAS_HEIGHT}`, background: '#111', border: '1px solid #222', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <span style={{ color: '#444', fontSize: '0.75rem', fontFamily: "'Barlow Condensed', sans-serif", textTransform: 'uppercase' }}>Erro ao gerar</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Ações */}
       <div style={{ width: '100%', maxWidth: '460px', display: 'flex', flexDirection: 'column', gap: '0.625rem', paddingBottom: '2rem' }}>
+
+        <div style={{ background: '#111', border: '1px solid #222', borderRadius: '18px', padding: '1rem', color: '#888', fontFamily: "'Barlow', sans-serif", fontSize: '0.92rem', lineHeight: 1.55, whiteSpace: 'pre-wrap', maxHeight: '220px', overflowY: 'auto' }}>
+          {instagramCaption}
+        </div>
+
+        <motion.button whileHover={disabled ? undefined : { y: -2 }} whileTap={disabled ? undefined : { scale: 0.98 }} onClick={handleShare} disabled={disabled} style={{ background: disabled ? '#333' : '#E63273', color: disabled ? '#666' : '#FFF', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '1.35rem', letterSpacing: '0.01em', padding: '1.1rem 1.25rem', border: 'none', borderRadius: '18px', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.85rem', lineHeight: 1.1, boxShadow: disabled ? 'none' : '0 16px 30px rgba(230, 50, 115, 0.25)' }}>
+          <span style={{ fontSize: '1.7rem' }}>📸</span>
+          <span>{previewLoading ? 'Gerando imagem...' : 'Gerar Imagem e Compartilhar'}</span>
+        </motion.button>
+        <motion.button whileHover={disabled ? undefined : { y: -2 }} whileTap={disabled ? undefined : { scale: 0.98 }} onClick={handleOpenInstagram} disabled={disabled} style={{ background: disabled ? '#222' : '#8738C4', color: disabled ? '#555' : '#FFF', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '1.25rem', letterSpacing: '0.01em', padding: '1rem 1.25rem', border: 'none', borderRadius: '18px', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.85rem', boxShadow: disabled ? 'none' : '0 16px 30px rgba(135, 56, 196, 0.23)' }}>
+          <span style={{ fontSize: '1.6rem' }}>📱</span>
+          <span>Gerar e Abrir no Instagram</span>
+        </motion.button>
+        <motion.button whileHover={{ y: -2, borderColor: '#333' }} whileTap={{ scale: 0.98 }} onClick={handleCopyCaption} style={{ background: '#111', color: '#FFF', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '1.2rem', letterSpacing: '0.01em', padding: '1rem 1.25rem', border: '1px solid #222', borderRadius: '18px', width: '100%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.85rem' }}>
+          <span style={{ fontSize: '1.55rem' }}>📋</span>
+          <span>Copiar Legenda</span>
+        </motion.button>
+
+        <div style={{ display: 'none' }}>
 
         {/* Compartilhar redes sociais */}
         <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#444', margin: '0.25rem 0 0' }}>REDES SOCIAIS</p>
@@ -847,6 +1098,8 @@ export default function TrainingShareModal({ training, user, onClose, zIndex = 9
         <button onClick={handleDownload} disabled={disabled} style={{ background: 'transparent', color: disabled ? '#333' : '#AAA', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', border: `1px solid ${disabled ? '#1A1A1A' : '#2A2A2A'}`, borderRadius: '4px', width: '100%', cursor: disabled ? 'not-allowed' : 'pointer' }}>
           {generating ? 'BAIXANDO...' : '⬇ SALVAR IMAGEM (1080×1080)'}
         </button>
+
+        </div>
 
         {/* Postar nos feeds internos */}
         <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#444', margin: '0.5rem 0 0' }}>FEEDS INTERNOS</p>

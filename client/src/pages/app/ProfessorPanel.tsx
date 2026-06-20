@@ -4316,7 +4316,10 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
 
       {/* ─── HORÁRIOS TAB ─────────────────────────────────────────────── */}
       {activeTab === 'horarios' && (
-        <HorariosTab professorUid={user?.uid || ''} accentColor={accentColor} readOnly={isProfessorUnderAcademy} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <HorariosTab professorUid={user?.uid || ''} accentColor={accentColor} readOnly={isProfessorUnderAcademy} />
+          <AgendaTab professorUid={user?.uid || ''} accentColor={accentColor} />
+        </div>
       )}
 
       {/* ─── RELATÓRIOS TAB ───────────────────────────────────────────── */}
@@ -7393,6 +7396,86 @@ function PromocaoTab({ user, profile, members, accentColor }: PromocaoTabProps) 
         </button>
       )}
 
+    </div>
+  );
+}
+
+// ─── AgendaTab ───────────────────────────────────────────────────────────────
+function AgendaTab({ professorUid, accentColor }: { professorUid: string; accentColor: string }) {
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await api.bookedSlots.list({ professorUid }) as any[];
+      setBookings(list);
+    } catch { setBookings([]); }
+    setLoading(false);
+  }, [professorUid]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCancel = async (id: string) => {
+    if (!confirm('Cancelar este agendamento?')) return;
+    try {
+      await api.bookedSlots.update(id, { status: 'cancelled' });
+      toast.success('Agendamento cancelado');
+      load();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao cancelar');
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0 1rem 2rem' }}>
+      <div style={{ borderLeft: `3px solid ${accentColor}`, paddingLeft: '0.75rem' }}>
+        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFF' }}>📅 AGENDA DE AULAS</p>
+        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', marginTop: '0.125rem' }}>Aulas agendadas pelos alunos nos seus horários disponíveis</p>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '2rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
+      ) : bookings.length === 0 ? (
+        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem', textAlign: 'center' }}>
+          <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📅</p>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUMA AULA AGENDADA</p>
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#444', marginTop: '0.5rem' }}>Quando um aluno agendar uma aula, ela aparecerá aqui.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {bookings.map(b => (
+            <div key={b.id} style={{ background: '#111', border: `1px solid ${b.status === 'cancelled' ? '#3A0000' : '#1E1E1E'}`, borderLeft: `3px solid ${b.status === 'cancelled' ? '#CC0000' : accentColor}`, padding: '0.875rem', opacity: b.status === 'cancelled' ? 0.5 : 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', textTransform: 'uppercase', color: '#FFF' }}>
+                    {b.className || 'Aula'} — {b.studentName || 'Aluno'}
+                  </p>
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: accentColor, marginTop: '0.15rem' }}>
+                    📅 {new Date(b.date + 'T00:00:00').toLocaleDateString('pt-BR')} ⏰ {b.time}
+                  </p>
+                  {b.notes && (
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>📝 {b.notes}</p>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem' }}>
+                  <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.15rem 0.4rem', background: b.status === 'confirmed' ? '#0A1A0A' : '#1A0000', color: b.status === 'confirmed' ? '#4CAF50' : '#CC0000', border: `1px solid ${b.status === 'confirmed' ? '#4CAF50' : '#CC0000'}` }}>
+                    {b.status === 'confirmed' ? 'CONFIRMADO' : 'CANCELADO'}
+                  </span>
+                  {b.status === 'confirmed' && (
+                    <button
+                      onClick={() => handleCancel(b.id)}
+                      style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.2rem 0.5rem', cursor: 'pointer' }}
+                    >
+                      CANCELAR
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

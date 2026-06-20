@@ -232,6 +232,33 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     }
   }
 
+  if (existing.studentUid === req.userId && data.status === 'cancelled') {
+    const [row] = await db.update(enrollments).set({ status: 'cancelled' }).where(eq(enrollments.id, req.params.id)).returning();
+
+    const [student] = await db.select({
+      academyId: users.academyId,
+    }).from(users).where(eq(users.uid, existing.studentUid)).limit(1);
+    if (student?.academyId === existing.professorUid) {
+      await db.update(users).set({
+        academyId: null,
+        academy: '',
+        professor: '',
+      }).where(eq(users.uid, existing.studentUid));
+    }
+
+    await db.insert(notifications).values({
+      id: nanoid(),
+      toUid: existing.professorUid,
+      fromUid: req.userId!,
+      type: 'enrollment_cancelled_by_student',
+      message: `${existing.studentName || 'Aluno'} se desvinculou da academia.`,
+      read: false,
+    });
+
+    res.json(row);
+    return;
+  }
+
   if (existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
     res.status(403).json({ error: 'Matriculas deste professor sao gerenciadas pela academia.' });
@@ -259,6 +286,75 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
   await db.delete(enrollments).where(eq(enrollments.id, req.params.id));
   res.json({ success: true });
+});
+
+// ─── Asaas Subscription Checkout ───────────────────────────────────────────
+// POST /api/enrollments/:id/asaas-subscribe
+// Aluno ativa cobrança recorrente (assinatura) via Asaas para esta matrícula
+router.post('/:id/asaas-subscribe', requireAuth, async (req: AuthRequest, res) => {
+  const [enrollment] = await db
+    .select()
+    .from(enrollments)
+    .where(eq(enrollments.id, req.params.id))
+    .limit(1);
+
+  if (!enrollment) { res.status(404).json({ error: 'Matrícula não encontrada' }); return; }
+  if (enrollment.studentUid !== req.userId!) { res.status(403).json({ error: 'Proibido' }); return; }
+
+  const { getAsaasCredentials } = await import('../services/paymentIntegrations.js');
+  const creds = await getAsaasCredentials(enrollment.professorUid);
+  if (!creds || !creds.apiKey) {
+    res.status(400).json({ error: 'Professor não possui cobrança online configurada.' });
+    return;
+  }
+
+  const [student] = await db
+    .select({ name: users.name, email: users.email, phone: users.phone })
+    .from(users)
+    .where(eq(users.uid, enrollment.studentUid))
+    .limit(1);
+
+  if (!student) { res.status(404).json({ error: 'Aluno não encontrado' }); return; }
+
+  const { findCustomer, createCustomer, createSubscription } = await import('../services/asaas.js');
+  const config = { apiKey: creds.apiKey, sandbox: creds.sandbox };
+
+  let customer = await findCustomer(student.email || '', config);
+  if (!customer) {
+    customer = await createCustomer({
+      name: student.name || enrollment.studentName || 'Aluno',
+      email: student.email || '',
+      phone: student.phone || undefined,
+    }, config);
+  }
+
+  // Próximo vencimento baseado no dueDay da matrícula
+  const now = new Date();
+  const dueDay = enrollment.dueDay || 1;
+  let nextDue = new Date(now.getFullYear(), now.getMonth(), dueDay);
+  if (nextDue <= now) nextDue.setMonth(nextDue.getMonth() + 1);
+  const nextDueStr = nextDue.toISOString().split('T')[0];
+
+  try {
+    const sub = await createSubscription({
+      customer: customer.id,
+      value: enrollment.monthlyFee || 0,
+      nextDueDate: nextDueStr,
+      cycle: 'MONTHLY',
+      billingType: creds.billingType || 'PIX',
+      description: `Mensalidade - ${enrollment.studentName || 'Aluno'} - ${enrollment.academyName || 'Professor'}`,
+      externalReference: enrollment.id,
+    }, config);
+
+    res.json({
+      invoiceUrl: sub.invoiceUrl || null,
+      subscriptionId: sub.id,
+      billingType: creds.billingType,
+    });
+  } catch (err: any) {
+    console.error('[enrollments] Asaas subscription error:', err);
+    res.status(500).json({ error: 'Erro ao criar assinatura. Tente novamente.' });
+  }
 });
 
 export default router;

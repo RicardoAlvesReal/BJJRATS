@@ -53,21 +53,6 @@ interface ProfileProps {
 
 export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps = {}) {
   const { user, profile, refreshProfile, updateProfileData } = useAuth();
-  const [unlinking, setUnlinking] = useState(false);
-
-  const handleUnlinkAcademy = async () => {
-    if (!confirm('Deseja se desvincular da academia atual? Você poderá se vincular a outra academia depois.')) return;
-    setUnlinking(true);
-    try {
-      await updateProfileData({ academyId: '', academy: '', professor: '' });
-      await refreshProfile();
-      toast.success('Desvinculado da academia com sucesso!');
-    } catch {
-      toast.error('Erro ao desvincular da academia');
-    } finally {
-      setUnlinking(false);
-    }
-  };
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
   const [promotions, setPromotions] = useState<{ id: string; previousBelt: string; newBelt: string; newStripes: number; promotedAtStr: string }[]>([]);
@@ -80,6 +65,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const [showHistory, setShowHistory] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
   const [showMensalidades, setShowMensalidades] = useState(false);
+  const canUseStudentFinance = !['professor', 'academy', 'admin', 'superadmin'].includes(profile?.role || '');
   // Competições
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [showCompForm, setShowCompForm] = useState(false);
@@ -668,6 +654,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           belt={profile?.belt}
           academy={profile?.academy}
           photoURL={profile?.photo ?? undefined}
+          trainingPhoto={(trainings[0] as any)?.trainingPhotoUrl || (trainings[0] as any)?.trainingPhoto || undefined}
           onClose={() => setShowShareCard(false)}
         />
       )}
@@ -1482,28 +1469,10 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           </div>
         )}
 
-        {/* Minhas Mensalidades — só para alunos vinculados */}
-        {profile?.academyId && profile?.role !== 'professor' && (
+        {/* Minhas Mensalidades — alunos veem cobranças mesmo após desvincular */}
+        {canUseStudentFinance && user?.uid && (
           <MensalidadesCard onOpen={() => setShowMensalidades(true)} userUid={user?.uid || ''} />
         )}
-        {/* Desvincular academia — só para alunos vinculados */}
-        {profile?.academyId && profile?.role !== 'professor' && (
-          <div style={{ padding: '0.5rem 0' }}>
-            <button
-              onClick={handleUnlinkAcademy}
-              disabled={unlinking}
-                          className="bjj-btn-outline !border-[#1A2A3A] !text-[#4A8AB5]"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                <line x1="4" y1="4" x2="20" y2="20"/>
-              </svg>
-              {unlinking ? 'DESVINCULANDO...' : 'DESVINCULAR ACADEMIA'}
-            </button>
-          </div>
-        )}
-
         {/* ── Passkeys (Biometria) ── */}
         <PasskeyManager />
 
