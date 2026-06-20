@@ -32,12 +32,34 @@
 ### Blocked
 - (none)
 
-## Key Decisions
+## Session 2026-06-20: UI de Likes/Comentários + Refactor
+
+### Done
+- **UI de likes/comentários modernizada** (estilo redes sociais):
+  - `Community.tsx`: ❤️ coração SVG (preenche vermelho quando curtido), 💬 balão SVG, campo de comentário sempre visível com avatar, input arredondado, botão enviar (ícone SVG)
+  - `Academy.tsx`: mesma UI — substituiu "OSS" texto e 💬 emoji por SVG heart/bubble
+  - `ProfessorPanel.tsx` feed tab: mesma UI — antes só tinha "COPIAR LINK" e 🗑️
+- **ProfessorPanel.tsx refactor** — arquivo passou de 500KB:
+  - Extraídos sub-componentes para `client/src/pages/app/professor/`:
+    - `WhatsAppTab.tsx`, `AvisosTab.tsx`, `EventCard.tsx`, `ComingSoon.tsx`, `utils.ts`
+  - Removida duplicata do `AvisosTab` (estava definido 2x)
+  - Tamanho: 498KB → 468KB (abaixo do limite do Babel)
+- **Bug commentCount** — contador de comentários não funcionava:
+  - Schema: adicionada coluna `comment_count` na tabela `posts`
+  - Migration `0009_add_comment_count.sql`: ALTER TABLE + UPDATE sincronizando dados existentes
+  - Servidor: POST/DELETE comments atualizam `commentCount` no post
+  - Frontend: `handleLoadComments` sincroniza `commentCount` local com o número real
+  - Removido guard `(post.commentCount || 0) > 0` que escondia seção de comentários
+  - Migration aplicada em dev (16 posts) e produção (1 post)
+
+### Key Decisions
 - Manter `.bjj-*` classes em vez de reescrever cada inline style para Tailwind puro (reaproveita o que já existe, menos risco de quebra)
 - Animação de abas centralizada em `tabVariant` (usado em 5 páginas)
 - `BELT_COLORS` unificado com valores canônicos: Branca `#FFFFFF`, Azul `#1A6ECC`, Roxa `#7C1ACC`, Marrom `#8B4513`, Preta `#111111`
 - Variantes com `as const` nos objetos simples e `as any` nos que usam `type: 'spring'` (contorno para tipagem do framer-motion v12)
 - Botão "SOU PROFESSOR" com fundo preto sólido (`#1A1A1A`) para diferenciar do primary vermelho
+- Sub-componentes do ProfessorPanel extraídos para `./professor/` mantendo imports limpos
+- `getWhatsAppAutomationToast` compartilhado via `professor/utils.ts`
 
 ## Next Steps
 - (nenhum — todas as páginas principais refatoradas, `BELT_COLORS` unificado)

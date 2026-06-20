@@ -336,250 +336,11 @@ const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: Lucide
 
 const INTERNAL_PROFESSOR_HIDDEN_TABS: PanelTab[] = ['financial', 'relatorios', 'whatsapp', 'avisos', 'leads'];
 
-const WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
-
-function formatAttemptRemaining(ms: number): string {
-  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-}
-
-function getWhatsAppAutomationToast(
-  whatsapp?: WhatsAppAutomationResult,
-  baseMessage = 'Notificação enviada',
-) {
-  if (whatsapp?.enabled && whatsapp.recipients > 0) {
-    const failedLabel = whatsapp.failed > 0 ? ` (${whatsapp.failed} falhou)` : '';
-    return `${baseMessage}! WhatsApp: ${whatsapp.sent}/${whatsapp.recipients}${failedLabel}`;
-  }
-  if (whatsapp?.enabled) {
-    return `${baseMessage} no app. Nenhum telefone encontrado para WhatsApp.`;
-  }
-  return `${baseMessage} no app. Conecte o WhatsApp para envio automático.`;
-}
-
-function WhatsAppTab() {
-  const [status, setStatus] = useState<{ connected: boolean; instance: { id: string; status: string; phone?: string | null } | null } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
-  const [qrcode, setQrcode] = useState<string | null>(null);
-  const [qrCodeText, setQrCodeText] = useState<string | null>(null);
-  const [polling, setPolling] = useState(false);
-  const [attemptExpired, setAttemptExpired] = useState(false);
-  const [attemptStartedAt, setAttemptStartedAt] = useState<number | null>(null);
-  const [attemptTimeoutMs, setAttemptTimeoutMs] = useState(WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
-  const [attemptRemainingMs, setAttemptRemainingMs] = useState(WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
-
-  const expireConnectionAttempt = useCallback((showToast = true) => {
-    setStatus({ connected: false, instance: null });
-    setQrcode(null);
-    setQrCodeText(null);
-    setPolling(false);
-    setConnecting(false);
-    setAttemptExpired(true);
-    setAttemptStartedAt(null);
-    setAttemptRemainingMs(0);
-    if (showToast) {
-      toast.error('Tentativa expirada. Gere uma nova conexao.');
-    }
-  }, []);
-
-  const loadStatus = useCallback(async () => {
-    try {
-      const res = await api.whatsapp.status();
-      setAttemptTimeoutMs(res.attemptTimeoutMs ?? WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
-      if (res.expired) {
-        expireConnectionAttempt(false);
-        return;
-      }
-      setStatus(res);
-      setQrcode(null);
-      setQrCodeText(null);
-      setAttemptExpired(false);
-      setAttemptStartedAt(null);
-    } catch {
-      setStatus(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [expireConnectionAttempt]);
-
-  // Carrega status ao montar e recarrega quando a aba/janela volta ao foco
-  useEffect(() => {
-    loadStatus();
-    const onFocus = () => { if (!polling) loadStatus(); };
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && !polling) loadStatus();
-    });
-    return () => {
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [loadStatus, polling]);
-
-  useEffect(() => {
-    if (!polling || !attemptStartedAt) return;
-
-    const tick = () => {
-      setAttemptRemainingMs(Math.max(0, attemptStartedAt + attemptTimeoutMs - Date.now()));
-    };
-
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [attemptStartedAt, attemptTimeoutMs, polling]);
-
-  useEffect(() => {
-    if (!polling) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.whatsapp.status();
-        setAttemptTimeoutMs(res.attemptTimeoutMs ?? WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS);
-        if (res.expired) {
-          expireConnectionAttempt();
-          return;
-        }
-        if (res.connected) {
-          setStatus(res);
-          setQrcode(null);
-          setQrCodeText(null);
-          setPolling(false);
-          setConnecting(false);
-          setAttemptExpired(false);
-          setAttemptStartedAt(null);
-          toast.success('WhatsApp conectado!');
-          return;
-        }
-
-      } catch { /* silencioso */ }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [expireConnectionAttempt, polling]);
-
-  const handleConnect = async () => {
-    setConnecting(true);
-    setAttemptExpired(false);
-    try {
-      const res = await api.whatsapp.connect();
-      setQrcode(res.qrcode ?? null);
-      setQrCodeText(res.qrCodeText ?? null);
-      const timeoutMs = res.attemptTimeoutMs ?? WHATSAPP_CONNECTION_ATTEMPT_TIMEOUT_MS;
-      setAttemptTimeoutMs(timeoutMs);
-      setAttemptStartedAt(Date.now());
-      setAttemptRemainingMs(timeoutMs);
-      setPolling(true);
-      if (!res.qrcode) {
-        toast.error('A Evolution API criou a instância, mas não retornou QR Code.');
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao conectar WhatsApp');
-      setConnecting(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    if (!window.confirm('Tem certeza que deseja desconectar o WhatsApp?')) return;
-    try {
-      await api.whatsapp.disconnect();
-      setStatus({ connected: false, instance: null });
-      setQrcode(null);
-      setQrCodeText(null);
-      setPolling(false);
-      setAttemptExpired(false);
-      setAttemptStartedAt(null);
-      toast.success('WhatsApp desconectado');
-    } catch {
-      toast.error('Erro ao desconectar');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <div style={{ width: '32px', height: '32px', border: '3px solid #333', borderTopColor: '#25D366', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.8rem', color: '#666', textTransform: 'uppercase' }}>CARREGANDO...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div>
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFF', margin: 0 }}>📱 WHATSAPP</p>
-        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.25rem' }}>Conecte seu WhatsApp para enviar mensagens automáticas aos alunos</p>
-      </div>
-
-      {status?.connected ? (
-        <div style={{ background: '#0A1A0A', border: '1px solid #1A4A1A', borderLeft: '3px solid #25D366', padding: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#25D366', textTransform: 'uppercase', margin: 0 }}>✅ CONECTADO</p>
-              {status.instance?.phone && (
-                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>{status.instance.phone}</p>
-              )}
-            </div>
-            <button onClick={handleDisconnect} style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer' }}>DESCONECTAR</button>
-          </div>
-          <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#111', border: '1px solid #222' }}>
-            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', margin: 0, lineHeight: 1.5 }}>
-              As mensagens de cobrança, suspensão e baixa frequência serão enviadas automaticamente pelo seu WhatsApp quando você usar os botões correspondentes.
-            </p>
-          </div>
-        </div>
-      ) : attemptExpired ? (
-        <div style={{ background: '#180F06', border: '1px solid #5A2F08', borderLeft: '3px solid #F59E0B', padding: '1.25rem', textAlign: 'center' }}>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#F59E0B', textTransform: 'uppercase', margin: 0 }}>TENTATIVA EXPIRADA</p>
-          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#A98758', marginTop: '0.5rem', marginBottom: '1rem', lineHeight: 1.5 }}>
-            A instancia anterior foi removida por seguranca. Reinicie a tentativa para gerar um novo QR Code.
-          </p>
-          <button
-            onClick={handleConnect}
-            disabled={connecting}
-            style={{ background: '#F59E0B', border: 'none', color: '#111', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.75rem 1.25rem', cursor: connecting ? 'not-allowed' : 'pointer', opacity: connecting ? 0.65 : 1, width: '100%' }}
-          >
-            {connecting ? 'RESETANDO...' : 'RESETAR TENTATIVA'}
-          </button>
-        </div>
-      ) : qrcode || qrCodeText ? (
-        <div style={{ background: '#111', border: '1px solid #222', padding: '1.5rem', textAlign: 'center' }}>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#FFF', textTransform: 'uppercase', marginBottom: '1rem' }}>ESCANEIE O QR CODE</p>
-          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#888', marginBottom: '1rem' }}>Abra o WhatsApp → Dispositivos conectados → Conectar dispositivo</p>
-          {qrcode ? (
-            <img src={qrcode} alt="QR Code" style={{ maxWidth: '280px', width: '100%', border: '4px solid #FFF', borderRadius: '8px' }} />
-          ) : (
-            <div style={{ background: '#1A1A1A', border: '1px solid #333', padding: '1rem', color: '#888', fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem' }}>
-              QR Code indisponivel. Reinicie a tentativa para gerar um novo QR Code.
-            </div>
-          )}
-          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: attemptRemainingMs <= 30000 ? '#F59E0B' : '#555', marginTop: '1rem' }}>
-            Aguardando conexao... Tempo restante: {formatAttemptRemaining(attemptRemainingMs)}
-          </p>
-        </div>
-      ) : (
-        <div style={{ background: '#111', border: '1px solid #222', borderLeft: '3px solid #555', padding: '1.25rem' }}>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#888', textTransform: 'uppercase', margin: 0 }}>DESCONECTADO</p>
-          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#555', marginTop: '0.5rem', marginBottom: '1rem', lineHeight: 1.5 }}>
-            Conecte seu WhatsApp para enviar mensagens automáticas de cobrança, suspensão e lembretes diretamente aos seus alunos.
-          </p>
-          <button onClick={handleConnect} disabled={connecting} style={{ background: '#25D366', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', textTransform: 'uppercase', padding: '0.75rem 1.25rem', cursor: connecting ? 'not-allowed' : 'pointer', opacity: connecting ? 0.6 : 1, width: '100%' }}>
-            {connecting ? 'CONECTANDO...' : '📱 CONECTAR WHATSAPP'}
-          </button>
-        </div>
-      )}
-
-      <div style={{ background: '#0D0D0D', border: '1px solid #1E1E1E', padding: '1rem' }}>
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', marginBottom: '0.5rem' }}>COMO FUNCIONA</p>
-        <ul style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#666', margin: 0, paddingLeft: '1.25rem', lineHeight: 1.8 }}>
-          <li>Cada professor conecta seu próprio WhatsApp</li>
-          <li>Mensagens são enviadas do seu número pessoal</li>
-          <li>Cobranças, suspensões e lembretes automáticos</li>
-          <li>Sem custo por mensagem</li>
-        </ul>
-      </div>
-    </div>
-  );
-}
+import WhatsAppTab from './professor/WhatsAppTab';
+import AvisosTab from './professor/AvisosTab';
+import EventCard from './professor/EventCard';
+import ComingSoon from './professor/ComingSoon';
+import { getWhatsAppAutomationToast } from './professor/utils';
 
 export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: Props) {
   const { user, profile, updateProfileData } = useAuth();
@@ -618,6 +379,12 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const [postPhotoPreview, setPostPhotoPreview] = useState<string | null>(null);
   const [savingPost, setSavingPost] = useState(false);
   const postPhotoRef = useRef<HTMLInputElement>(null);
+  // Likes e comentários
+  const [commentText, setCommentText] = useState<Record<string, string>>({});
+  const [postingComment, setPostingComment] = useState<string | null>(null);
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [comments, setComments] = useState<Record<string, any[]>>({});
+  const [loadingComments, setLoadingComments] = useState<Set<string>>(new Set());
 
   // ── Eventos ───────────────────────────────────────────────────────────────
   const [events, setEvents] = useState<AcademyEvent[]>([]);
@@ -1821,6 +1588,49 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
     }
   };
 
+  // ── Like / Comment handlers ──────────────────────────────────────────────
+  const handleLike = async (post: Post) => {
+    if (!user || !post.id) return;
+    const likes = post.likes || [];
+    const hasLiked = likes.includes(user.uid);
+    const newLikes = hasLiked ? likes.filter((l: string) => l !== user.uid) : [...likes, user.uid];
+    try {
+      await api.posts.update(post.id, { likes: newLikes } as any);
+      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: newLikes } : p));
+    } catch { /* silencioso */ }
+  };
+
+  const handlePostComment = async (post: Post) => {
+    const text = (commentText[post.id] || '').trim();
+    if (!text || !user || !profile) return;
+    setPostingComment(post.id);
+    try {
+      const newComment = await api.posts.addComment(post.id, { content: text });
+      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, commentCount: (p.commentCount || 0) + 1 } : p));
+      setComments(prev => ({ ...prev, [post.id]: [...(prev[post.id] || []), { id: newComment.id, authorName: profile.name, authorBelt: (profile as any).belt, authorPhotoURL: profile.photo, text }] }));
+      setCommentText(prev => ({ ...prev, [post.id]: '' }));
+    } catch { /* silencioso */ }
+    finally { setPostingComment(null); }
+  };
+
+  const handleToggleComments = async (postId: string) => {
+    setExpandedComments(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) { next.delete(postId); } else { next.add(postId); }
+      return next;
+    });
+    if (!comments[postId]) {
+      setLoadingComments(prev => new Set(prev).add(postId));
+      try {
+        const list = await api.posts.getComments(postId);
+        setComments(prev => ({ ...prev, [postId]: list || [] }));
+        // Sincronizar commentCount com o número real
+        setPosts(prev => prev.map(p => p.id === postId ? { ...p, commentCount: (list || []).length } : p));
+      } catch { /* silencioso */ }
+      finally { setLoadingComments(prev => { const n = new Set(prev); n.delete(postId); return n; }); }
+    }
+  };
+
   // ── Carregar Eventos ──────────────────────────────────────────────────────
   const loadEvents = useCallback(async () => {
     if (!user) return;
@@ -2954,18 +2764,144 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                     <img src={post.photoURL} alt="" style={{ width: '100%', maxHeight: '280px', objectFit: 'cover', display: 'block' }} />
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`).catch(() => {}); toast.success('Link copiado!'); }}
-                    style={{ flex: 1, background: '#1A1A1A', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem', cursor: 'pointer' }}>
-                    🔗 COPIAR LINK
-                  </button>
-                  <button
-                    onClick={async () => { await api.posts.delete(post.id); setPosts(prev => prev.filter(p => p.id !== post.id)); toast.success('Post removido'); }}
-                    style={{ background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer' }}>
-                    🗑️
-                  </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingTop: '0.25rem' }}>
+                  {(() => {
+                    const hasLiked = user && (post.likes || []).includes(user.uid);
+                    return (
+                      <>
+                        <button
+                          onClick={() => handleLike(post)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '0.35rem',
+                            padding: '0.25rem 0',
+                          }}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill={hasLiked ? '#CC0000' : 'none'} stroke={hasLiked ? '#CC0000' : '#666'} strokeWidth="2">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                          </svg>
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color: hasLiked ? '#CC0000' : '#666' }}>
+                            {(post.likes || []).length > 0 ? (post.likes || []).length : 'Curtir'}
+                          </span>
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleComments(post.id)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: '0.35rem',
+                            padding: '0.25rem 0',
+                          }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={expandedComments.has(post.id) ? '#0D9E6E' : '#666'} strokeWidth="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                          </svg>
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color: expandedComments.has(post.id) ? '#0D9E6E' : '#666' }}>
+                            {post.commentCount || 0}
+                          </span>
+                        </button>
+
+                        <button
+                          onClick={async () => { await api.posts.delete(post.id); setPosts(prev => prev.filter(p => p.id !== post.id)); toast.success('Post removido'); }}
+                          style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#444', cursor: 'pointer', padding: '0.25rem', fontSize: '0.8rem' }}
+                          title="Excluir post">
+                          🗑️
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
+
+                {/* ── Campo de comentário sempre visível ── */}
+                {user && (
+                  <div style={{
+                    display: 'flex', gap: '0.5rem', alignItems: 'center',
+                    marginTop: '0.25rem', borderTop: '1px solid #1A1A1A', paddingTop: '0.5rem',
+                  }}>
+                    <div style={{
+                      width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
+                      background: '#1A1A1A', border: '1px solid #333',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}>
+                      {profile?.photo ? (
+                        <img src={profile.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', color: '#666' }}>
+                          {(profile?.name || '?')[0].toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={commentText[post.id] || ''}
+                      onChange={e => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePostComment(post); } }}
+                      placeholder="Escreva um comentário..."
+                      style={{
+                        flex: 1, background: '#0A0A0A', border: '1px solid #1E1E1E', borderRadius: '20px',
+                        color: '#CCC', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem',
+                        padding: '0.45rem 0.75rem', outline: 'none',
+                      }}
+                    />
+                    <button
+                      onClick={() => handlePostComment(post)}
+                      disabled={postingComment === post.id || !(commentText[post.id] || '').trim()}
+                      style={{
+                        background: (commentText[post.id] || '').trim() ? '#CC0000' : '#1A1A1A',
+                        border: 'none', borderRadius: '50%', width: '32px', height: '32px',
+                        cursor: (commentText[post.id] || '').trim() ? 'pointer' : 'default',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0, opacity: (commentText[post.id] || '').trim() ? 1 : 0.4,
+                      }}
+                    >
+                      {postingComment === post.id ? (
+                        <div style={{ width: '14px', height: '14px', border: '2px solid #FFF', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFF" strokeWidth="3">
+                          <line x1="22" y1="2" x2="11" y2="13"/><polyline points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Lista de comentários (expansível) ── */}
+                {expandedComments.has(post.id) && (
+                  <div style={{ marginTop: '0.25rem', borderTop: '1px solid #1A1A1A', paddingTop: '0.5rem' }}>
+                    {loadingComments.has(post.id) ? (
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#444', textAlign: 'center', padding: '0.5rem' }}>Carregando...</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {(comments[post.id] || []).map(c => {
+                          const cBelt = BELT_COLORS[c.authorBelt] || '#FFFFFF';
+                          return (
+                            <div key={c.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                              <div style={{
+                                width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                                border: `1.5px solid ${cBelt}`, background: cBelt + '15',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                overflow: 'hidden',
+                              }}>
+                                {c.authorPhotoURL
+                                  ? <img src={c.authorPhotoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  : <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.55rem', color: cBelt }}>{(c.authorName || 'A')[0].toUpperCase()}</span>
+                                }
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.15rem' }}>
+                                  <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.72rem', color: '#DDD' }}>{c.authorName}</span>
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: cBelt }} />
+                                </div>
+                                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#AAA', lineHeight: 1.4 }}>{c.text || c.content}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -4640,322 +4576,6 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   );
 }
 
-// ── EventCard ────────────────────────────────────────────────────────────────
-
-function AvisosTab({ user, profile, accentColor }: { user: any; profile: any; accentColor: string }) {
-  const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', audience: 'all', urgent: false });
-
-  const isAcademy = profile?.role === 'academy' || profile?.role === 'admin' || profile?.isAcademyAdmin;
-  const audienceOptions = isAcademy
-    ? [
-      { value: 'all', label: 'ALUNOS E PROFESSORES' },
-      { value: 'students', label: 'ALUNOS' },
-      { value: 'professors', label: 'PROFESSORES' },
-    ]
-    : [
-      { value: 'students', label: 'MEUS ALUNOS' },
-    ];
-
-  const loadAnnouncements = useCallback(async () => {
-    setLoading(true);
-    try {
-      const rows = await api.announcements.mine();
-      setAnnouncements(rows);
-    } catch {
-      toast.error('Erro ao carregar notificações');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadAnnouncements();
-  }, [loadAnnouncements]);
-
-  const saveAnnouncement = async () => {
-    if (!form.title.trim() || !form.content.trim()) return;
-    setSaving(true);
-    try {
-      const created = await api.announcements.create({
-        title: form.title.trim(),
-        content: form.content.trim(),
-        audience: isAcademy ? form.audience : 'students',
-        urgent: form.urgent,
-      });
-      setForm({ title: '', content: '', audience: 'all', urgent: false });
-      await loadAnnouncements();
-      toast.success(getWhatsAppAutomationToast(created.whatsapp));
-    } catch (err: any) {
-      toast.error(err?.message || 'Erro ao enviar notificação');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleActive = async (announcement: any) => {
-    try {
-      await api.announcements.update(announcement.id, { isActive: !announcement.isActive });
-      await loadAnnouncements();
-    } catch {
-      toast.error('Erro ao alterar notificação');
-    }
-  };
-
-  const deleteAnnouncement = async (id: string) => {
-    if (!confirm('Excluir esta notificação?')) return;
-    try {
-      await api.announcements.delete(id);
-      setAnnouncements(prev => prev.filter(item => item.id !== id));
-    } catch {
-      toast.error('Erro ao excluir notificação');
-    }
-  };
-
-  return (
-    <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={{ background: '#111', border: `1px solid ${accentColor}`, borderLeft: `3px solid ${accentColor}`, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-        <div>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.95rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            NOVA NOTIFICAÇÃO
-          </p>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.68rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.2rem' }}>
-            {isAcademy ? (profile?.academyName || 'ACADEMIA') : (profile?.name || user?.name || 'PROFESSOR')}
-          </p>
-        </div>
-
-        <input
-          value={form.title}
-          onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))}
-          placeholder="Título da notificação"
-          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', boxSizing: 'border-box' }}
-        />
-
-        <textarea
-          value={form.content}
-          onChange={e => setForm(prev => ({ ...prev, content: e.target.value }))}
-          placeholder="Mensagem para enviar no sininho dos alunos..."
-          rows={4}
-          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.75rem', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-        />
-
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {audienceOptions.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setForm(prev => ({ ...prev, audience: option.value }))}
-              style={{
-                background: form.audience === option.value ? accentColor : '#1A1A1A',
-                border: `1px solid ${form.audience === option.value ? accentColor : '#333'}`,
-                color: form.audience === option.value ? '#FFF' : '#666',
-                fontFamily: 'Barlow Condensed, sans-serif',
-                fontWeight: 900,
-                fontSize: '0.68rem',
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                padding: '0.45rem 0.65rem',
-                cursor: 'pointer',
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setForm(prev => ({ ...prev, urgent: !prev.urgent }))}
-            style={{
-              background: form.urgent ? '#1A0000' : '#1A1A1A',
-              border: `1px solid ${form.urgent ? '#CC0000' : '#333'}`,
-              color: form.urgent ? '#FF4D4D' : '#666',
-              fontFamily: 'Barlow Condensed, sans-serif',
-              fontWeight: 900,
-              fontSize: '0.68rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              padding: '0.45rem 0.65rem',
-              cursor: 'pointer',
-            }}
-          >
-            URGENTE
-          </button>
-        </div>
-
-        <button
-          onClick={saveAnnouncement}
-          disabled={saving || !form.title.trim() || !form.content.trim()}
-          style={{ background: saving || !form.title.trim() || !form.content.trim() ? '#333' : accentColor, border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.875rem', cursor: saving ? 'not-allowed' : 'pointer', width: '100%' }}
-        >
-          {saving ? 'ENVIANDO...' : 'ENVIAR NOTIFICAÇÃO'}
-        </button>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', color: '#AAA', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          NOTIFICAÇÕES ENVIADAS
-        </p>
-        <button
-          type="button"
-          onClick={loadAnnouncements}
-          disabled={loading}
-          style={{ background: '#111', border: '1px solid #2A2A2A', color: loading ? '#444' : '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.75rem', cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.05em' }}
-        >
-          {loading ? '...' : 'ATUALIZAR'}
-        </button>
-      </div>
-
-      {loading && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', color: '#555', textTransform: 'uppercase', fontSize: '0.875rem', textAlign: 'center', padding: '2rem' }}>CARREGANDO...</p>}
-      {!loading && announcements.length === 0 && (
-        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '2rem 1rem', textAlign: 'center' }}>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#555', textTransform: 'uppercase' }}>NENHUMA NOTIFICAÇÃO ENVIADA</p>
-        </div>
-      )}
-
-      {!loading && announcements.map(announcement => (
-        <div key={announcement.id} style={{ background: announcement.urgent ? '#190A0A' : '#111', border: `1px solid ${announcement.urgent ? '#CC000044' : '#1E1E1E'}`, borderLeft: `3px solid ${announcement.urgent ? '#CC0000' : accentColor}`, padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.9rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.1 }}>{announcement.title}</p>
-              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.78rem', color: '#888', lineHeight: 1.45, marginTop: '0.35rem' }}>{announcement.content}</p>
-            </div>
-            <span style={{ flexShrink: 0, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.62rem', color: announcement.isActive === false ? '#555' : '#0D9E6E', textTransform: 'uppercase', border: `1px solid ${announcement.isActive === false ? '#333' : '#0D9E6E55'}`, padding: '0.15rem 0.45rem' }}>
-              {announcement.isActive === false ? 'INATIVO' : 'ATIVO'}
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.62rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.08em', border: '1px solid #252525', padding: '0.2rem 0.45rem' }}>
-              {(announcement.audience || 'all').toUpperCase()}
-            </span>
-            {announcement.urgent && (
-              <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.62rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.08em', border: '1px solid #CC000044', padding: '0.2rem 0.45rem' }}>
-                URGENTE
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={() => toggleActive(announcement)}
-              style={{ flex: 1, background: '#151515', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.68rem', textTransform: 'uppercase', padding: '0.5rem', cursor: 'pointer' }}
-            >
-              {announcement.isActive === false ? 'REATIVAR' : 'DESATIVAR'}
-            </button>
-            <button
-              onClick={() => deleteAnnouncement(announcement.id)}
-              style={{ background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.68rem', textTransform: 'uppercase', padding: '0.5rem 0.75rem', cursor: 'pointer' }}
-            >
-              EXCLUIR
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EventCard({ ev, accentColor, professorProfile, onDelete }: {
-  ev: AcademyEvent;
-  accentColor: string;
-  professorProfile: any;
-  onDelete: () => void;
-}) {
-  const [closing, setClosing] = useState(false);
-
-  const handleCloseRegistrations = async () => {
-    if (closing) return;
-    setClosing(true);
-    try {
-      // Marcar evento como inscricoes_encerradas
-      await api.events.update(ev.id, { registrationsClosed: true });
-
-      // Enviar notificacao in-app para cada inscrito
-      const registrations = ev.registrations || [];
-      const academyName = professorProfile?.academyName || professorProfile?.academy || 'Academia';
-      const locationLabel = getEventLocationLabel(ev);
-      const notifPromises = registrations.map((uid: string) =>
-        api.notifications.create({
-          toUid: uid,
-          type: 'event_confirmed',
-          message: `Inscrições encerradas para "${ev.title}"${ev.date ? ` em ${ev.date}` : ''}${ev.time ? ` às ${ev.time}` : ''}${locationLabel ? ` — ${locationLabel}` : ''}. Você está confirmado!`,
-          data: { eventId: ev.id, eventTitle: ev.title, eventDate: ev.date, eventTime: ev.time || '', eventLocation: locationLabel, academyName },
-          read: false,
-        })
-      );
-      await Promise.all(notifPromises);
-      toast.success(`Inscrições encerradas. ${registrations.length} aluno${registrations.length !== 1 ? 's' : ''} notificado${registrations.length !== 1 ? 's' : ''}!`);
-    } catch {
-      toast.error('Erro ao encerrar inscrições');
-    } finally {
-      setClosing(false);
-    }
-  };
-
-  const isClosed = (ev as any).registrationsClosed === true;
-  const locationLabel = getEventLocationLabel(ev);
-  const hasMap = Boolean(locationLabel);
-
-  return (
-    <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>{ev.title}</p>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: accentColor, textTransform: 'uppercase', marginTop: '0.25rem' }}>{ev.date}{ev.time ? ` · ${ev.time}` : ''}</p>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
-          <span style={{ background: accentColor + '22', border: `1px solid ${accentColor}`, color: accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.15rem 0.5rem', flexShrink: 0 }}>{(ev.type || 'outro').replace('_', ' ').toUpperCase()}</span>
-          {isClosed && (
-            <span style={{ background: '#0D9E6E22', border: '1px solid #0D9E6E', color: '#0D9E6E', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.55rem', textTransform: 'uppercase', padding: '0.1rem 0.375rem' }}>ENCERRADO</span>
-          )}
-        </div>
-      </div>
-      {locationLabel && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888' }}>📍 {locationLabel}</p>
-          <div style={{ border: '1px solid #1E1E1E', background: '#080808', overflow: 'hidden' }}>
-            <iframe
-              title={`Mapa de ${ev.title}`}
-              src={getEventMapEmbedUrl(ev)}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              style={{ width: '100%', height: '150px', border: 'none', display: 'block', background: '#0A0A0A' }}
-            />
-          </div>
-        </div>
-      )}
-      {ev.description && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8125rem', color: '#666', lineHeight: 1.4 }}>{ev.description}</p>}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555' }}>{(ev.registrations ?? []).length} INSCRITO{(ev.registrations ?? []).length !== 1 ? 'S' : ''}{ev.slots ? ` / ${ev.slots} VAGAS` : ''}</span>
-        <div style={{ display: 'flex', gap: '0.375rem' }}>
-          {!isClosed && (ev.registrations ?? []).length > 0 && (
-            <button
-              onClick={handleCloseRegistrations}
-              disabled={closing}
-              style={{ background: '#0A2A1A', border: '1px solid #0D9E6E', color: '#0D9E6E', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.4rem 0.5rem', cursor: closing ? 'not-allowed' : 'pointer', opacity: closing ? 0.6 : 1 }}
-            >
-              {closing ? '...' : '✓ ENCERRAR'}
-            </button>
-          )}
-          {hasMap && (
-            <a href={getEventGoogleMapsUrl(ev)} target="_blank" rel="noreferrer"
-              style={{ background: '#101821', border: `1px solid ${accentColor}55`, color: accentColor, fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <Navigation size={13} /> MAPS
-            </a>
-          )}
-          <button onClick={async () => { await navigator.clipboard.writeText(`${window.location.origin}/evento/${ev.id}`).catch(() => {}); toast.success('Link copiado!'); }}
-            style={{ background: '#1A1A1A', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer' }}>
-            🔗 LINK
-          </button>
-          <button onClick={onDelete}
-            style={{ background: '#1A0000', border: '1px solid #3A0000', color: '#CC3333', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.4rem 0.625rem', cursor: 'pointer' }}>
-            🗑️
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Modal de detalhe do membro ────────────────────────────────────────────────
 const BELTS_ORDER = ['Branca', 'Azul', 'Roxa', 'Marrom', 'Preta'];
 
@@ -5581,23 +5201,6 @@ function MemberDetailModal({ member, accentColor, professorUid, hideFinancial = 
       </motion.div>
     </motion.div>
     </>
-  );
-}
-
-function ComingSoon({ icon, title, description, accentColor }: { icon: string; title: string; description: string; accentColor: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div style={{ background: '#111', border: `1px solid ${accentColor}33`, padding: '2.5rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', textAlign: 'center' }}>
-        <span style={{ fontSize: '3rem' }}>{icon}</span>
-        <div>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>{title}</p>
-          <div style={{ display: 'inline-block', background: `${accentColor}22`, border: `1px solid ${accentColor}`, padding: '0.2rem 0.625rem', marginTop: '0.5rem' }}>
-            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: accentColor, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>EM BREVE</p>
-          </div>
-        </div>
-        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#666', lineHeight: 1.6, maxWidth: '280px' }}>{description}</p>
-      </div>
-    </div>
   );
 }
 

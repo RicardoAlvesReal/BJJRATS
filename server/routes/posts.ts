@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { posts, comments } from '../db/schema.js';
@@ -88,8 +88,19 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ authorUid: posts.authorUid }).from(posts).where(eq(posts.id, req.params.id)).limit(1);
   if (!existing) { res.status(404).json({ error: 'Post não encontrado' }); return; }
   const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
-  if (!isModOrSuper && existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const { id: _id, authorUid: _au, ...rest } = req.body;
+
+  // Curtir (likes) e comentar (commentCount) — qualquer usuário logado pode
+  const isLikeOrCommentUpdate = rest.likes !== undefined || rest.commentCount !== undefined;
+  const onlyLikesOrComments = Object.keys(rest).every(k => k === 'likes' || k === 'commentCount');
+
+  if (!isModOrSuper && existing.authorUid !== req.userId) {
+    if (!isLikeOrCommentUpdate || !onlyLikesOrComments) {
+      res.status(403).json({ error: 'Proibido' });
+      return;
+    }
+  }
+
   const data = fromClientPost(rest);
   if (Object.keys(data).length === 0) { res.json(toClientPost(existing)); return; }
   const [row] = await db.update(posts).set(data).where(eq(posts.id, req.params.id)).returning();
@@ -127,6 +138,11 @@ router.post('/:id/comments', requireAuth, async (req: AuthRequest, res) => {
     ...(authorPhotoURL !== undefined && { authorPhoto: authorPhotoURL }),
     ...rest,
   }).returning();
+
+  // Atualizar commentCount no post
+  const [cnt] = await db.select({ count: sql<number>`count(*)` }).from(comments).where(eq(comments.postId, req.params.id));
+  await db.update(posts).set({ commentCount: cnt.count }).where(eq(posts.id, req.params.id));
+
   res.status(201).json(toClientComment(row));
 });
 
@@ -137,6 +153,11 @@ router.delete('/:postId/comments/:commentId', requireAuth, async (req: AuthReque
   const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
   if (!isModOrSuper && existing.authorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   await db.delete(comments).where(eq(comments.id, req.params.commentId));
+
+  // Atualizar commentCount no post
+  const [cnt] = await db.select({ count: sql<number>`count(*)` }).from(comments).where(eq(comments.postId, req.params.postId));
+  await db.update(posts).set({ commentCount: cnt.count }).where(eq(posts.id, req.params.postId));
+
   res.json({ success: true });
 });
 

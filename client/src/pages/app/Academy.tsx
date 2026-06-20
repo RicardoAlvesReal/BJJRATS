@@ -548,6 +548,8 @@ export default function Academy() {
       const list = await api.posts.getComments(postId) as PostComment[];
       list.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
       setComments(prev => ({ ...prev, [postId]: list }));
+      // Sincronizar commentCount com o número real
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, commentCount: list.length } : p));
     } catch { /* silencioso */ }
     finally { setLoadingComments(prev => { const n = new Set(prev); n.delete(postId); return n; }); }
   };
@@ -828,71 +830,143 @@ export default function Academy() {
                       ))}
                     </div>
                   )}
-                  {/* Footer: data + like + views */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', textTransform: 'uppercase', color: '#444', letterSpacing: '0.05em', margin: 0 }}>{date}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#333' }}>👁</span>
-                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', color: '#333' }}>{(postAny.viewCount || (postAny.viewedBy || []).length || 0)}</span>
-                      </div>
-                      <button onClick={() => handleLikePost(post)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0' }}>
-                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.85rem', color: user && (post.likes || []).includes(user.uid) ? '#CC0000' : '#555', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>OSS</span>
-                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: user && (post.likes || []).includes(user.uid) ? '#CC0000' : '#555' }}>{(post.likes || []).length}</span>
-                      </button>
-                      <button onClick={() => handleToggleComments(post.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0' }}>
-                        <span style={{ fontSize: '1rem' }}>💬</span>
-                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', color: expandedComments.has(post.id) ? '#0D9E6E' : '#555' }}>{post.commentCount || 0}</span>
-                      </button>
-                    </div>
+                  {/* ── Ações: Like + Comentários (estilo redes sociais) ── */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingTop: '0.25rem' }}>
+                    {(() => {
+                      const hasLiked = user && (post.likes || []).includes(user.uid);
+                      return (
+                        <>
+                          <button
+                            onClick={() => handleLikePost(post)}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '0.35rem',
+                              padding: '0.25rem 0',
+                            }}
+                          >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill={hasLiked ? '#CC0000' : 'none'} stroke={hasLiked ? '#CC0000' : '#666'} strokeWidth="2">
+                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                            </svg>
+                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color: hasLiked ? '#CC0000' : '#666' }}>
+                              {(post.likes || []).length > 0 ? (post.likes || []).length : 'Curtir'}
+                            </span>
+                          </button>
+
+                          <button
+                            onClick={() => handleToggleComments(post.id)}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '0.35rem',
+                              padding: '0.25rem 0',
+                            }}
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={expandedComments.has(post.id) ? '#0D9E6E' : '#666'} strokeWidth="2">
+                              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color: expandedComments.has(post.id) ? '#0D9E6E' : '#666' }}>
+                              {post.commentCount || 0}
+                            </span>
+                          </button>
+
+                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#444" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#444' }}>
+                              {(postAny.viewCount || (postAny.viewedBy || []).length || 0)}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
-                  {/* Seção de comentários expansível */}
+                  {/* ── Campo de comentário sempre visível ── */}
+                  {user && (
+                    <div style={{
+                      display: 'flex', gap: '0.5rem', alignItems: 'center',
+                      marginTop: '0.5rem', borderTop: '1px solid #1A1A1A', paddingTop: '0.5rem',
+                    }}>
+                      <div style={{
+                        width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
+                        background: '#1A1A1A', border: '1px solid #333',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        overflow: 'hidden',
+                      }}>
+                        {profile?.photo ? (
+                          <img src={profile.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.6rem', color: '#666' }}>
+                            {(profile?.name || '?')[0].toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={commentText[post.id] || ''}
+                        onChange={e => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePostComment(post); } }}
+                        placeholder="Escreva um comentário..."
+                        style={{
+                          flex: 1, background: '#0A0A0A', border: '1px solid #1E1E1E', borderRadius: '20px',
+                          color: '#CCC', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem',
+                          padding: '0.45rem 0.75rem', outline: 'none',
+                        }}
+                      />
+                      <button
+                        onClick={() => handlePostComment(post)}
+                        disabled={postingComment === post.id || !(commentText[post.id] || '').trim()}
+                        style={{
+                          background: (commentText[post.id] || '').trim() ? '#CC0000' : '#1A1A1A',
+                          border: 'none', borderRadius: '50%', width: '32px', height: '32px',
+                          cursor: (commentText[post.id] || '').trim() ? 'pointer' : 'default',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0, opacity: (commentText[post.id] || '').trim() ? 1 : 0.4,
+                        }}
+                      >
+                        {postingComment === post.id ? (
+                          <div style={{ width: '14px', height: '14px', border: '2px solid #FFF', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFF" strokeWidth="3">
+                            <line x1="22" y1="2" x2="11" y2="13"/><polyline points="22 2 15 22 11 13 2 9 22 2"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ── Lista de comentários (expansível) ── */}
                   {expandedComments.has(post.id) && (
-                    <div style={{ marginTop: '0.75rem', borderTop: '1px solid #1E1E1E', paddingTop: '0.75rem' }}>
+                    <div style={{ marginTop: '0.5rem', borderTop: '1px solid #1A1A1A', paddingTop: '0.5rem' }}>
                       {loadingComments.has(post.id) ? (
-                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#444', textAlign: 'center', padding: '0.5rem' }}>CARREGANDO...</p>
-                      ) : (comments[post.id] || []).length === 0 ? (
-                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#444', textAlign: 'center', padding: '0.5rem' }}>NENHUM COMENTÁRIO AINDA</p>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#444', textAlign: 'center', padding: '0.5rem' }}>Carregando...</p>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           {(comments[post.id] || []).map(c => {
                             const cBelt = BELT_COLORS[c.authorBelt] || '#FFFFFF';
                             return (
                               <div key={c.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: `1.5px solid ${cBelt}`, background: cBelt + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                                <div style={{
+                                  width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                                  border: `1.5px solid ${cBelt}`, background: cBelt + '15',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  overflow: 'hidden',
+                                }}>
                                   {c.authorPhotoURL
                                     ? <img src={c.authorPhotoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     : <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.55rem', color: cBelt }}>{(c.authorName || 'A')[0].toUpperCase()}</span>
                                   }
                                 </div>
-                                <div className="bjj-card !bg-[#0A0A0A] !p-[0.375rem_0.625rem]" style={{ border: '1px solid #1E1E1E' }}>
-                                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: cBelt, marginBottom: '0.2rem' }}>{c.authorName}</p>
-                                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#CCC', lineHeight: 1.4 }}>{c.text}</p>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.15rem' }}>
+                                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.72rem', color: '#DDD' }}>{c.authorName}</span>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: cBelt }} />
+                                  </div>
+                                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#AAA', lineHeight: 1.4 }}>{c.text || c.content}</p>
                                 </div>
                               </div>
                             );
                           })}
-                        </div>
-                      )}
-                      {/* Campo de novo comentário */}
-                      {user && (
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <input
-                            type="text"
-                            value={commentText[post.id] || ''}
-                            onChange={e => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            onKeyDown={e => { if (e.key === 'Enter') handlePostComment(post); }}
-                            placeholder="Escreva um comentário..."
-                            className="bjj-input !bg-[#0A0A0A] !text-[0.8rem] !p-[0.5rem_0.75rem]"
-                          />
-                          <button
-                            onClick={() => handlePostComment(post)}
-                            disabled={postingComment === post.id || !(commentText[post.id] || '').trim()}
-                            className="bjj-btn-primary !text-[0.75rem] !px-3 !py-[0.5rem] !w-auto"
-                          >
-                            {postingComment === post.id ? '...' : 'OK'}
-                          </button>
                         </div>
                       )}
                     </div>

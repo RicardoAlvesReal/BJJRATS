@@ -168,6 +168,7 @@ export const posts = pgTable('posts', {
   academyLogo:  text('academy_logo'),
   trainingData: jsonb('training_data'),
   likes:        jsonb('likes').default([]),           // array of uid strings
+  commentCount: integer('comment_count').default(0),
   createdAt:    timestamp('created_at').defaultNow(),
 });
 
