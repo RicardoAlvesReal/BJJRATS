@@ -65,8 +65,8 @@ export default function RankingList({ academyId, title }: RankingListProps) {
         ? await api.users.list({ academyId })
         : await api.users.list();
       const all = docs as RankedUser[];
-      // Excluir academias e professores do ranking geral da comunidade
-      setUsers(academyId ? all : all.filter(u => u.role !== 'academy' && u.role !== 'admin' && u.role !== 'professor'));
+      // Excluir professores/admin/academias do ranking (só atletas/alunos competem)
+      setUsers(all.filter(u => u.role !== 'academy' && u.role !== 'admin' && u.role !== 'professor'));
     } catch {
       setUsers([]);
     } finally {

@@ -115,6 +115,19 @@ router.post('/schedules', requireAuth, async (req: AuthRequest, res) => {
   const academyId = isAcademyOwner ? req.userId! : requestedAcademyId ?? req.userId!;
   const professorUid = isAcademyOwner ? requestedProfessorUid ?? req.userId! : req.userId!;
   const [row] = await db.insert(classSchedules).values({ id, ...data, professorUid, academyId }).returning();
+
+  // Notifica alunos ativos sobre o novo horário
+  try {
+    await notifyActiveStudentsAboutClass(
+      professorUid,
+      'class_created',
+      `Novo horário de treino disponível: ${describeSchedule(row)}. Confirme sua presença no app!`,
+      { scheduleId: row.id, schedule: describeSchedule(row) },
+    );
+  } catch (err) {
+    console.warn('[classes] class created notification failed', err);
+  }
+
   res.status(201).json(row);
 });
 

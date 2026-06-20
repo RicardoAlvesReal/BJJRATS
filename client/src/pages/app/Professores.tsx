@@ -7,8 +7,9 @@ import { CalendarPlus, GraduationCap, MapPin, School, Search, Users } from 'luci
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import ProfessorStudentModal from '@/components/ProfessorStudentModal';
 
-type ProfessorFilter = 'all' | 'nearby' | 'academy';
+type ProfessorFilter = 'all' | 'nearby' | 'academy' | 'linked';
 
 interface Professor {
   uid: string;
@@ -27,6 +28,7 @@ interface Professor {
   trialRequestsEnabled?: boolean;
   athleteType?: string;
   bjjSince?: string;
+  phone?: string;
 }
 
 interface Coordinates {
@@ -76,6 +78,19 @@ export default function Professores() {
   const [filter, setFilter] = useState<ProfessorFilter>('all');
   const [userCoords, setUserCoords] = useState<Coordinates | null>(null);
   const [requestingTrial, setRequestingTrial] = useState<string | null>(null);
+  const [profRequests, setProfRequests] = useState<Set<string>>(new Set());
+  const [profReqLoading, setProfReqLoading] = useState<Record<string, boolean>>({});
+  const [trialRequested, setTrialRequested] = useState<Set<string>>(() => {
+    if (!user) return new Set<string>();
+    try {
+      const stored = localStorage.getItem(`bjj_trial_reqs_${user.uid}`);
+      return stored ? new Set<string>(JSON.parse(stored)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+
+  // Professores vinculados (com matrícula ativa)
+  const [linkedProfUids, setLinkedProfUids] = useState<Set<string>>(new Set());
+  const [selectedProf, setSelectedProf] = useState<Professor | null>(null);
 
   const studentCity = normalizeText((profile as any)?.city || profile?.academyCity);
   const studentState = normalizeText((profile as any)?.state || profile?.academyState);
@@ -94,9 +109,30 @@ export default function Professores() {
       } finally {
         setLoading(false);
       }
+      // Carrega solicitações de vínculo pendentes e matrículas ativas do aluno
+      if (user) {
+        try {
+          const rows = await api.professorRequests.list({ studentUid: user.uid }) as any[];
+          setProfRequests(new Set(rows.filter((r: any) => r.status === 'pending').map((r: any) => r.professorUid)));
+        } catch { /* ignore */ }
+        // Carrega matrículas ativas para saber com quais professores está vinculado
+        try {
+          const enrolls = await api.enrollments.list({ studentUid: user.uid }) as any[];
+          setLinkedProfUids(new Set(
+            enrolls
+              .filter((e: any) => e.status === 'active' || e.status === 'suspended')
+              .map((e: any) => e.professorUid)
+          ));
+        } catch { /* ignore */ }
+        // Recarrega trial requests do localStorage
+        try {
+          const stored = localStorage.getItem(`bjj_trial_reqs_${user.uid}`);
+          setTrialRequested(stored ? new Set<string>(JSON.parse(stored)) : new Set<string>());
+        } catch { /* ignore */ }
+      }
     };
     load();
-  }, []);
+  }, [user]);
 
   const requestUserLocation = () => {
     if (!navigator.geolocation) return;
@@ -143,6 +179,8 @@ export default function Professores() {
     );
   };
 
+  const isProfLinked = (prof: Professor) => linkedProfUids.has(prof.uid);
+
   const isCurrentProfessor = (prof: Professor) => {
     return !!currentProfessorName && normalizeText(prof.name) === currentProfessorName;
   };
@@ -162,27 +200,30 @@ export default function Professores() {
         if (!matchesSearch) return false;
         if (filter === 'nearby') return isNearby(prof);
         if (filter === 'academy') return isSameAcademy(prof);
+        if (filter === 'linked') return isProfLinked(prof);
         return true;
       })
       .sort((a, b) => {
-        const scoreA = (isCurrentProfessor(a) ? 10 : 0) + (isSameAcademy(a) ? 6 : 0) + (isNearby(a) ? 2 : 0);
-        const scoreB = (isCurrentProfessor(b) ? 10 : 0) + (isSameAcademy(b) ? 6 : 0) + (isNearby(b) ? 2 : 0);
+        const scoreA = (isCurrentProfessor(a) ? 10 : 0) + (isSameAcademy(a) ? 6 : 0) + (isProfLinked(a) ? 4 : 0) + (isNearby(a) ? 2 : 0);
+        const scoreB = (isCurrentProfessor(b) ? 10 : 0) + (isSameAcademy(b) ? 6 : 0) + (isProfLinked(b) ? 4 : 0) + (isNearby(b) ? 2 : 0);
         const distanceA = getProfessorDistance(a) ?? Number.POSITIVE_INFINITY;
         const distanceB = getProfessorDistance(b) ?? Number.POSITIVE_INFINITY;
         if (scoreB !== scoreA) return scoreB - scoreA;
         if (distanceA !== distanceB) return distanceA - distanceB;
         return (a.name || '').localeCompare(b.name || '', 'pt-BR');
       });
-  }, [currentProfessorName, filter, profs, search, studentAcademyId, studentAcademyName, studentCity, studentState, userCoords]);
+  }, [currentProfessorName, filter, profs, search, studentAcademyId, studentAcademyName, studentCity, studentState, userCoords, linkedProfUids]);
 
   const stats = useMemo(() => {
     const nearby = profs.filter(isNearby).length;
     const academy = profs.filter(isSameAcademy).length;
-    return { total: profs.length, nearby, academy };
-  }, [profs, studentAcademyId, studentAcademyName, studentCity, studentState, userCoords]);
+    const linked = profs.filter(isProfLinked).length;
+    return { total: profs.length, nearby, academy, linked };
+  }, [profs, studentAcademyId, studentAcademyName, studentCity, studentState, userCoords, linkedProfUids]);
 
   const filterItems: Array<{ id: ProfessorFilter; label: string; count: number }> = [
     { id: 'all', label: 'TODOS', count: stats.total },
+    { id: 'linked', label: 'MEUS PROFESSORES', count: stats.linked },
     { id: 'nearby', label: 'PERTO', count: stats.nearby },
     { id: 'academy', label: 'MINHA ACADEMIA', count: stats.academy },
   ];
@@ -216,11 +257,29 @@ export default function Professores() {
         belt: user.belt || profile?.belt || 'Branca',
         message: `Aluno logado solicitou aula experimental gratuita com ${prof.name || 'professor'}.`,
       });
-      toast.success(`Aula gratis solicitada para ${prof.name || 'professor'}!`);
+      // Marca como já solicitado (localStorage)
+      const next = new Set(trialRequested).add(prof.uid);
+      setTrialRequested(next);
+      localStorage.setItem(`bjj_trial_reqs_${user.uid}`, JSON.stringify([...next]));
+      toast.success(`Aula grátis solicitada para ${prof.name || 'professor'}!`);
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao solicitar aula gratis');
+      toast.error(err?.message || 'Erro ao solicitar aula grátis');
     } finally {
       setRequestingTrial(null);
+    }
+  };
+
+  const handleRequestProfessor = async (profUid: string) => {
+    if (!user) return;
+    setProfReqLoading(prev => ({ ...prev, [profUid]: true }));
+    try {
+      await api.professorRequests.create({ professorUid: profUid });
+      setProfRequests(prev => new Set(prev).add(profUid));
+      toast.success('Solicitação de vínculo enviada!');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao enviar solicitação');
+    } finally {
+      setProfReqLoading(prev => ({ ...prev, [profUid]: false }));
     }
   };
 
@@ -333,13 +392,16 @@ export default function Professores() {
             const nearby = isNearby(prof);
             const distanceKm = getProfessorDistance(prof);
             const locationText = [prof.academyCity, prof.academyState].filter(Boolean).join(' · ');
+            const isLinked = linkedProfUids.has(prof.uid);
 
             return (
               <article
                 key={prof.uid}
                 className="bjj-card"
+                onClick={isLinked ? () => setSelectedProf(prof) : undefined}
                 style={{
                   padding: 0,
+                  cursor: isLinked ? 'pointer' : 'default',
                   overflow: 'hidden',
                   borderLeft: `3px solid ${sameAcademy || currentProfessor ? '#CC0000' : '#1A6ECC'}`,
                   borderColor: sameAcademy || currentProfessor ? '#CC000066' : '#1E1E1E',
@@ -373,9 +435,16 @@ export default function Professores() {
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.05rem', color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.03em', lineHeight: 1.05, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {prof.name || 'Professor'}
                         </p>
-                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.74rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '0.2rem' }}>
-                          Mestre BJJRats
-                        </p>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.74rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                            Mestre BJJRats
+                          </p>
+                          {isLinked && (
+                            <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#4CAF50', background: '#0A1A0A', border: '1px solid #1A4A1A', padding: '0.1rem 0.35rem' }}>
+                              VINCULADO
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {(currentProfessor || sameAcademy || distanceKm !== null || nearby) && (
                         <span style={{
@@ -429,7 +498,7 @@ export default function Professores() {
                   })}
                 </div>
 
-                {prof.trialRequestsEnabled !== false && (
+                {prof.trialRequestsEnabled !== false && !trialRequested.has(prof.uid) && !isLinked && (
                   <div style={{ borderTop: '1px solid #1E1E1E', padding: '0.75rem' }}>
                     <button
                       type="button"
@@ -454,14 +523,99 @@ export default function Professores() {
                         opacity: requestingTrial === prof.uid ? 0.65 : 1,
                       }}
                     >
-                      {requestingTrial === prof.uid ? 'SOLICITANDO...' : <><CalendarPlus size={16} /> SOLICITAR AULA GRATIS</>}
+                      {requestingTrial === prof.uid ? 'SOLICITANDO...' : <><CalendarPlus size={16} /> SOLICITAR AULA GRÁTIS</>}
                     </button>
+                  </div>
+                )}
+                {prof.trialRequestsEnabled !== false && trialRequested.has(prof.uid) && !isLinked && (
+                  <div style={{ borderTop: '1px solid #1E1E1E', padding: '0.6rem 0.75rem', textAlign: 'center' }}>
+                    <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#0D9E6E', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      ✅ AULA GRÁTIS SOLICITADA
+                    </span>
+                  </div>
+                )}
+
+                {/* Botão de vínculo ao professor particular */}
+                {!sameAcademy && !currentProfessor && (
+                  <div style={{ borderTop: '1px solid #1E1E1E', padding: '0.75rem' }}>
+                    {isProfLinked(prof) ? (
+                      <div style={{
+                        background: '#0A1A0A',
+                        border: '1px solid #4CAF50',
+                        color: '#4CAF50',
+                        fontFamily: 'Barlow Condensed, sans-serif',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        padding: '0.55rem 0.75rem',
+                        textAlign: 'center',
+                      }}>
+                        ✅ JÁ É UM DISCÍPULO
+                      </div>
+                    ) : profRequests.has(prof.uid) ? (
+                      <div style={{
+                        background: '#1A1400',
+                        border: '1px solid #FF8C00',
+                        color: '#FF8C00',
+                        fontFamily: 'Barlow Condensed, sans-serif',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        padding: '0.55rem 0.75rem',
+                        textAlign: 'center',
+                      }}>
+                        ⏳ AGUARDANDO APROVAÇÃO
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleRequestProfessor(prof.uid)}
+                        disabled={profReqLoading[prof.uid]}
+                        style={{
+                          background: profReqLoading[prof.uid] ? '#1A1A1A' : '#CC0000',
+                          border: 'none',
+                          color: '#FFF',
+                          fontFamily: 'Barlow Condensed, sans-serif',
+                          fontWeight: 900,
+                          fontSize: '0.82rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.08em',
+                          padding: '0.7rem 0.75rem',
+                          cursor: profReqLoading[prof.uid] ? 'wait' : 'pointer',
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.4rem',
+                          opacity: profReqLoading[prof.uid] ? 0.65 : 1,
+                        }}
+                      >
+                        {profReqLoading[prof.uid] ? 'ENVIANDO...' : <><GraduationCap size={16} /> TORNE-SE UM DISCÍPULO</>}
+                      </button>
+                    )}
                   </div>
                 )}
               </article>
             );
           })}
         </div>
+      )}
+
+      {/* Modal do professor vinculado */}
+      {selectedProf && (
+        <ProfessorStudentModal
+          professor={{
+            uid: selectedProf.uid,
+            name: selectedProf.name,
+            photo: selectedProf.professorPhotoUrl || selectedProf.photo,
+            academy: selectedProf.academy,
+            academyName: selectedProf.academyName,
+            phone: selectedProf.phone,
+          }}
+          onClose={() => setSelectedProf(null)}
+        />
       )}
     </motion.div>
   );

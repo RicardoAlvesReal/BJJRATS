@@ -5,6 +5,18 @@
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
+function resolveApiAssetUrl(value: string | null | undefined): string | null | undefined {
+  if (!value) return value;
+  if (/^(https?:|data:|blob:)/i.test(value)) return value;
+  if (!value.startsWith('/')) return value;
+  if (!BASE) return value;
+  try {
+    return new URL(value, BASE).toString();
+  } catch {
+    return value;
+  }
+}
+
 function getToken(): string | null {
   return localStorage.getItem('bjjrats_token');
 }
@@ -34,6 +46,20 @@ async function apiFetch<T>(urlPath: string, options: RequestInit = {}): Promise<
     throw err;
   }
   return res.json() as Promise<T>;
+}
+
+function normalizeTrainingPhoto<T extends Record<string, any>>(row: T): T {
+  const photo = resolveApiAssetUrl(row.trainingPhotoUrl ?? row.trainingPhoto);
+  if (photo === undefined) return row;
+  return {
+    ...row,
+    trainingPhoto: photo,
+    trainingPhotoUrl: photo,
+  };
+}
+
+function normalizeTrainingList<T extends Record<string, any>>(rows: T[]): T[] {
+  return rows.map(normalizeTrainingPhoto);
 }
 
 // ─── Tipos mínimos usados no cliente ─────────────────────────────────────────
@@ -110,6 +136,8 @@ export interface Training {
   type: string;
   notes?: string;
   xp?: number;
+  trainingPhoto?: string | null;
+  trainingPhotoUrl?: string | null;
   createdAt?: string;
 }
 
@@ -221,10 +249,11 @@ export interface Payment {
   month: string;
   amount: number;
   paid?: boolean;
-  status?: 'pending' | 'paid' | 'overdue' | 'suspended';
+  status?: 'pending' | 'paid' | 'overdue' | 'pending_approval';
   paidAt?: string;
   dueDate?: string;
   pixKey?: string;
+  receiptUrl?: string;
   pixLink?: string;
   paymentLink?: string;
   paymentProvider?: 'manual' | 'asaas';
@@ -239,7 +268,13 @@ export interface Enrollment {
   id: string;
   studentUid: string;
   professorUid: string;
+  studentName?: string;
+  professorName?: string;
+  academyName?: string;
   academyId?: string;
+  monthlyFee?: number;
+  dueDay?: number;
+  pixKey?: string;
   status?: string;
   createdAt?: string;
 }
@@ -688,12 +723,12 @@ export const users = {
 // ─── Trainings ────────────────────────────────────────────────────────────────
 
 export const trainings = {
-  list: (uid?: string) => apiFetch<Training[]>(`/api/trainings${uid ? `?uid=${uid}` : ''}`),
-  get: (id: string) => apiFetch<Training>(`/api/trainings/${id}`),
+  list: async (uid?: string) => normalizeTrainingList(await apiFetch<Training[]>(`/api/trainings${uid ? `?uid=${uid}` : ''}`)),
+  get: async (id: string) => normalizeTrainingPhoto(await apiFetch<Training>(`/api/trainings/${id}`)),
   create: (data: Omit<Training, 'id' | 'createdAt'>) =>
-    apiFetch<Training>('/api/trainings', { method: 'POST', body: JSON.stringify(data) }),
+    apiFetch<Training>('/api/trainings', { method: 'POST', body: JSON.stringify(data) }).then(normalizeTrainingPhoto),
   update: (id: string, data: Partial<Training>) =>
-    apiFetch<Training>(`/api/trainings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    apiFetch<Training>(`/api/trainings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }).then(normalizeTrainingPhoto),
   delete: (id: string) => apiFetch<{ success: boolean }>(`/api/trainings/${id}`, { method: 'DELETE' }),
 };
 
@@ -792,6 +827,10 @@ export const payments = {
     apiFetch<Payment>('/api/payments', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: Partial<Payment>) =>
     apiFetch<Payment>(`/api/payments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  asaasCheckout: (id: string) =>
+    apiFetch<{ invoiceUrl?: string; pixQrCode?: { encodedImage: string; payload: string }; billingType: string }>(`/api/payments/${id}/asaas-checkout`, { method: 'POST' }),
+  asaasStatus: (professorUid: string) =>
+    apiFetch<{ configured: boolean; billingType?: string }>(`/api/payments/asaas-status?professorUid=${encodeURIComponent(professorUid)}`),
 };
 
 // ─── Enrollments ──────────────────────────────────────────────────────────────
@@ -842,6 +881,21 @@ export const enrollments = {
   update: (id: string, data: Partial<Enrollment>) =>
     apiFetch<Enrollment>(`/api/enrollments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id: string) => apiFetch<{ success: boolean }>(`/api/enrollments/${id}`, { method: 'DELETE' }),
+  asaasSubscribe: (id: string) =>
+    apiFetch<{ invoiceUrl?: string; subscriptionId?: string; billingType: string }>(`/api/enrollments/${id}/asaas-subscribe`, { method: 'POST' }),
+};
+
+// ─── Booked Slots ────────────────────────────────────────────────────────────
+
+export const bookedSlots = {
+  list: (params: { professorUid?: string; studentUid?: string } = {}) => {
+    const q = new URLSearchParams(params as Record<string, string>).toString();
+    return apiFetch<any[]>(`/api/booked-slots${q ? `?${q}` : ''}`);
+  },
+  create: (data: { professorUid: string; scheduleId?: string; date: string; time: string; notes?: string; className?: string; studentName?: string }) =>
+    apiFetch<any>('/api/booked-slots', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: { status: 'cancelled' | 'completed' }) =>
+    apiFetch<any>(`/api/booked-slots/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 };
 
 // ─── Academy Requests ─────────────────────────────────────────────────────────
@@ -857,11 +911,26 @@ export const academyRequests = {
     apiFetch<AcademyRequest>(`/api/academy-requests/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 };
 
+// ─── Professor Requests ───────────────────────────────────────────────────────
+
+export const professorRequests = {
+  list: (params: { professorUid?: string; studentUid?: string } = {}) => {
+    const q = new URLSearchParams(params as Record<string, string>).toString();
+    return apiFetch<any[]>(`/api/professor-requests${q ? `?${q}` : ''}`);
+  },
+  create: (data: { professorUid: string }) =>
+    apiFetch<any>('/api/professor-requests', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: { status: 'accepted' | 'rejected' }) =>
+    apiFetch<any>(`/api/professor-requests/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+};
+
 // ─── Classes ──────────────────────────────────────────────────────────────────
 
 export const classes = {
-  listSchedules: (academyId?: string) =>
-    apiFetch<ClassSchedule[]>(`/api/classes/schedules${academyId ? `?academyId=${academyId}` : ''}`),
+  listSchedules: (params?: { academyId?: string; professorUid?: string }) => {
+    const q = new URLSearchParams(params as Record<string, string>).toString();
+    return apiFetch<ClassSchedule[]>(`/api/classes/schedules${q ? `?${q}` : ''}`);
+  },
   createSchedule: (data: Omit<ClassSchedule, 'id'>) =>
     apiFetch<ClassSchedule>('/api/classes/schedules', { method: 'POST', body: JSON.stringify(data) }),
   updateSchedule: (id: string, data: Partial<ClassSchedule>) =>
@@ -1001,7 +1070,7 @@ export const upload = {
       body: form,
       headers: {} as Record<string, string>,
     });
-    return res.url;
+    return resolveApiAssetUrl(res.url) || res.url;
   },
 };
 
@@ -1119,6 +1188,8 @@ const api = {
   paymentIntegrations,
   enrollments,
   academyRequests,
+  professorRequests,
+  bookedSlots,
   subscriptions,
   classes,
   promotions,

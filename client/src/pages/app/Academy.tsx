@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import AcademySearch from './AcademySearch';
 import RankingList from '@/components/RankingList';
 import { getEventLocationLabel } from '@/lib/eventLocation';
+import { AlertTriangle, Loader2, LogOut, X } from 'lucide-react';
 
 type AcademyTab = 'feed' | 'events' | 'challenges' | 'members' | 'ranking' | 'horarios' | 'financeiro';
 
@@ -75,19 +76,23 @@ interface AcademyEvent {
 
 interface AcademyChallenge {
   id: string;
-  uid: string;
+  creatorUid?: string;
+  academyId?: string;
   title: string;
-  metric: string;
-  startDate: string;
-  endDate: string;
-  prize?: string;
-  participants?: string[];
+  description?: string;
+  target?: number;
+  unit?: string;
+  startDate?: string;
+  endDate?: string;
+  mediaUrl?: string;
+  participants?: any[];  // [{uid, progress}]
   createdAt?: any;
 }
 
 interface Member {
   uid: string;
   name: string;
+  role?: string;
   belt: string;
   stripes?: number;
   xp?: number;
@@ -134,31 +139,41 @@ interface FinEnrollment {
   academyName: string;
   monthlyFee: number;
   dueDay: number;
-  status: 'active' | 'suspended' | 'cancelled';
+  status: 'active' | 'suspended' | 'cancelled' | 'rejected';
   pixKey?: string;
 }
+function isOpenEnrollmentStatus(status: FinEnrollment['status'] | string | null | undefined): boolean {
+  const normalized = String(status || '').toLowerCase();
+  return normalized !== 'cancelled' && normalized !== 'rejected';
+}
 const FIN_STATUS_CONFIG = {
-  pending:   { label: 'PENDENTE',   color: '#FF8C00', bg: '#1A0F00' },
-  overdue:   { label: 'ATRASADO',   color: '#CC0000', bg: '#1A0000' },
-  paid:      { label: 'PAGO',       color: '#4CAF50', bg: '#0A1A0A' },
-  suspended: { label: 'SUSPENSO',   color: '#888',    bg: '#111' },
+  pending:          { label: 'PENDENTE',   color: '#FF8C00', bg: '#1A0F00' },
+  overdue:          { label: 'ATRASADO',   color: '#CC0000', bg: '#1A0000' },
+  paid:             { label: 'PAGO',       color: '#4CAF50', bg: '#0A1A0A' },
+  pending_approval: { label: 'AGUARDANDO', color: '#1A6ECC', bg: '#0A1020' },
+  suspended:        { label: 'SUSPENSO',   color: '#888',    bg: '#111' },
 } as const;
-function finFormatDate(ts: { seconds: number } | null): string {
+function finFormatDate(ts: { seconds: number } | string | null): string {
   if (!ts) return '—';
-  return new Date(ts.seconds * 1000).toLocaleDateString('pt-BR');
+  const date = typeof ts === 'string' ? new Date(ts + 'T00:00:00') : new Date(ts.seconds * 1000);
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('pt-BR');
 }
 function finFormatCurrency(val: number): string {
   return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export default function Academy() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, updateProfileData } = useAuth();
   const [activeTab, setActiveTab] = useState<AcademyTab>('feed');
   const [showSearch, setShowSearch] = useState(false);
+  const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
+  const [unlinkingAcademy, setUnlinkingAcademy] = useState(false);
   // isAdmin = dono de academia/professor com permissao de gestao
   const isAdmin = profile?.role === 'academy' || profile?.isAcademyAdmin === true || profile?.role === 'professor';
   // Professor usa seu próprio UID como academyId; aluno usa o academyId do perfil
   const academyId = isAdmin ? (user?.uid || null) : (profile?.academyId || null);
+  const canUnlinkAcademy = !isAdmin && !!user?.uid && !!profile?.academyId;
 
   // Feed
   const [posts, setPosts] = useState<AcademyPost[]>([]);
@@ -190,6 +205,14 @@ export default function Academy() {
   const finPending = finPayments.filter(p => p.status === 'pending').length;
   const finAlert = finOverdue > 0 ? 'overdue' : finPending > 0 ? 'pending' : null;
 
+  // Asaas status
+  const [hasAsaas, setHasAsaas] = useState<boolean | null>(null);
+  const [finReceiptLoading, setFinReceiptLoading] = useState<string | null>(null);
+
+  // Professor requests (aluno solicita vínculo a professor particular)
+  const [profRequests, setProfRequests] = useState<Set<string>>(new Set());
+  const [profReqLoading, setProfReqLoading] = useState<Record<string, boolean>>({});
+
   // Comments
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [comments, setComments] = useState<Record<string, PostComment[]>>({});
@@ -205,6 +228,7 @@ export default function Academy() {
   const [showEventoModal, setShowEventoModal] = useState(false);
   const [showDesafioModal, setShowDesafioModal] = useState(false);
   const [showFaixaModal, setShowFaixaModal] = useState(false);
+  const [membersSubTab, setMembersSubTab] = useState<'alunos' | 'professores'>('alunos');
 
   // ─── Load Feed (onSnapshot para tempo real) ─────────────────────────────────────────────────
   const sortPosts = (docs: AcademyPost[]) => {
@@ -293,30 +317,116 @@ export default function Academy() {
     finally { setMembersLoading(false); }
   }, [academyId]);
 
+  // ─── Professor Requests ──────────────────────────────────────────────────────
+  const loadProfRequests = useCallback(async () => {
+    if (!user || !profile?.academyId) return;
+    try {
+      const rows = await api.professorRequests.list({ studentUid: user.uid }) as any[];
+      setProfRequests(new Set(rows.filter((r: any) => r.status === 'pending').map((r: any) => r.professorUid)));
+    } catch { /* ignore */ }
+  }, [user, profile?.academyId]);
+
+  const handleRequestProfessor = async (professorUid: string) => {
+    if (!user) return;
+    setProfReqLoading(prev => ({ ...prev, [professorUid]: true }));
+    try {
+      await api.professorRequests.create({ professorUid });
+      setProfRequests(prev => new Set(prev).add(professorUid));
+      toast.success('Solicitação enviada!');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao enviar solicitação');
+    } finally {
+      setProfReqLoading(prev => ({ ...prev, [professorUid]: false }));
+    }
+  };
+
+  const parseDueDate = (d: any): Date | null => {
+    if (!d) return null;
+    const raw = typeof d === 'string' ? d : (d.seconds ? new Date(d.seconds * 1000).toISOString().split('T')[0] : null);
+    if (!raw) return null;
+    return new Date(raw + 'T00:00:00');
+  };
+
   const loadFinanceiro = useCallback(async () => {
     if (!user) return;
     setFinLoading(true);
     try {
       const enrollList = await api.enrollments.list({ studentUid: user.uid }) as any[];
-      setFinEnrollments(enrollList);
+      // Filtra só matrículas da academia atual
+      setFinEnrollments(enrollList.filter((e: any) => e.professorUid === profile?.academyId));
       const payList = await api.payments.list({ studentUid: user.uid }) as any[];
       const now = new Date();
+      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
       const processed: FinPayment[] = payList
-        .sort((a: any, b: any) => ((b.dueDate as any)?.seconds || 0) - ((a.dueDate as any)?.seconds || 0))
+        .filter((p: any) => {
+          // Só mensalidades da academia (professor da academia), ignora professor particular
+          if (p.professorUid !== profile?.academyId) return false;
+          const due = parseDueDate(p.dueDate);
+          if (p.status !== 'paid' && due && due < ninetyDaysAgo) return false;
+          return true;
+        })
+        .sort((a: any, b: any) => {
+          const aDate = parseDueDate(a.dueDate);
+          const bDate = parseDueDate(b.dueDate);
+          return (bDate?.getTime() || 0) - (aDate?.getTime() || 0);
+        })
+        // Dedup: mantém apenas 1 pagamento por professor+data
+        .filter((p: any, _i: number, arr: any[]) => {
+          const key = `${p.professorUid}__${typeof p.dueDate === 'string' ? p.dueDate : (p.dueDate?.seconds || '')}`;
+          const first = arr.findIndex((x: any) => {
+            const xk = `${x.professorUid}__${typeof x.dueDate === 'string' ? x.dueDate : (x.dueDate?.seconds || '')}`;
+            return xk === key;
+          });
+          return _i === first;
+        })
         .map((data: any) => {
           if (data.status === 'pending' && data.dueDate) {
-            const due = new Date(data.dueDate.seconds * 1000);
-            if (due < now) data.status = 'overdue';
+            const due = parseDueDate(data.dueDate);
+            if (due && due < now) data.status = 'overdue';
           }
           return data;
         });
       setFinPayments(processed);
+      // Verifica Asaas
+      if (profile?.academyId) {
+        try {
+          const status = await api.payments.asaasStatus(profile.academyId);
+          setHasAsaas(status.configured);
+        } catch { setHasAsaas(false); }
+      }
     } catch (err) {
       console.error('[Academy] Erro ao carregar financeiro:', err);
     } finally {
       setFinLoading(false);
     }
   }, [user]);
+
+  const handleUnlinkAcademy = async () => {
+    if (!user || !profile?.academyId) return;
+    setUnlinkingAcademy(true);
+    try {
+      const enrollments = await api.enrollments.list({ studentUid: user.uid }) as any[];
+      const openEnrollments = enrollments.filter((enrollment) => {
+        const status = String(enrollment.status || '').toLowerCase();
+        return enrollment.professorUid === profile.academyId && isOpenEnrollmentStatus(status);
+      });
+      await Promise.all(openEnrollments.map((enrollment) => (
+        api.enrollments.update(enrollment.id, { status: 'cancelled' })
+      )));
+      await updateProfileData({ academyId: '', academy: '', professor: '' });
+      await refreshProfile();
+      setFinEnrollments(prev => prev.map(enrollment => (
+        enrollment.professorUid === profile.academyId ? { ...enrollment, status: 'cancelled' } : enrollment
+      )));
+      setShowUnlinkConfirm(false);
+      toast.success('Você saiu da academia. Mensalidades em aberto continuam no financeiro.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao desvincular da academia');
+    } finally {
+      setUnlinkingAcademy(false);
+    }
+  };
 
   useEffect(() => {
     const unsub = loadPosts();
@@ -354,16 +464,25 @@ export default function Academy() {
   useEffect(() => {
     if (activeTab === 'events') loadEvents();
     if (activeTab === 'challenges') loadChallenges();
-    if (activeTab === 'members') loadMembers();
+    if (activeTab === 'members') { loadMembers(); loadProfRequests(); }
     if (activeTab === 'financeiro') loadFinanceiro();
   }, [activeTab, loadEvents, loadChallenges, loadMembers, loadFinanceiro]);
 
   // ─── Join/Leave Challenge ────────────────────────────────────────────────────
   const handleJoinChallenge = async (challenge: AcademyChallenge) => {
     if (!user) return;
-    const participants = challenge.participants || [];
-    const joined = participants.includes(user.uid);
-    const updated = joined ? participants.filter(id => id !== user.uid) : [...participants, user.uid];
+    const participants: any[] = challenge.participants || [];
+    const joined = participants.some((p: any) => (typeof p === 'string' ? p : p.uid) === user.uid);
+
+    let updated: any[];
+    if (joined) {
+      // Sai do desafio
+      updated = participants.filter((p: any) => (typeof p === 'string' ? p : p.uid) !== user.uid);
+    } else {
+      // Entra no desafio
+      updated = [...participants, { uid: user.uid, progress: 0 }];
+    }
+
     try {
       await api.challenges.update(challenge.id, { participants: updated });
       setChallenges(prev => prev.map(c => c.id === challenge.id ? { ...c, participants: updated } : c));
@@ -472,6 +591,9 @@ export default function Academy() {
   };
 
   const { loading: authLoading } = useAuth();
+  const openFinEnrollments = finEnrollments.filter(enroll =>
+    isOpenEnrollmentStatus(enroll.status) && enroll.professorUid === profile?.academyId
+  );
 
   if (showSearch) {
     return (
@@ -502,8 +624,8 @@ export default function Academy() {
     <div style={{ background: '#0A0A0A', minHeight: '100vh', paddingBottom: '5rem' }}>
       {/* Header */}
       <div className="bjj-header" style={{ background: '#0A0A0A', borderBottom: '1px solid #1E1E1E', padding: '1rem 1.25rem 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', minWidth: 0, flex: 1 }}>
             {/* Logo da academia */}
             {(() => {
               const logoUrl = (profile as any)?.academyLogoUrl || (profile as any)?.academyLogo || '';
@@ -519,16 +641,48 @@ export default function Academy() {
                 </div>
               );
             })()}
-            <div>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <h1 className="bjj-header-title" style={{ lineHeight: 1 }}>
                 {profile?.academy || 'ACADEMIA'}
               </h1>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', textTransform: 'uppercase', color: '#555', letterSpacing: '0.1em' }}>
-                {members.length > 0 ? `${members.length} membros` : 'Sua academia'}
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', textTransform: 'uppercase', color: '#555', letterSpacing: '0.1em', margin: 0 }}>
+                  {members.length > 0 ? `${members.length} membros` : 'Sua academia'}
+                </p>
+                {canUnlinkAcademy && (
+                  <button
+                    onClick={() => setShowUnlinkConfirm(true)}
+                    disabled={unlinkingAcademy}
+                    title="Desvincular desta academia"
+                    style={{
+                      height: '28px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.35rem',
+                      background: unlinkingAcademy ? '#121212' : '#160A0A',
+                      border: `1px solid ${unlinkingAcademy ? '#2A2A2A' : '#3A1515'}`,
+                      color: unlinkingAcademy ? '#666' : '#E45A5A',
+                      borderRadius: '6px',
+                      fontFamily: 'Barlow Condensed, sans-serif',
+                      fontWeight: 900,
+                      fontSize: '0.68rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.07em',
+                      padding: '0 0.65rem',
+                      cursor: unlinkingAcademy ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxShadow: unlinkingAcademy ? 'none' : 'inset 0 0 0 1px rgba(255,255,255,0.03)',
+                      transition: 'background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease',
+                    }}
+                  >
+                    {unlinkingAcademy ? <Loader2 size={13} style={{ animation: 'spin 0.8s linear infinite' }} /> : <LogOut size={13} strokeWidth={2.5} />}
+                    {unlinkingAcademy ? 'Saindo' : 'Sair'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-
         </div>
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any, scrollbarWidth: 'none' as any }}>
@@ -773,17 +927,21 @@ export default function Academy() {
               const locationLabel = getEventLocationLabel(event);
               const handleToggleRegistration = async () => {
                 if (!user || !profile) return;
-                if (isRegistered) {
-                  const newRegs = (event.registrations || []).filter(id => id !== user.uid);
-                  await api.events.update(event.id, { registrations: newRegs });
-                  setEvents(prev => prev.map(e => e.id === event.id ? { ...e, registrations: newRegs } : e));
-                  toast.success('Inscrição cancelada');
-                } else {
-                  if (isFull) { toast.error('Evento lotado!'); return; }
-                  const newRegs = [...(event.registrations || []), user.uid];
-                  await api.events.update(event.id, { registrations: newRegs });
-                  setEvents(prev => prev.map(e => e.id === event.id ? { ...e, registrations: newRegs } : e));
-                  toast.success('Inscrição confirmada! ✅');
+                try {
+                  if (isRegistered) {
+                    const newRegs = (event.registrations || []).filter(id => id !== user.uid);
+                    const updated = await api.events.update(event.id, { registrations: newRegs }) as any;
+                    setEvents(prev => prev.map(e => e.id === event.id ? { ...e, registrations: updated.registrations || newRegs, registrationNames: updated.registrationNames || e.registrationNames, registrationBelts: updated.registrationBelts || e.registrationBelts } : e));
+                    toast.success('Inscrição cancelada');
+                  } else {
+                    if (isFull) { toast.error('Evento lotado!'); return; }
+                    const newRegs = [...(event.registrations || []), user.uid];
+                    const updated = await api.events.update(event.id, { registrations: newRegs }) as any;
+                    setEvents(prev => prev.map(e => e.id === event.id ? { ...e, registrations: updated.registrations || newRegs, registrationNames: updated.registrationNames || e.registrationNames, registrationBelts: updated.registrationBelts || e.registrationBelts } : e));
+                    toast.success('Inscrição confirmada!');
+                  }
+                } catch (err: any) {
+                  toast.error(err?.message || 'Erro ao atualizar inscrição');
                 }
               };
               return (
@@ -864,18 +1022,50 @@ export default function Academy() {
             </div>
           ) : (
             challenges.map(challenge => {
-              const joined = user ? (challenge.participants || []).includes(user.uid) : false;
-              const count = (challenge.participants || []).length;
+              const participants: any[] = challenge.participants || [];
+              const joined = user ? participants.some((p: any) => (typeof p === 'string' ? p : p.uid) === user.uid) : false;
+              const count = participants.length;
+              const target = challenge.target || 0;
+              const unit = challenge.unit || 'treinos';
+              const unitLabel = unit === 'treinos' ? 'treinos' : unit;
+              const myProgress = joined ? (participants.find((p: any) => (typeof p === 'string' ? p : p.uid) === user.uid)?.progress ?? 0) : 0;
+              const progressPct = target > 0 ? Math.min(100, Math.round((myProgress / target) * 100)) : 0;
               return (
                 <div key={challenge.id} style={{ background: '#111', border: `1px solid ${joined ? '#CC0000' : '#1E1E1E'}`, padding: '1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                     <h3 style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', color: '#FFFFFF' }}>{challenge.title}</h3>
                     <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', color: '#CC0000' }}>{count} participantes</span>
                   </div>
-                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', textTransform: 'uppercase', color: '#888', marginBottom: '0.5rem' }}>
-                    📊 {challenge.metric} · {challenge.startDate} → {challenge.endDate}
-                  </p>
-                  {challenge.prize && <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', textTransform: 'uppercase', color: '#FFD700', marginBottom: '0.75rem' }}>🏆 {challenge.prize}</p>}
+                  {target > 0 && (
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.85rem', color: '#CCC', marginBottom: '0.25rem' }}>
+                      ⚔️ Complete {target} {unitLabel}
+                    </p>
+                  )}
+                  {challenge.description && (
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#666', marginBottom: '0.5rem', lineHeight: 1.4 }}>
+                      {challenge.description}
+                    </p>
+                  )}
+                  {challenge.startDate && challenge.endDate && (
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#555', marginBottom: '0.5rem' }}>
+                      📅 {challenge.startDate} → {challenge.endDate}
+                    </p>
+                  )}
+                  <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#FFD700', marginBottom: '0.5rem' }}>🏆 Recompensa: +30 XP</p>
+                  {joined && target > 0 && (
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#888' }}>Seu progresso: {myProgress}/{target}</span>
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: progressPct >= 100 ? '#4CAF50' : '#888' }}>{progressPct}%</span>
+                      </div>
+                      <div style={{ background: '#1E1E1E', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ background: progressPct >= 100 ? '#4CAF50' : '#CC0000', height: '100%', width: `${progressPct}%`, transition: 'width 0.3s' }} />
+                      </div>
+                    </div>
+                  )}
+                  {joined && progressPct >= 100 && (
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#4CAF50', textTransform: 'uppercase', marginBottom: '0.5rem' }}>✅ Desafio concluído! +30 XP</p>
+                  )}
                   <button onClick={() => handleJoinChallenge(challenge)} style={{ background: joined ? '#1E1E1E' : '#CC0000', color: joined ? '#CC0000' : '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.5rem 1rem', border: `1px solid ${joined ? '#CC0000' : '#CC0000'}`, cursor: 'pointer', width: '100%' }}>
                     {joined ? 'SAIR DO DESAFIO' : 'PARTICIPAR'}
                   </button>
@@ -889,16 +1079,72 @@ export default function Academy() {
       {/* ─── Members Tab ──────────────────────────────────────────────────────── */}
       {activeTab === 'members' && (
         <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {/* Sub-tabs */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            {(() => {
+              const alunoCount = members.filter(m => m.role !== 'professor' && !m.isAcademyAdmin).length;
+              const profCount = members.filter(m => m.role === 'professor' || m.isAcademyAdmin).length;
+              return (['alunos', 'professores'] as const).map(sub => (
+                <button
+                  key={sub}
+                  onClick={() => setMembersSubTab(sub)}
+                  style={{
+                    flex: 1,
+                    background: membersSubTab === sub ? '#CC0000' : '#111',
+                    border: membersSubTab === sub ? 'none' : '1px solid #2A2A2A',
+                    color: '#FFF',
+                    fontFamily: 'Barlow Condensed, sans-serif',
+                    fontWeight: 700,
+                    fontSize: '0.75rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <span>{sub === 'alunos' ? '🥋 ALUNOS' : '👨‍🏫 PROFESSORES'}</span>
+                  <span style={{
+                    background: membersSubTab === sub ? 'rgba(255,255,255,0.2)' : '#2A2A2A',
+                    color: membersSubTab === sub ? '#FFF' : '#777',
+                    fontSize: '0.7rem',
+                    fontWeight: 900,
+                    padding: '0.15rem 0.45rem',
+                    borderRadius: '999px',
+                    minWidth: '1.4rem',
+                    textAlign: 'center',
+                  }}>
+                    {sub === 'alunos' ? alunoCount : profCount}
+                  </span>
+                </button>
+              ));
+            })()}
+          </div>
+
           {membersLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#444', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase' }}>CARREGANDO...</div>
-          ) : members.length === 0 ? (
-            <div className="bjj-card !text-center" style={{ padding: '2.5rem' }}>
-              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>NENHUM MEMBRO</p>
-            </div>
-          ) : (
-            members.map((member, i) => {
+          ) : (() => {
+            const filtered = membersSubTab === 'alunos'
+              ? members.filter(m => m.role !== 'professor' && !m.isAcademyAdmin)
+              : members.filter(m => m.role === 'professor' || m.isAcademyAdmin);
+            if (filtered.length === 0) return (
+              <div className="bjj-card !text-center" style={{ padding: '2.5rem' }}>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1rem', textTransform: 'uppercase', color: '#555' }}>
+                  NENHUM {membersSubTab === 'alunos' ? 'ALUNO' : 'PROFESSOR'}
+                </p>
+              </div>
+            );
+            return filtered.map((member, i) => {
               const beltColor = BELT_COLORS[member.belt] || '#FFFFFF';
               const isMe = user?.uid === member.uid;
+              const isProfTab = membersSubTab === 'professores';
+              const isPrivateProf = isProfTab && !member.isAcademyAdmin;
+              const pendingReq = profRequests.has(member.uid);
+              const reqLoading = profReqLoading[member.uid];
+              const canRequest = isPrivateProf && !isMe && !pendingReq;
               return (
                 <div key={member.uid} style={{ background: isMe ? '#140000' : '#111', border: `1px solid ${isMe ? '#CC0000' : '#1E1E1E'}`, padding: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
                   <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#444', minWidth: '1.5rem', textAlign: 'center' }}>
@@ -921,14 +1167,48 @@ export default function Academy() {
                       Faixa {member.belt} · {member.totalTrainings || 0} treinos
                     </p>
                   </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#CC0000', lineHeight: 1 }}>{member.xp || 0}</p>
-                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', textTransform: 'uppercase', color: '#444' }}>XP</p>
-                  </div>
+                  {isProfTab ? (
+                    <div style={{ flexShrink: 0 }}>
+                      {canRequest ? (
+                        <button
+                          onClick={() => handleRequestProfessor(member.uid)}
+                          disabled={reqLoading}
+                          style={{
+                            background: '#CC0000',
+                            border: 'none',
+                            color: '#FFF',
+                            fontFamily: 'Barlow Condensed, sans-serif',
+                            fontWeight: 700,
+                            fontSize: '0.65rem',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.06em',
+                            padding: '0.4rem 0.75rem',
+                            cursor: reqLoading ? 'wait' : 'pointer',
+                            opacity: reqLoading ? 0.6 : 1,
+                          }}
+                        >
+                          {reqLoading ? '...' : 'DISCÍPULO'}
+                        </button>
+                      ) : pendingReq ? (
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', color: '#FF8C00', letterSpacing: '0.05em' }}>
+                          AGUARDANDO
+                        </span>
+                      ) : member.isAcademyAdmin ? (
+                        <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', color: '#444', letterSpacing: '0.05em' }}>
+                          ADMIN
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#CC0000', lineHeight: 1 }}>{member.xp || 0}</p>
+                      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', textTransform: 'uppercase', color: '#444' }}>XP</p>
+                    </div>
+                  )}
                 </div>
               );
             })
-          )}
+          })()}
         </div>
       )}
 
@@ -944,8 +1224,14 @@ export default function Academy() {
 
       {/* ─── HORÁRIOS Tab ───────────────────────────────────────────── */}
       {activeTab === 'horarios' && (
-        <div style={{ padding: '1rem 1.25rem' }}>
+        <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <AcademyScheduleView professorUid={academyId} userId={user?.uid || ''} userProfile={profile} />
+          {user?.uid && academyId && (
+            <>
+              <AcademyBookForm professorUid={academyId} userId={user.uid} />
+              <AcademyBookedSlots studentUid={user.uid} professorUid={academyId} />
+            </>
+          )}
         </div>
       )}
 
@@ -954,10 +1240,10 @@ export default function Academy() {
       {activeTab === 'financeiro' && (
         <div style={{ padding: '1.25rem', paddingBottom: '5rem' }}>
           {/* Matrículas ativas */}
-          {finEnrollments.length > 0 && (
+          {openFinEnrollments.length > 0 && (
             <div style={{ marginBottom: '1.5rem' }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#666', marginBottom: '0.75rem' }}>ACADEMIA VINCULADA</p>
-              {finEnrollments.map(enroll => (
+              {openFinEnrollments.map(enroll => (
                 <div key={enroll.id} style={{ background: '#111', border: `1px solid ${enroll.status === 'active' ? '#1A4A1A' : enroll.status === 'suspended' ? '#3A1A00' : '#333'}`, padding: '1rem', marginBottom: '0.75rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                     <div>
@@ -992,8 +1278,122 @@ export default function Academy() {
                       <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#FF8C00', margin: 0 }}>⚠️ Sua matrícula está suspensa. Entre em contato com seu professor para regularizar.</p>
                     </div>
                   )}
+                  {/* ATIVAR COBRANÇA RECORRENTE */}
+                  {enroll.status === 'active' && (enroll.monthlyFee || 0) > 0 && (
+                    <div style={{ marginTop: '0.75rem', borderTop: '1px solid #1E1E1E', paddingTop: '0.75rem' }}>
+                      <button
+                        onClick={async () => {
+                          if (!hasAsaas) return;
+                          try {
+                            const result = await api.enrollments.asaasSubscribe(enroll.id);
+                            if (result.invoiceUrl) window.open(result.invoiceUrl, '_blank', 'noopener,noreferrer');
+                            toast.success('Assinatura criada! Após o primeiro pagamento, as cobranças serão automáticas.');
+                          } catch (err: any) {
+                            toast.error(err?.message || 'Erro ao configurar assinatura');
+                          }
+                        }}
+                        disabled={hasAsaas === false}
+                        style={{
+                          width: '100%',
+                          background: hasAsaas === false ? '#1A1A1A' : '#CC0000',
+                          border: hasAsaas === false ? '1px solid #333' : 'none',
+                          color: hasAsaas === false ? '#555' : '#FFF',
+                          fontFamily: 'Barlow Condensed, sans-serif',
+                          fontWeight: 900,
+                          fontSize: '0.72rem',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          padding: '0.5rem',
+                          cursor: hasAsaas === false ? 'not-allowed' : 'pointer',
+                          opacity: hasAsaas === false ? 0.5 : 1,
+                        }}
+                      >
+                        {hasAsaas === false ? '🔒 COBRANÇA RECORRENTE INDISPONÍVEL' : '🔄 ATIVAR COBRANÇA RECORRENTE'}
+                      </button>
+                      <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.6rem', color: '#555', textAlign: 'center', marginTop: '0.3rem' }}>
+                        {hasAsaas === false ? 'A academia ainda não ativou a cobrança online.' : 'Cadastre seu cartão uma vez e esqueça.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Cobranças da Academia ── */}
+          {finPayments.length > 0 && (
+            <div style={{ marginBottom: '2rem' }}>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#CC0000', marginBottom: '0.75rem' }}>
+                🏫 MENSALIDADES — {profile?.academy || 'ACADEMIA'}
+              </p>
+              {finPayments.map(pay => {
+                const cfg = FIN_STATUS_CONFIG[pay.status] || FIN_STATUS_CONFIG.pending;
+                const isPending = pay.status === 'pending';
+                const isPendingApproval = pay.status === 'pending_approval';
+                const isOverdue = pay.status === 'overdue';
+                return (
+                  <div key={pay.id} style={{ background: '#111', border: '1px solid #222', borderLeft: `3px solid ${cfg.color}`, padding: '1rem', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                      <div>
+                        <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', color: '#FFFFFF', margin: 0 }}>{finFormatCurrency(pay.amount)}</p>
+                        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#666', margin: '0.15rem 0 0' }}>
+                          Vencimento: {finFormatDate(pay.dueDate)}{pay.paidAt ? ` · Pago em: ${finFormatDate(pay.paidAt)}` : ''}
+                        </p>
+                      </div>
+                      <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.2rem 0.5rem', background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}` }}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                    {/* Ações: PAGAR ONLINE + ANEXAR COMPROVANTE */}
+                    {(isPending || isOverdue) && (
+                      <div style={{ marginTop: '0.4rem', borderTop: '1px solid #1E1E1E', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        <button
+                          onClick={async () => {
+                            setFinReceiptLoading(pay.id);
+                            try {
+                              const result = await api.payments.asaasCheckout(pay.id);
+                              if (result.invoiceUrl) window.open(result.invoiceUrl, '_blank', 'noopener,noreferrer');
+                              else if (result.pixQrCode?.payload) { await navigator.clipboard.writeText(result.pixQrCode.payload); toast.success('PIX copiado!'); }
+                              toast.success('Link de pagamento gerado!');
+                            } catch { /* fallback para comprovante */ }
+                            finally { setFinReceiptLoading(null); }
+                          }}
+                          disabled={finReceiptLoading === pay.id}
+                          style={{ width: '100%', background: finReceiptLoading === pay.id ? '#1A1A1A' : '#0A1A2A', border: '1px solid #1A6ECC', color: '#1A6ECC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.35rem', cursor: finReceiptLoading === pay.id ? 'wait' : 'pointer' }}
+                        >
+                          {finReceiptLoading === pay.id ? 'GERANDO...' : '💳 PAGAR ONLINE'}
+                        </button>
+                        <input type="file" accept="image/*,.pdf" id={`fin-receipt-${pay.id}`} style={{ display: 'none' }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setFinReceiptLoading(pay.id);
+                            try {
+                              const url = await api.upload.file(file, 'comprovantes');
+                              await api.payments.update(pay.id, { receiptUrl: url } as any);
+                              toast.success('Comprovante enviado!');
+                              loadFinanceiro();
+                            } catch (err: any) { toast.error(err?.message || 'Erro'); }
+                            finally { setFinReceiptLoading(null); }
+                          }}
+                        />
+                        <button onClick={() => document.getElementById(`fin-receipt-${pay.id}`)?.click()} disabled={finReceiptLoading === pay.id}
+                          style={{ width: '100%', background: finReceiptLoading === pay.id ? '#1A1A1A' : '#0A1A0A', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.35rem', cursor: finReceiptLoading === pay.id ? 'wait' : 'pointer' }}
+                        >
+                          {finReceiptLoading === pay.id ? 'ENVIANDO...' : '📎 ANEXAR COMPROVANTE'}
+                        </button>
+                      </div>
+                    )}
+                    {(pay as any).receiptUrl && (
+                      <div style={{ marginTop: '0.35rem' }}>
+                        <a href={(pay as any).receiptUrl} target="_blank" rel="noopener noreferrer" style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', color: '#1A6ECC', textTransform: 'uppercase', textDecoration: 'none' }}>
+                          📋 VER COMPROVANTE
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1025,7 +1425,7 @@ export default function Academy() {
             </div>
           )}
 
-          {/* Lista de cobranças */}
+          {/* Lista de cobranças (filtrada) */}
           {finLoading ? (
             <div style={{ textAlign: 'center', padding: '3rem 0' }}>
               <div style={{ width: '32px', height: '32px', border: '3px solid #333', borderTopColor: '#CC0000', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
@@ -1049,9 +1449,11 @@ export default function Academy() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {filtered.map(pay => {
                   const cfg = FIN_STATUS_CONFIG[pay.status] || FIN_STATUS_CONFIG.pending;
+                  const isPending = pay.status === 'pending';
+                  const isOverdue = pay.status === 'overdue';
                   return (
                     <div key={pay.id} style={{ background: '#111', border: '1px solid #222', borderLeft: `3px solid ${cfg.color}`, padding: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                         <div>
                           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', color: '#FFFFFF', margin: 0 }}>{finFormatCurrency(pay.amount)}</p>
                           <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#666', margin: '0.15rem 0 0' }}>
@@ -1062,14 +1464,48 @@ export default function Academy() {
                           {cfg.label}
                         </span>
                       </div>
-                      {(pay.status === 'pending' || pay.status === 'overdue') && pay.pixLink && (
-                        <button onClick={() => { /^https?:\/\//.test(pay.pixLink!) ? window.open(pay.pixLink!, '_blank', 'noopener,noreferrer') : navigator.clipboard.writeText(pay.pixLink!).then(() => toast.success('Chave PIX copiada!')); }} style={{ width: '100%', background: '#0A1A0A', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                          {/^https?:\/\//.test(pay.pixLink!) ? 'ABRIR LINK DE PAGAMENTO' : 'COPIAR CHAVE PIX PARA PAGAMENTO'}
-                        </button>
+                      {(isPending || isOverdue) && (
+                        <div style={{ marginTop: '0.4rem', borderTop: '1px solid #1E1E1E', paddingTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          <button onClick={async () => {
+                            setFinReceiptLoading(pay.id);
+                            try {
+                              const result = await api.payments.asaasCheckout(pay.id);
+                              if (result.invoiceUrl) window.open(result.invoiceUrl, '_blank', 'noopener,noreferrer');
+                              else if (result.pixQrCode?.payload) { await navigator.clipboard.writeText(result.pixQrCode.payload); toast.success('PIX copiado!'); }
+                            } catch { /* fallback */ }
+                            finally { setFinReceiptLoading(null); }
+                          }} disabled={finReceiptLoading === pay.id}
+                          style={{ width: '100%', background: finReceiptLoading === pay.id ? '#1A1A1A' : '#0A1A2A', border: '1px solid #1A6ECC', color: '#1A6ECC', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.35rem', cursor: finReceiptLoading === pay.id ? 'wait' : 'pointer' }}>
+                            {finReceiptLoading === pay.id ? 'GERANDO...' : '💳 PAGAR ONLINE'}
+                          </button>
+                          <input type="file" accept="image/*,.pdf" id={`fin-receipt2-${pay.id}`} style={{ display: 'none' }}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]; if (!file) return;
+                              setFinReceiptLoading(pay.id);
+                              try {
+                                const url = await api.upload.file(file, 'comprovantes');
+                                await api.payments.update(pay.id, { receiptUrl: url } as any);
+                                toast.success('Comprovante enviado!');
+                                loadFinanceiro();
+                              } catch (err: any) { toast.error(err?.message || 'Erro'); }
+                              finally { setFinReceiptLoading(null); }
+                            }}
+                          />
+                          <button onClick={() => document.getElementById(`fin-receipt2-${pay.id}`)?.click()} disabled={finReceiptLoading === pay.id}
+                          style={{ width: '100%', background: finReceiptLoading === pay.id ? '#1A1A1A' : '#0A1A0A', border: '1px solid #4CAF50', color: '#4CAF50', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.35rem', cursor: finReceiptLoading === pay.id ? 'wait' : 'pointer' }}>
+                            {finReceiptLoading === pay.id ? 'ENVIANDO...' : '📎 ANEXAR COMPROVANTE'}
+                          </button>
+                        </div>
                       )}
-                      {pay.status === 'overdue' && !pay.pixLink && (
-                        <div style={{ padding: '0.4rem 0.6rem', background: '#1A0000', border: '1px solid #CC0000' }}>
+                      {(pay as any).receiptUrl && (
+                        <div style={{ marginTop: '0.35rem' }}>
+                          <a href={(pay as any).receiptUrl} target="_blank" rel="noopener noreferrer" style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', color: '#1A6ECC', textTransform: 'uppercase', textDecoration: 'none' }}>
+                            📋 VER COMPROVANTE
+                          </a>
+                        </div>
+                      )}
+                      {isOverdue && (
+                        <div style={{ padding: '0.4rem 0.6rem', marginTop: '0.4rem', background: '#1A0000', border: '1px solid #CC0000' }}>
                           <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#CC0000', margin: 0 }}>⚠️ Entre em contato com seu professor para regularizar.</p>
                         </div>
                       )}
@@ -1081,11 +1517,15 @@ export default function Academy() {
           })()}
 
           {/* Estado vazio — sem matrícula */}
-          {!finLoading && finEnrollments.length === 0 && (
+          {!finLoading && openFinEnrollments.length === 0 && (
             <div style={{ textAlign: 'center', padding: '3rem 1rem', background: '#111', border: '1px solid #222' }}>
               <p style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🏫</p>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#444', textTransform: 'uppercase', letterSpacing: '0.06em' }}>NENHUMA ACADEMIA VINCULADA</p>
-              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', marginTop: '0.5rem', lineHeight: 1.5 }}>Peça ao seu professor para te vincular à academia ou acesse o link de convite enviado por ele.</p>
+              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', marginTop: '0.5rem', lineHeight: 1.5 }}>
+                {finPayments.length > 0
+                  ? 'Você não está vinculado a uma academia no momento. Cobranças antigas continuam disponíveis para regularização.'
+                  : 'Peça ao seu professor para te vincular à academia ou acesse o link de convite enviado por ele.'}
+              </p>
             </div>
           )}
         </div>
@@ -1109,6 +1549,83 @@ export default function Academy() {
       {showEventoModal && <EventoModal academyId={academyId} user={user} profile={profile} onClose={() => setShowEventoModal(false)} onSaved={() => { setShowEventoModal(false); loadEvents(); }} />}
       {showDesafioModal && <DesafioModal academyId={academyId} user={user} profile={profile} onClose={() => setShowDesafioModal(false)} onSaved={() => { setShowDesafioModal(false); loadChallenges(); }} />}
       {showFaixaModal && <FaixaModal academyId={academyId} user={user} profile={profile} members={members} onClose={() => setShowFaixaModal(false)} onSaved={() => { setShowFaixaModal(false); loadPosts(); }} />}
+      <AnimatePresence>
+        {showUnlinkConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16 }}
+            onClick={() => { if (!unlinkingAcademy) setShowUnlinkConfirm(false); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.25rem' }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: 'min(100%, 430px)', background: '#0F0F0F', border: '1px solid #2A1212', borderRadius: '8px', boxShadow: '0 22px 70px rgba(0,0,0,0.55)', overflow: 'hidden' }}
+            >
+              <div style={{ padding: '1rem 1rem 0.85rem', borderBottom: '1px solid #1F1F1F', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#1A0808', border: '1px solid #3A1515', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF5A5A', flexShrink: 0 }}>
+                    <AlertTriangle size={20} strokeWidth={2.4} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#FFFFFF', margin: 0 }}>
+                      Sair da academia?
+                    </p>
+                    <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.78rem', color: '#777', margin: '0.12rem 0 0' }}>
+                      {profile?.academy || 'Academia atual'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowUnlinkConfirm(false)}
+                  disabled={unlinkingAcademy}
+                  aria-label="Fechar"
+                  style={{ width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #262626', background: '#141414', color: '#777', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: unlinkingAcademy ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div style={{ padding: '1rem' }}>
+                <div style={{ background: '#140A0A', border: '1px solid #3A1515', borderRadius: '6px', padding: '0.85rem', marginBottom: '1rem' }}>
+                  <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.86rem', lineHeight: 1.5, color: '#D8D8D8', margin: 0 }}>
+                    Ao confirmar, seu vínculo com esta academia será encerrado. Você deixará de acessar feed, horários, membros e ações internas dessa academia.
+                  </p>
+                </div>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.82rem', lineHeight: 1.55, color: '#A0A0A0', margin: '0 0 0.75rem' }}>
+                  Mensalidades pendentes ou atrasadas não serão apagadas. Elas continuarão aparecendo no seu financeiro até serem regularizadas.
+                </p>
+                <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.78rem', lineHeight: 1.45, color: '#666', margin: 0 }}>
+                  Depois disso, você poderá buscar outra academia e solicitar um novo vínculo normalmente.
+                </p>
+              </div>
+
+              <div style={{ padding: '0 1rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: '0.75rem' }}>
+                <button
+                  onClick={() => setShowUnlinkConfirm(false)}
+                  disabled={unlinkingAcademy}
+                  style={{ height: '42px', borderRadius: '6px', border: '1px solid #2A2A2A', background: '#141414', color: '#B0B0B0', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.08em', cursor: unlinkingAcademy ? 'not-allowed' : 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleUnlinkAcademy}
+                  disabled={unlinkingAcademy}
+                  style={{ height: '42px', borderRadius: '6px', border: '1px solid #CC0000', background: unlinkingAcademy ? '#2A1111' : '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.08em', cursor: unlinkingAcademy ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem' }}
+                >
+                  {unlinkingAcademy && <Loader2 size={15} style={{ animation: 'spin 0.8s linear infinite' }} />}
+                  {unlinkingAcademy ? 'Saindo...' : 'Confirmar saída'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1644,6 +2161,191 @@ function AcademyScheduleView({ professorUid, userId, userProfile }: {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AcademyBookForm ─────────────────────────────────────────────────────────
+function AcademyBookForm({ professorUid, userId }: { professorUid: string; userId: string }) {
+  const [showForm, setShowForm] = useState(false);
+  const [bookDate, setBookDate] = useState('');
+  const [bookTime, setBookTime] = useState('');
+  const [bookNotes, setBookNotes] = useState('');
+  const [availableSlots, setAvailableSlots] = useState<{ time: string; scheduleId: string }[]>([]);
+  const [loadingTimes, setLoadingTimes] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const DAY_MAP: Record<number, string> = { 0: 'dom', 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex', 6: 'sab' };
+
+  const loadTimes = async (date: string) => {
+    if (!date) { setAvailableSlots([]); return; }
+    setLoadingTimes(true);
+    try {
+      const dayOfWeek = DAY_MAP[new Date(date + 'T00:00:00').getDay()];
+      const [scheds, booked] = await Promise.all([
+        api.classes.listSchedules({ professorUid }) as Promise<any[]>,
+        api.bookedSlots.list({ professorUid }) as Promise<any[]>,
+      ]);
+      const bookedTimes = new Set(booked.filter((b: any) => (b.date || '').split('T')[0] === date && b.status === 'confirmed').map((b: any) => b.time));
+      const slots = scheds
+        .filter((s: any) => {
+          if (!s.time || bookedTimes.has(s.time)) return false;
+          const days = s.days || [];
+          return days.length === 0 || days.includes(dayOfWeek);
+        })
+        .map((s: any) => ({ time: s.time, scheduleId: s.id }))
+        .sort((a, b) => a.time.localeCompare(b.time));
+      const seen = new Set<string>();
+      setAvailableSlots(slots.filter(s => { if (seen.has(s.time)) return false; seen.add(s.time); return true; }));
+    } catch { setAvailableSlots([]); }
+    finally { setLoadingTimes(false); }
+  };
+
+  const handleBook = async () => {
+    if (!bookDate || !bookTime) return;
+    setSaving(true);
+    try {
+      const slot = availableSlots.find(s => s.time === bookTime);
+      await api.bookedSlots.create({
+        professorUid,
+        date: bookDate,
+        time: bookTime,
+        scheduleId: slot?.scheduleId || undefined,
+        notes: bookNotes || undefined,
+      });
+      toast.success(`Aula agendada para ${new Date(bookDate + 'T00:00:00').toLocaleDateString('pt-BR')} às ${bookTime}!`);
+      setShowForm(false);
+      setBookDate(''); setBookTime(''); setBookNotes('');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao agendar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!showForm) {
+    return (
+      <button
+        onClick={() => setShowForm(true)}
+        style={{
+          width: '100%', background: '#CC0000', border: 'none', color: '#FFF',
+          fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.75rem',
+          textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.6rem', cursor: 'pointer',
+        }}
+      >
+        📅 AGENDAR AULA
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>📅 AGENDAR AULA</p>
+      <div>
+        <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>DATA</label>
+        <input type="date" value={bookDate} onChange={e => { setBookDate(e.target.value); setBookTime(''); loadTimes(e.target.value); }}
+          min={new Date().toISOString().split('T')[0]}
+          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', padding: '0.4rem', boxSizing: 'border-box' }} />
+      </div>
+      <div>
+        <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>HORÁRIO</label>
+        {loadingTimes ? (
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555' }}>Carregando...</p>
+        ) : !bookDate ? (
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555' }}>Selecione uma data primeiro</p>
+        ) : availableSlots.length === 0 ? (
+          <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#CC0000' }}>Nenhum horário disponível nesta data</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.35rem' }}>
+            {availableSlots.map(slot => (
+              <button key={slot.scheduleId || slot.time} onClick={() => setBookTime(slot.time)}
+                style={{ background: bookTime === slot.time ? '#CC0000' : '#1E1E1E', border: bookTime === slot.time ? 'none' : '1px solid #333', color: bookTime === slot.time ? '#FFF' : '#AAA', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.72rem', padding: '0.4rem', cursor: 'pointer' }}>
+                {slot.time}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <input type="text" value={bookNotes} onChange={e => setBookNotes(e.target.value)} placeholder="Observações (opcional)..."
+          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', padding: '0.4rem', boxSizing: 'border-box' }} />
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button onClick={() => { setShowForm(false); setBookDate(''); setBookTime(''); setBookNotes(''); }}
+          style={{ flex: 1, background: '#1E1E1E', border: 'none', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem', cursor: 'pointer' }}>
+          CANCELAR
+        </button>
+        <button onClick={handleBook} disabled={!bookDate || !bookTime || saving}
+          style={{ flex: 1, background: saving ? '#1A1A1A' : '#4CAF50', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.5rem', cursor: saving ? 'wait' : 'pointer', opacity: !bookDate || !bookTime ? 0.5 : 1 }}>
+          {saving ? 'AGENDANDO...' : 'CONFIRMAR'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── AcademyBookedSlots ──────────────────────────────────────────────────────
+function AcademyBookedSlots({ studentUid, professorUid }: { studentUid: string; professorUid: string }) {
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const list = await api.bookedSlots.list({ studentUid, professorUid }) as any[];
+        setBookings(list);
+      } catch { setBookings([]); }
+      setLoading(false);
+    };
+    load();
+  }, [studentUid, professorUid]);
+
+  const handleCancel = async (id: string) => {
+    if (!confirm('Cancelar esta aula agendada?')) return;
+    try {
+      await api.bookedSlots.update(id, { status: 'cancelled' });
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'cancelled' } : b));
+      toast.success('Aula cancelada');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao cancelar');
+    }
+  };
+
+  if (loading) return null;
+
+  const active = bookings.filter(b => b.status === 'confirmed');
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#666' }}>
+        📅 MINHAS AULAS AGENDADAS
+        {active.length > 0 && <span style={{ color: '#4CAF50', marginLeft: '0.5rem' }}>{active.length}</span>}
+      </p>
+      {active.length === 0 ? (
+        <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', textAlign: 'center' }}>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.72rem', color: '#555', textTransform: 'uppercase' }}>Nenhuma aula agendada</p>
+        </div>
+      ) : (
+        active.map(b => (
+          <div key={b.id} style={{ background: '#111', border: '1px solid #1A4A1A', borderLeft: '3px solid #4CAF50', padding: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.8rem', color: '#FFF', textTransform: 'uppercase' }}>
+                {b.className || 'Aula'}
+              </p>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.68rem', color: '#4CAF50', marginTop: '0.15rem' }}>
+                📅 {new Date(b.date + 'T00:00:00').toLocaleDateString('pt-BR')} ⏰ {b.time}
+              </p>
+            </div>
+            <button
+              onClick={() => handleCancel(b.id)}
+              style={{ background: 'transparent', border: '1px solid #CC0000', color: '#CC0000', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', padding: '0.25rem 0.5rem', cursor: 'pointer' }}
+            >
+              CANCELAR
+            </button>
+          </div>
+        ))
       )}
     </div>
   );

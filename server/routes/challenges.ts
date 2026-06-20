@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
-import { challenges } from '../db/schema.js';
+import { challenges, users } from '../db/schema.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { requireFeature } from '../middleware/features.js';
 
@@ -48,13 +48,47 @@ router.post('/', requireAuth, requireFeature('challenges'), async (req: AuthRequ
 });
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
-  const [existing] = await db.select({ creatorUid: challenges.creatorUid, academyId: challenges.academyId }).from(challenges).where(eq(challenges.id, req.params.id)).limit(1);
+  const [existing] = await db.select({
+    creatorUid: challenges.creatorUid,
+    academyId: challenges.academyId,
+    target: challenges.target,
+    title: challenges.title,
+    participants: challenges.participants,
+  }).from(challenges).where(eq(challenges.id, req.params.id)).limit(1);
   if (!existing) { res.status(404).json({ error: 'Desafio não encontrado' }); return; }
-  const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
-  const isAcademyOwner = (req.userRole === 'academy' || req.userRole === 'admin') && existing.academyId === req.userId;
-  if (!isModOrSuper && !isAcademyOwner && existing.creatorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const { id: _id, creatorUid: _cu, ...data } = req.body;
+
+  // Qualquer usuário pode participar/sair do desafio (atualizar apenas participants)
+  const onlyParticipants = Object.keys(data).length === 1 && 'participants' in data;
+  if (!onlyParticipants) {
+    const isModOrSuper = req.userRole === 'superadmin' || (req as any).isCommunityModerator;
+    const isAcademyOwner = (req.userRole === 'academy' || req.userRole === 'admin') && existing.academyId === req.userId;
+    if (!isModOrSuper && !isAcademyOwner && existing.creatorUid !== req.userId) {
+      res.status(403).json({ error: 'Proibido' });
+      return;
+    }
+  }
+
   const [row] = await db.update(challenges).set(data).where(eq(challenges.id, req.params.id)).returning();
+
+  // Verifica se algum participante completou o desafio e premia com XP
+  if (data.participants && existing.target > 0) {
+    const prevParticipants: any[] = Array.isArray(existing.participants) ? existing.participants : [];
+    const newParticipants: any[] = Array.isArray(data.participants) ? data.participants : [];
+    for (const p of newParticipants) {
+      const prev = prevParticipants.find((pp: any) => pp.uid === p.uid);
+      const prevProgress = prev?.progress ?? 0;
+      if (p.progress >= existing.target && prevProgress < existing.target) {
+        // Completou! +30 XP
+        const challengeXp = 30;
+        await db.update(users).set({
+          xp: sql`COALESCE(xp, 0) + ${challengeXp}`,
+        }).where(eq(users.uid, p.uid));
+        console.log(`[challenges] XP concedido: +${challengeXp} para ${p.uid} (desafio "${existing.title}")`);
+      }
+    }
+  }
+
   res.json(row);
 });
 

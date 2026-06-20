@@ -236,17 +236,56 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select().from(payments).where(eq(payments.id, req.params.id)).limit(1);
-  if (!existing || existing.professorUid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
-  if (await isInternalAcademyProfessor(req.userId!, req.userRole)) {
+  if (!existing) { res.status(404).json({ error: 'Pagamento não encontrado' }); return; }
+
+  const isProfessor = existing.professorUid === req.userId;
+  const isStudent = existing.studentUid === req.userId;
+
+  if (!isProfessor && !isStudent) { res.status(403).json({ error: 'Proibido' }); return; }
+  if (isProfessor && await isInternalAcademyProfessor(req.userId!, req.userRole)) {
     res.status(403).json({ error: 'Financeiro gerenciado pela academia.' });
     return;
   }
 
   const { id: _id, ...data } = normalizePaymentPayload(req.body);
+
+  // Aluno só pode anexar comprovante (receiptUrl + status=pending_approval)
+  if (isStudent && !isProfessor) {
+    const allowed: Record<string, unknown> = {};
+    if ('receiptUrl' in data) allowed.receiptUrl = data.receiptUrl;
+    if (data.receiptUrl) {
+      allowed.status = 'pending_approval';
+    }
+    if (Object.keys(allowed).length === 0) {
+      res.status(400).json({ error: 'Aluno só pode anexar comprovante.' });
+      return;
+    }
+    const [row] = await db.update(payments).set(allowed as any).where(eq(payments.id, req.params.id)).returning();
+    res.json(serializePayment(row));
+    return;
+  }
+
   const [row] = await db.update(payments).set(data as any).where(eq(payments.id, req.params.id)).returning();
   const reactivatedEnrollments = await reactivateSuspendedEnrollmentsForPaidPayment(row);
   const suspendedEnrollments = await suspendActiveEnrollmentsForRevertedPayment(row, existing);
   res.json({ ...serializePayment(row), reactivatedEnrollments, suspendedEnrollments });
+});
+
+// GET /api/payments/asaas-status?professorUid=xxx
+// Verifica se o professor tem Asaas configurado (sem criar nada)
+router.get('/asaas-status', requireAuth, async (req: AuthRequest, res) => {
+  const { professorUid } = req.query as Record<string, string>;
+  if (!professorUid) { res.json({ configured: false }); return; }
+  try {
+    const { getAsaasCredentials } = await import('../services/paymentIntegrations.js');
+    const creds = await getAsaasCredentials(professorUid);
+    res.json({
+      configured: !!(creds && creds.apiKey),
+      billingType: creds?.billingType || 'PIX',
+    });
+  } catch {
+    res.json({ configured: false });
+  }
 });
 
 router.post('/asaas/webhook', async (req, res) => {
@@ -300,6 +339,90 @@ router.post('/asaas/webhook', async (req, res) => {
   }
 
   res.json({ received: true });
+});
+
+// ─── Asaas Checkout ─────────────────────────────────────────────────────────
+// POST /api/payments/:id/asaas-checkout
+// Aluno gera link de pagamento Asaas (PIX ou Cartão) para uma cobrança pendente
+router.post('/:id/asaas-checkout', requireAuth, async (req: AuthRequest, res) => {
+  const [payment] = await db.select().from(payments).where(eq(payments.id, req.params.id)).limit(1);
+  if (!payment) { res.status(404).json({ error: 'Pagamento não encontrado' }); return; }
+  if (payment.studentUid !== req.userId!) { res.status(403).json({ error: 'Proibido' }); return; }
+
+  const { getAsaasCredentials } = await import('../services/paymentIntegrations.js');
+  const creds = await getAsaasCredentials(payment.professorUid);
+  if (!creds || !creds.apiKey) {
+    res.status(400).json({ error: 'Professor não possui integração Asaas configurada.' });
+    return;
+  }
+
+  // Busca dados do aluno para criar/atualizar customer Asaas
+  const [student] = await db
+    .select({ name: users.name, email: users.email, phone: users.phone })
+    .from(users)
+    .where(eq(users.uid, payment.studentUid))
+    .limit(1);
+
+  if (!student) { res.status(404).json({ error: 'Aluno não encontrado' }); return; }
+
+  // Cria ou busca customer no Asaas do professor
+  const { findCustomer, createCustomer } = await import('../services/asaas.js');
+  const config = { apiKey: creds.apiKey, sandbox: creds.sandbox };
+
+  let customer = await findCustomer(student.email || '', config);
+  if (!customer) {
+    customer = await createCustomer({
+      name: student.name || payment.studentName || 'Aluno',
+      email: student.email || '',
+      phone: student.phone || undefined,
+    }, config);
+  }
+
+  // Cria payment no Asaas
+  const { createPayment: asaasCreatePayment } = await import('../services/asaas.js');
+  const dueDate = payment.dueDate
+    ? (payment.dueDate instanceof Date ? payment.dueDate.toISOString().split('T')[0] : String(payment.dueDate).split('T')[0])
+    : new Date().toISOString().split('T')[0];
+
+  try {
+    const asaasPayment = await asaasCreatePayment({
+      customer: customer.id,
+      value: payment.amount,
+      dueDate,
+      billingType: creds.billingType || 'PIX',
+      description: `Mensalidade - ${payment.studentName || 'Aluno'}`,
+      externalReference: payment.id,
+    }, config);
+
+    // Salva o link do Asaas no pagamento local
+    const pixLink = asaasPayment.invoiceUrl || asaasPayment.transactionReceiptUrl || '';
+    await db.update(payments)
+      .set({ pixLink: pixLink || null })
+      .where(eq(payments.id, payment.id));
+
+    // Se for PIX, busca QR code
+    if (creds.billingType === 'PIX' && asaasPayment.id) {
+      try {
+        const { getPixQrCode } = await import('../services/asaas.js');
+        const qr = await getPixQrCode(asaasPayment.id, config);
+        res.json({
+          invoiceUrl: asaasPayment.invoiceUrl || null,
+          pixQrCode: qr,
+          billingType: 'PIX',
+        });
+        return;
+      } catch { /* qr code opcional, retorna sem */ }
+    }
+
+    res.json({
+      invoiceUrl: asaasPayment.invoiceUrl || null,
+      pixQrCode: null,
+      billingType: creds.billingType,
+    });
+  } catch (err: any) {
+    console.error('[payments] Asaas checkout error:', err);
+    res.status(500).json({ error: 'Erro ao gerar pagamento Asaas. Tente novamente.' });
+  }
 });
 
 export default router;

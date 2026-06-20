@@ -112,6 +112,7 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
 
   const handleOpenShare = (t: Training) => {
     // Converter Training para ShareTrainingData
+    const trainingPhoto = (t as any).trainingPhotoUrl || t.trainingPhoto || undefined;
     const techsRecord: Record<string, string[]> = {};
     if (t.techniques && typeof t.techniques === 'object' && !Array.isArray(t.techniques)) {
       for (const [k, v] of Object.entries(t.techniques)) {
@@ -129,7 +130,8 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
       notes: t.notes,
       academy: t.academy,
       professor: t.professor,
-      trainingPhotoUrl: t.trainingPhoto,
+      trainingPhoto,
+      trainingPhotoUrl: trainingPhoto,
       xp: t.xp ?? calcXP([t]),
       compData: (t as any).compData || undefined,
     };

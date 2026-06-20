@@ -49,6 +49,7 @@ export interface Training {
   notes?: string;
   xp?: number;
   trainingPhoto?: string; // URL do Firebase Storage
+  trainingPhotoUrl?: string; // URL do storage REST/Postgres
 }
 
 // ─── CÁLCULO DE XP ────────────────────────────────────────────────────────────

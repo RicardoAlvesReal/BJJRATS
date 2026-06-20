@@ -28,8 +28,13 @@ interface Enrollment {
   academyName: string;
   monthlyFee: number;
   dueDay: number;
-  status: 'active' | 'suspended' | 'cancelled';
+  status: 'active' | 'suspended' | 'cancelled' | 'rejected';
   pixKey?: string;
+}
+
+function isOpenEnrollmentStatus(status: Enrollment['status'] | string | null | undefined): boolean {
+  const normalized = String(status || '').toLowerCase();
+  return normalized !== 'cancelled' && normalized !== 'rejected';
 }
 
 const labelStyle: React.CSSProperties = {
@@ -87,7 +92,7 @@ export default function MinhasMensalidades({ onBack }: Props) {
 
       // Busca métodos de pagamento de cada professor/academia
       const methodsMap: Record<string, PaymentIntegrationSettings | null> = {};
-      await Promise.all(enrollList.map(async (enroll) => {
+      await Promise.all(enrollList.filter((enroll) => isOpenEnrollmentStatus(enroll.status)).map(async (enroll) => {
         try {
           methodsMap[enroll.professorUid] = await publicApi.getPaymentMethods(enroll.professorUid);
         } catch {
@@ -119,6 +124,7 @@ export default function MinhasMensalidades({ onBack }: Props) {
   useEffect(() => { loadData(); }, [loadData]);
 
   const filtered = filter === 'all' ? payments : payments.filter(p => p.status === filter);
+  const openEnrollments = enrollments.filter((enroll) => isOpenEnrollmentStatus(enroll.status));
 
   const totalPending = payments.filter(p => p.status === 'pending').reduce((s, p) => s + p.amount, 0);
   const totalOverdue = payments.filter(p => p.status === 'overdue').reduce((s, p) => s + p.amount, 0);
@@ -156,10 +162,10 @@ export default function MinhasMensalidades({ onBack }: Props) {
       <div style={{ padding: '1.25rem' }}>
 
         {/* Matrículas ativas */}
-        {enrollments.length > 0 && (
+        {openEnrollments.length > 0 && (
           <div style={{ marginBottom: '1.5rem' }}>
             <p style={{ ...labelStyle, marginBottom: '0.75rem' }}>ACADEMIA VINCULADA</p>
-            {enrollments.map(enroll => {
+            {openEnrollments.map(enroll => {
               const methods = paymentMethods[enroll.professorUid];
               return (
               <div key={enroll.id} style={{ background: '#111', border: `1px solid ${enroll.status === 'active' ? '#1A4A1A' : enroll.status === 'suspended' ? '#3A1A00' : '#333'}`, borderRadius: '0', padding: '1rem', marginBottom: '0.75rem' }}>
@@ -363,14 +369,16 @@ export default function MinhasMensalidades({ onBack }: Props) {
         )}
 
         {/* Estado vazio — sem matrícula */}
-        {!loading && enrollments.length === 0 && (
+        {!loading && openEnrollments.length === 0 && (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', background: '#111', border: '1px solid #222' }}>
             <p style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🏫</p>
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', color: '#444', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               NENHUMA ACADEMIA VINCULADA
             </p>
             <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#555', marginTop: '0.5rem', lineHeight: 1.5 }}>
-              Peça ao seu professor para te vincular à academia ou acesse o link de convite enviado por ele.
+              {payments.length > 0
+                ? 'Você não está vinculado a uma academia no momento. Cobranças antigas continuam disponíveis para regularização.'
+                : 'Peça ao seu professor para te vincular à academia ou acesse o link de convite enviado por ele.'}
             </p>
           </div>
         )}

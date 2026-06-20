@@ -1,7 +1,8 @@
-// Design: "Cage Fighter" — Brutalismo Tático
-// Card de compartilhamento de estatísticas — gera imagem via Canvas HTML5
+// BJJRats — Card de compartilhamento de estatísticas
+// Gera imagem via Canvas HTML5 com design moderno
+
 import { useEffect, useRef, useState } from 'react';
-import { Training, calcXP, getLevelInfo, calcStreak, BELT_COLORS } from '@/lib/bjjrats-constants';
+import { Training, calcXP, getLevelInfo, calcStreak, BELT_COLORS, parseTrainingDate, topTecnicas } from '@/lib/bjjrats-constants';
 import { toast } from 'sonner';
 
 interface Props {
@@ -10,20 +11,41 @@ interface Props {
   belt?: string;
   academy?: string;
   photoURL?: string;
+  trainingPhoto?: string;
   onClose: () => void;
 }
 
-export default function StatsShareCard({ trainings, name, belt, academy, photoURL, onClose }: Props) {
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+export default function StatsShareCard({ trainings, name, belt, academy, photoURL, trainingPhoto, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(true);
 
   const xp = calcXP(trainings);
-  const { currentLevel } = getLevelInfo(xp);
+  const { currentLevel, xpProgress } = getLevelInfo(xp);
   const streak = calcStreak(trainings);
   const totalMins = trainings.reduce((s, t) => s + (t.duration || 0), 0);
   const totalHrs = Math.round(totalMins / 60 * 10) / 10;
   const beltColor = BELT_COLORS[belt || 'Branca'] || '#FFFFFF';
+  const tecnicas = topTecnicas(trainings);
+  const competicoes = trainings.filter(t => t.sessionType === 'competicao').length;
+  // Média de intensidade
+  const avgIntensity = trainings.length
+    ? (trainings.reduce((s, t) => s + (t.intensity || 0), 0) / trainings.filter(t => t.intensity).length || 0)
+    : 0;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,145 +54,207 @@ export default function StatsShareCard({ trainings, name, belt, academy, photoUR
     if (!ctx) return;
 
     const W = 800;
-    const H = 450;
+    const H = 520;
     canvas.width = W;
     canvas.height = H;
 
-    const draw = () => {
-      // Background
-      ctx.fillStyle = '#0A0A0A';
-      ctx.fillRect(0, 0, W, H);
-
-      // Borda vermelha esquerda
-      ctx.fillStyle = '#CC0000';
-      ctx.fillRect(0, 0, 6, H);
-
-      // Faixa diagonal decorativa
-      ctx.save();
-      ctx.globalAlpha = 0.04;
-      ctx.fillStyle = '#CC0000';
-      ctx.beginPath();
-      ctx.moveTo(W * 0.55, 0);
-      ctx.lineTo(W, 0);
-      ctx.lineTo(W * 0.7, H);
-      ctx.lineTo(W * 0.25, H);
-      ctx.closePath();
+    const draw = async () => {
+      // Fundo principal
+      ctx.fillStyle = '#0D0D0D';
+      roundedRect(ctx, 0, 0, W, H, 0);
       ctx.fill();
-      ctx.restore();
 
-      // Grid de linhas sutis
-      ctx.save();
-      ctx.globalAlpha = 0.04;
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 1;
-      for (let x = 0; x < W; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-      }
-      for (let y = 0; y < H; y += 40) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      }
-      ctx.restore();
+      // ── Barra superior ──
+      ctx.fillStyle = '#1A1A1A';
+      ctx.fillRect(0, 0, W, 72);
 
-      // Logo / marca
+      // Logo
       ctx.fillStyle = '#CC0000';
-      ctx.font = 'bold 13px Barlow Condensed, sans-serif';
-      ctx.letterSpacing = '3px';
-      ctx.fillText('BJJRATS', 30, 38);
+      ctx.font = 'bold 18px Barlow Condensed, sans-serif';
+      ctx.fillText('BJJ', 28, 38);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('RATS', 73, 38);
 
-      ctx.fillStyle = '#333';
-      ctx.font = '11px Barlow, sans-serif';
-      ctx.fillText('thebjjrats.com', 30, 56);
+      ctx.fillStyle = '#444';
+      ctx.font = '10px Barlow, sans-serif';
+      ctx.fillText('thebjjrats.com', 28, 56);
 
-      // Faixa colorida
-      const beltW = 120;
-      const beltH = 10;
-      const beltX = 30;
-      const beltY = 68;
-      ctx.fillStyle = belt === 'Branca' ? '#1A1A1A' : beltColor;
-      ctx.fillRect(beltX, beltY, beltW, beltH);
+      // Data à direita
+      const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+      ctx.fillStyle = '#555';
+      ctx.font = '10px Barlow, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(today, W - 28, 38);
+      ctx.textAlign = 'left';
+
+      ctx.textAlign = 'left';
+
+      // ── Avatar + Nome + Faixa ──
+      const avatarX = 28;
+      const avatarY = 96;
+      const avatarR = 28;
+
+      // Foto ou placeholder
+      if (photoURL) {
+        try {
+          const img = await loadImage(photoURL);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(avatarX + avatarR, avatarY + avatarR, avatarR, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(img, avatarX, avatarY, avatarR * 2, avatarR * 2);
+          ctx.restore();
+        } catch {
+          drawAvatarPlaceholder(ctx, avatarX, avatarY, avatarR);
+        }
+      } else {
+        drawAvatarPlaceholder(ctx, avatarX, avatarY, avatarR);
+      }
+
+      // Borda do avatar
       ctx.strokeStyle = beltColor;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(beltX, beltY, beltW, beltH);
-      ctx.fillStyle = beltColor;
-      ctx.font = 'bold 9px Barlow Condensed, sans-serif';
-      ctx.fillText((belt || 'BRANCA').toUpperCase(), beltX + beltW + 10, beltY + 8);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(avatarX + avatarR, avatarY + avatarR, avatarR, 0, Math.PI * 2);
+      ctx.stroke();
 
       // Nome
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 36px Barlow Condensed, sans-serif';
-      ctx.fillText((name || 'ATLETA').toUpperCase(), 30, 130);
+      ctx.font = 'bold 24px Barlow Condensed, sans-serif';
+      ctx.fillText((name || 'ATLETA').toUpperCase(), avatarX + 70, avatarY + 26);
+
+      // Faixa
+      ctx.fillStyle = beltColor;
+      ctx.font = 'bold 15px Barlow Condensed, sans-serif';
+      ctx.fillText(`FAIXA ${(belt || 'BRANCA').toUpperCase()}`, avatarX + 70, avatarY + 50);
 
       // Academia
       if (academy) {
-        ctx.fillStyle = '#555';
-        ctx.font = '14px Barlow, sans-serif';
-        ctx.fillText(academy.toUpperCase(), 30, 155);
+        ctx.fillStyle = '#666';
+        ctx.font = '13px Barlow, sans-serif';
+        ctx.fillText(academy, avatarX + 70, avatarY + 68);
       }
 
-      // Linha separadora
+      // ── Linha separadora ──
       ctx.strokeStyle = '#1E1E1E';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(30, 175);
-      ctx.lineTo(W - 30, 175);
+      ctx.moveTo(28, 180);
+      ctx.lineTo(W - 28, 180);
       ctx.stroke();
 
-      // Stats — 4 cards
-      const stats = [
+      // ── Cards de estatísticas (4 colunas) ──
+      const statCards = [
         { label: 'TREINOS', value: String(trainings.length), color: '#CC0000' },
         { label: 'HORAS', value: `${totalHrs}h`, color: '#CC0000' },
-        { label: 'XP TOTAL', value: String(xp), color: '#FFD700' },
-        { label: 'NÍVEL', value: String(currentLevel), color: '#0D9E6E' },
+        { label: 'XP', value: String(xp), color: '#FFD700' },
         { label: 'STREAK', value: `${streak}d`, color: '#1A6ECC' },
       ];
 
-      const cardW = (W - 60 - 16) / stats.length;
-      stats.forEach((s, i) => {
-        const x = 30 + i * (cardW + 4);
-        const y = 190;
+      const cardW = (W - 56 - 18) / 4; // 28px padding each side + 3 gaps of 6px
+      statCards.forEach((s, i) => {
+        const x = 28 + i * (cardW + 6);
+        const y = 196;
 
-        ctx.fillStyle = '#111111';
-        ctx.fillRect(x, y, cardW, 90);
+        ctx.fillStyle = '#111';
+        roundedRect(ctx, x, y, cardW, 78, 8);
+        ctx.fill();
         ctx.strokeStyle = '#1E1E1E';
         ctx.lineWidth = 1;
-        ctx.strokeRect(x, y, cardW, 90);
+        roundedRect(ctx, x, y, cardW, 78, 8);
+        ctx.stroke();
 
-        // Valor
         ctx.fillStyle = s.color;
-        ctx.font = `bold ${s.value.length > 5 ? 22 : 28}px Barlow Condensed, sans-serif`;
+        ctx.font = 'bold 22px Barlow Condensed, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(s.value, x + cardW / 2, y + 48);
+        ctx.fillText(s.value, x + cardW / 2, y + 38);
 
-        // Label
         ctx.fillStyle = '#555';
-        ctx.font = '10px Barlow Condensed, sans-serif';
-        ctx.fillText(s.label, x + cardW / 2, y + 68);
-
+        ctx.font = 'bold 10px Barlow Condensed, sans-serif';
+        ctx.fillText(s.label, x + cardW / 2, y + 58);
         ctx.textAlign = 'left';
       });
 
-      // Rodapé
-      ctx.fillStyle = '#222';
-      ctx.fillRect(0, H - 44, W, 44);
+      // ── Segunda linha: Nível + Progresso + Técnicas ──
+      // Nível com barra de progresso
+      const progressY = 296;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 14px Barlow Condensed, sans-serif';
+      ctx.fillText(`NÍVEL ${currentLevel}`, 28, progressY + 18);
+
+      const barX = 28;
+      const barY = progressY + 28;
+      const barW = 200;
+      const barH = 8;
+      ctx.fillStyle = '#1E1E1E';
+      roundedRect(ctx, barX, barY, barW, barH, 4);
+      ctx.fill();
+      ctx.fillStyle = '#CC0000';
+      roundedRect(ctx, barX, barY, barW * (xpProgress / 100), barH, 4);
+      ctx.fill();
+
+      ctx.fillStyle = '#555';
+      ctx.font = '11px Barlow, sans-serif';
+      ctx.fillText(`${xpProgress}% para o próximo nível`, barX, barY + 24);
+
+      // ── Foto do treino (canto inferior direito) ──
+      if (trainingPhoto) {
+        try {
+          const tpImg = await loadImage(trainingPhoto);
+          const tpW = 130;
+          const tpH = 90;
+          const tpX = W - tpW - 28;
+          const tpY = progressY - 5;
+          ctx.save();
+          roundedRect(ctx, tpX, tpY, tpW, tpH, 6);
+          ctx.clip();
+          ctx.drawImage(tpImg, tpX, tpY, tpW, tpH);
+          ctx.restore();
+          ctx.strokeStyle = '#2A2A2A';
+          ctx.lineWidth = 1;
+          roundedRect(ctx, tpX, tpY, tpW, tpH, 6);
+          ctx.stroke();
+        } catch { /* ignora */ }
+      }
+
+      // Técnicas favoritas (lado direito)
+      if (tecnicas.length > 0) {
+        const techX = 460;
+        const techY = progressY;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 14px Barlow Condensed, sans-serif';
+        ctx.fillText('TÉCNICAS FAVORITAS', techX, techY + 18);
+
+        tecnicas.slice(0, 3).forEach((t, i) => {
+          const ty = techY + 36 + i * 24;
+          ctx.fillStyle = '#CCC';
+          ctx.font = 'bold 12px Barlow Condensed, sans-serif';
+          ctx.fillText(t.nome, techX, ty);
+          ctx.fillStyle = '#CC0000';
+          ctx.font = 'bold 11px Barlow Condensed, sans-serif';
+          ctx.textAlign = 'right';
+          ctx.fillText(`${t.qtd}x`, techX + 300, ty);
+          ctx.textAlign = 'left';
+        });
+      }
+
+      // ── Rodapé ──
+      ctx.fillStyle = '#1A1A1A';
+      ctx.fillRect(0, H - 50, W, 50);
 
       ctx.fillStyle = '#444';
       ctx.font = '11px Barlow, sans-serif';
-      ctx.fillText('Registrado com BJJRats · Treine. Evolua. Domine.', 30, H - 16);
-
-      // Data
-      const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
-      ctx.fillStyle = '#333';
-      ctx.textAlign = 'right';
-      ctx.fillText(today, W - 30, H - 16);
+      ctx.textAlign = 'center';
+      ctx.fillText('Treine. Evolua. Domine. — thebjjrats.com', W / 2, H - 18);
       ctx.textAlign = 'left';
 
       setImgUrl(canvas.toDataURL('image/png'));
       setGenerating(false);
     };
 
-    // Pequeno delay para garantir que o canvas está pronto
     setTimeout(draw, 100);
-  }, [trainings, name, belt, academy, xp, currentLevel, streak, totalHrs, beltColor]);
+  }, [trainings, name, belt, academy, photoURL, xp, currentLevel, xpProgress, streak, totalHrs, beltColor]);
 
   const handleDownload = () => {
     if (!imgUrl) return;
@@ -206,17 +290,14 @@ export default function StatsShareCard({ trainings, name, belt, academy, photoUR
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{ width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', letterSpacing: '0.05em' }}>CARD DE STATS</p>
+          <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', letterSpacing: '0.05em' }}>COMPARTILHAR STATS</p>
           <button onClick={onClose} style={{ background: 'none', border: '1px solid #2A2A2A', color: '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', textTransform: 'uppercase', padding: '0.3rem 0.625rem', cursor: 'pointer' }}>FECHAR</button>
         </div>
 
-        {/* Canvas oculto para geração */}
         <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        {/* Preview */}
-        <div style={{ background: '#111', border: '1px solid #1E1E1E', overflow: 'hidden', minHeight: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: '#111', border: '1px solid #1E1E1E', borderRadius: '8px', overflow: 'hidden', minHeight: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {generating ? (
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em' }}>GERANDO...</p>
           ) : imgUrl ? (
@@ -224,28 +305,49 @@ export default function StatsShareCard({ trainings, name, belt, academy, photoUR
           ) : null}
         </div>
 
-        {/* Botões */}
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             onClick={handleShare}
             disabled={generating}
-            style={{ flex: 1, background: generating ? '#1A0000' : '#CC0000', border: 'none', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.875rem', cursor: generating ? 'not-allowed' : 'pointer', opacity: generating ? 0.5 : 1 }}
+            style={{ flex: 1, background: generating ? '#1A0000' : '#CC0000', border: 'none', borderRadius: '8px', color: '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.875rem', cursor: generating ? 'not-allowed' : 'pointer', opacity: generating ? 0.5 : 1 }}
           >
             {'share' in navigator ? '↑ COMPARTILHAR' : '↓ BAIXAR'}
           </button>
           <button
             onClick={handleDownload}
             disabled={generating}
-            style={{ background: '#111', border: '1px solid #2A2A2A', color: generating ? '#333' : '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.875rem 1rem', cursor: generating ? 'not-allowed' : 'pointer' }}
+            style={{ background: '#111', border: '1px solid #2A2A2A', borderRadius: '8px', color: generating ? '#333' : '#888', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', padding: '0.875rem 1rem', cursor: generating ? 'not-allowed' : 'pointer' }}
           >
             ↓ SALVAR
           </button>
         </div>
-
-        <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.65rem', color: '#333', textAlign: 'center' }}>
-          Toque fora do card para fechar
-        </p>
       </div>
     </div>
   );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function drawAvatarPlaceholder(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.fillStyle = '#1A1A1A';
+  ctx.beginPath();
+  ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 22px Barlow Condensed, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🥋', x + r, y + r);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 }
