@@ -42,11 +42,16 @@ jobs:
       - name: Capacitor sync iOS
         run: npx cap sync ios
 
+      - name: Resolve SPM packages
+        run: |
+          cd ios/App
+          xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
+
       - name: Build iOS (unsigned archive)
         run: |
           cd ios/App
           xcodebuild \
-            -workspace App.xcworkspace \
+            -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
