@@ -75,6 +75,23 @@ pnpm db:seed:dev
 pnpm dev:all
 ```
 
+## 📱 iOS App (via Capacitor)
+
+```bash
+# Build web + abrir no Xcode
+pnpm ios
+
+# Ou passo a passo:
+pnpm build              # build do frontend
+npx cap sync ios        # sincronizar assets com Xcode
+npx cap open ios        # abrir no Xcode para build/run
+```
+
+Necessário:
+- macOS com Xcode 16+
+- `@capacitor/ios` instalado (já incluso nas deps)
+- Abrir `ios/App/App.xcodeproj` no Xcode e rodar num simulador ou dispositivo
+
 ### Variáveis de Ambiente (.env)
 
 ```env
