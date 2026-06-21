@@ -13,12 +13,15 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-15
+    runs-on: macos-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,11 +44,11 @@ jobs:
       - name: Capacitor sync iOS
         run: npx cap sync ios
 
-      - name: Build iOS IPA (unsigned)
+      - name: Build iOS (unsigned archive)
         run: |
           cd ios/App
           xcodebuild \
-            -project App.xcodeproj \
+            -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
@@ -54,12 +57,13 @@ jobs:
             archive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO
 
       - name: Generate IPA
         run: |
           mkdir -p "${{ github.workspace }}/build/Payload"
-          cp -R "${{ github.workspace }}/build/App.xcarchive/Products/Applications/App.app" "${{ github.workspace }}/build/Payload/"
+          cp -R "${{ github.workspace }}/build/App.xcarchive/Products/Applications/"*.app "${{ github.workspace }}/build/Payload/"
           cd "${{ github.workspace }}/build"
           zip -r BJJRats.ipa Payload/
 
