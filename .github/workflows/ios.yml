@@ -47,6 +47,9 @@ jobs:
           cd ios/App
           xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
 
+      - name: Download iOS platform
+        run: xcodebuild -downloadPlatform iOS
+
       - name: Build iOS (unsigned archive)
         run: |
           cd ios/App
