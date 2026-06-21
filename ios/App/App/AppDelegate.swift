@@ -40,11 +40,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        // Capacitor 8.4.x: passa URL extraída do userActivity
-        if let url = userActivity.webpageURL {
-            return ApplicationDelegateProxy.shared.application(application, open: url, options: [:])
-        }
-        return false
+        // Capacitor 8.4+ espera URL, não NSUserActivity
+        guard let url = userActivity.webpageURL else { return false }
+        return ApplicationDelegateProxy.shared.application(application, continue: url)
     }
 
 }
