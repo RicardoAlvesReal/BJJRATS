@@ -77,20 +77,30 @@ pnpm dev:all
 
 ## 📱 iOS App (via Capacitor)
 
-```bash
-# Build web + abrir no Xcode
-pnpm ios
+### Build com GitHub Actions (sem Mac)
 
-# Ou passo a passo:
-pnpm build              # build do frontend
-npx cap sync ios        # sincronizar assets com Xcode
-npx cap open ios        # abrir no Xcode para build/run
+Push na branch `dev` ou `master` dispara o workflow `.github/workflows/ios.yml`:
+
+1. Runner macOS-15 da GitHub Actions
+2. Build do web app + Capacitor sync
+3. `xcodebuild archive` gera `.xcarchive`
+4. Empacota em `.ipa` (unsigned)
+5. Disponível como artefato por 7 dias
+
+### Build local (Mac)
+
+```bash
+pnpm ios                 # build + sync + abrir Xcode
+pnpm ios:sync            # só sincronizar assets
 ```
 
+### Para publicar na App Store
+
 Necessário:
-- macOS com Xcode 16+
-- `@capacitor/ios` instalado (já incluso nas deps)
-- Abrir `ios/App/App.xcodeproj` no Xcode e rodar num simulador ou dispositivo
+- Apple Developer Account ($99/ano)
+- Configurar `CODE_SIGN_IDENTITY` e provisioning profile no workflow
+- Ou usar [Fastlane Match](https://fastlane.tools) para gerenciar certificados
+- Upload via `xcodebuild -exportArchive` ou Transporter
 
 ### Variáveis de Ambiente (.env)
 

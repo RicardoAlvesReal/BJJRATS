@@ -1,0 +1,71 @@
+name: iOS Build
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [dev, master]
+    paths:
+      - 'client/**'
+      - 'capacitor.config.ts'
+      - 'package.json'
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web app
+        run: pnpm build
+        env:
+          VITE_TURNSTILE_SITE_KEY: '0x4AAAAAADm4HnOK8P1JV2Ss'
+
+      - name: Capacitor sync iOS
+        run: npx cap sync ios
+
+      - name: Build iOS IPA (unsigned)
+        run: |
+          cd ios/App
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "${{ github.workspace }}/build/App.xcarchive" \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Generate IPA
+        run: |
+          mkdir -p "${{ github.workspace }}/build/Payload"
+          cp -R "${{ github.workspace }}/build/App.xcarchive/Products/Applications/App.app" "${{ github.workspace }}/build/Payload/"
+          cd "${{ github.workspace }}/build"
+          zip -r BJJRats.ipa Payload/
+
+      - name: Upload IPA (artefato)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BJJRats-iOS-unsigned
+          path: build/BJJRats.ipa
+          retention-days: 7
