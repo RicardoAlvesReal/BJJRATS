@@ -36,6 +36,7 @@ interface ExtraTraining {
   extraXP: number;
   notes?: string;
   trainingPhoto?: string;
+  trainingPhotoUrl?: string;
   createdAt?: any;
 }
 
@@ -178,6 +179,7 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
   // ── Detalhe de treino extra selecionado ──────────────────────────────────────
   if (selectedExtra) {
     const act = EXTRA_ACTIVITIES.find(a => a.id === selectedExtra.activity);
+    const selectedExtraPhoto = selectedExtra.trainingPhotoUrl || selectedExtra.trainingPhoto;
     return (
       <div className="bg-background min-h-screen">
         <div className="bjj-header" style={{ borderColor: '#0EA5E940' }}>
@@ -188,9 +190,9 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
           <div className="w-5" />
         </div>
         <div className="bjj-content">
-          {selectedExtra.trainingPhoto && (
+          {selectedExtraPhoto && (
             <div className="w-full bg-background border border-[#1E1E1E] rounded-xl overflow-hidden">
-              <img src={selectedExtra.trainingPhoto} alt="Foto da atividade" className="w-full h-auto block" />
+              <img src={selectedExtraPhoto} alt="Foto da atividade" className="w-full h-auto block" />
             </div>
           )}
 
@@ -239,7 +241,7 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
                 const shareData: ShareTrainingData = {
                   trainingDate: selectedExtra.trainingDate, sessionType: 'outros_treinos', modality: selectedExtra.activity,
                   duration: selectedExtra.duration, intensity: 3, satisfaction: 4, techniques: {}, notes: selectedExtra.notes,
-                  academy: '', professor: '', xp: selectedExtra.extraXP, trainingPhotoUrl: selectedExtra.trainingPhoto,
+                  academy: '', professor: '', xp: selectedExtra.extraXP, trainingPhotoUrl: selectedExtraPhoto,
                   extraData: { activity: selectedExtra.activity, distance: selectedExtra.distance || 0, calories: selectedExtra.calories || 0, pace: selectedExtra.pace || null },
                 };
                 onShare(shareData);
@@ -433,15 +435,16 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
               if (item.type === 'extra') {
                 const t = item.data as ExtraTraining;
                 const act = EXTRA_ACTIVITIES.find(a => a.id === t.activity);
+                const photo = t.trainingPhotoUrl || t.trainingPhoto;
                 return (
                   <motion.div key={`extra-${t.firestoreId || i}`} variants={ffadeUp}
                     onClick={() => setSelectedExtra(t)}
                     className="bjj-card cursor-pointer flex items-stretch overflow-hidden p-0"
                     style={{ borderLeft: '3px solid #0EA5E9' }}
                   >
-                    {t.trainingPhoto ? (
+                    {photo ? (
                       <div className="w-20 shrink-0 overflow-hidden">
-                        <img src={t.trainingPhoto} alt="" className="w-full h-full object-cover block" />
+                        <img src={photo} alt="" className="w-full h-full object-cover block" />
                       </div>
                     ) : (
                       <div className="w-20 shrink-0 bg-background flex items-center justify-center">
@@ -466,15 +469,16 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
                 const mod = MODALITIES.find(x => x.id === t.modality) || null;
                 const techCount = countAllTechs(t.techniques);
                 const xpGained = calcXP([t]);
+                const photo = (t as any).trainingPhotoUrl || t.trainingPhoto;
                 return (
                   <motion.div key={t.firestoreId || i} variants={ffadeUp}
                     onClick={() => setSelected(t)}
                     className="bjj-card cursor-pointer flex items-stretch overflow-hidden p-0"
                     style={{ borderLeft: `3px solid ${sess.color}` }}
                   >
-                    {t.trainingPhoto ? (
+                    {photo ? (
                       <div className="w-20 shrink-0 overflow-hidden">
-                        <img src={t.trainingPhoto} alt="" className="w-full h-full object-cover block" />
+                        <img src={photo} alt="" className="w-full h-full object-cover block" />
                       </div>
                     ) : (
                       <div className="w-20 shrink-0 bg-background flex items-center justify-center">

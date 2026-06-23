@@ -144,10 +144,20 @@ export interface Training {
 export interface ExtraTraining {
   id: string;
   uid: string;
-  date: string;
-  type: string;
+  trainingDate?: string;
+  date?: string;
+  sessionType?: 'outros_treinos';
+  type?: string;
+  activity?: string;
+  duration?: number;
   durationMinutes?: number;
+  distance?: number | null;
+  calories?: number | null;
+  pace?: string | null;
+  extraXP?: number;
   notes?: string;
+  trainingPhoto?: string | null;
+  trainingPhotoUrl?: string | null;
   createdAt?: string;
 }
 
@@ -735,11 +745,11 @@ export const trainings = {
 // ─── Extra Trainings ──────────────────────────────────────────────────────────
 
 export const extraTrainings = {
-  list: (uid?: string) => apiFetch<ExtraTraining[]>(`/api/extra-trainings${uid ? `?uid=${uid}` : ''}`),
+  list: async (uid?: string) => normalizeTrainingList(await apiFetch<ExtraTraining[]>(`/api/extra-trainings${uid ? `?uid=${uid}` : ''}`)),
   create: (data: Omit<ExtraTraining, 'id' | 'createdAt'>) =>
-    apiFetch<ExtraTraining>('/api/extra-trainings', { method: 'POST', body: JSON.stringify(data) }),
+    apiFetch<ExtraTraining>('/api/extra-trainings', { method: 'POST', body: JSON.stringify(data) }).then(normalizeTrainingPhoto),
   update: (id: string, data: Partial<ExtraTraining>) =>
-    apiFetch<ExtraTraining>(`/api/extra-trainings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    apiFetch<ExtraTraining>(`/api/extra-trainings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }).then(normalizeTrainingPhoto),
   delete: (id: string) => apiFetch<{ success: boolean }>(`/api/extra-trainings/${id}`, { method: 'DELETE' }),
 };
 

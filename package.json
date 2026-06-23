@@ -16,13 +16,15 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx server/db/seed.ts",
-    "db:seed:dev": "tsx server/db/seed-dev.ts"
+    "db:seed:dev": "tsx server/db/seed-dev.ts",
+    "ios": "pnpm build && npx cap sync ios && npx cap open ios",
+    "ios:sync": "npx cap sync ios",
+    "ios:open": "npx cap open ios"
   },
   "dependencies": {
-    "@capacitor/browser": "^8.0.3",
-    "@capacitor/camera": "^8.2.0",
-    "@capacitor/cli": "^8.4.0",
-    "@capacitor/core": "^8.4.0",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
     "@emailjs/browser": "^4.4.1",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",

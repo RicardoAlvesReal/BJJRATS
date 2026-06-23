@@ -75,6 +75,33 @@ pnpm db:seed:dev
 pnpm dev:all
 ```
 
+## 📱 iOS App (via Capacitor)
+
+### Build com GitHub Actions (sem Mac)
+
+Push na branch `dev` ou `master` dispara o workflow `.github/workflows/ios.yml`:
+
+1. Runner macOS-15 da GitHub Actions
+2. Build do web app + Capacitor sync
+3. `xcodebuild archive` gera `.xcarchive`
+4. Empacota em `.ipa` (unsigned)
+5. Disponível como artefato por 7 dias
+
+### Build local (Mac)
+
+```bash
+pnpm ios                 # build + sync + abrir Xcode
+pnpm ios:sync            # só sincronizar assets
+```
+
+### Para publicar na App Store
+
+Necessário:
+- Apple Developer Account ($99/ano)
+- Configurar `CODE_SIGN_IDENTITY` e provisioning profile no workflow
+- Ou usar [Fastlane Match](https://fastlane.tools) para gerenciar certificados
+- Upload via `xcodebuild -exportArchive` ou Transporter
+
 ### Variáveis de Ambiente (.env)
 
 ```env

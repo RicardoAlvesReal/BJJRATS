@@ -5,8 +5,12 @@ const config: CapacitorConfig = {
   appName: 'BJJRats',
   webDir: 'dist/public',
   server: {
-    // Em produção, carrega do bundle local
+    // iOS: permite navegação SPA (history API)
+    iosScheme: 'capacitor',
     androidScheme: 'https',
+    // Para dev no emulador/simulador, descomente:
+    // url: 'http://192.168.x.x:3000',
+    // cleartext: true,
   },
   plugins: {
     SplashScreen: {

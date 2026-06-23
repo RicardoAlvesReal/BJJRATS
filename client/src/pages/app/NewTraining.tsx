@@ -23,6 +23,7 @@ export interface ExtraTrainingData {
   extraXP: number;
   notes?: string;
   trainingPhoto?: string;
+  trainingPhotoUrl?: string;
   createdAt?: any;
 }
 
@@ -395,7 +396,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
           extraXP: newExtraXP,
           notes: form.notes,
         };
-        if (trainingPhotoUrl !== undefined) updates.trainingPhoto = trainingPhotoUrl;
+        if (trainingPhotoUrl !== undefined) updates.trainingPhotoUrl = trainingPhotoUrl;
 
         await api.extraTrainings.update(extraId, updates);
         await refreshProfile();
@@ -453,7 +454,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
             extraXP,
             notes: form.notes,
           };
-          if (trainingPhotoUrl) extraDoc.trainingPhoto = trainingPhotoUrl;
+          if (trainingPhotoUrl) extraDoc.trainingPhotoUrl = trainingPhotoUrl;
 
           await api.extraTrainings.create(extraDoc);
           await refreshProfile();

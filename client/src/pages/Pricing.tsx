@@ -9,6 +9,7 @@ import { openExternalUrl } from '@/lib/native';
 import { useAuth } from '@/contexts/AuthContext';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
+import { FEATURE_LABELS } from '@/lib/features';
 
 type BillingType = 'PIX' | 'CREDIT_CARD';
 
@@ -211,6 +212,7 @@ export default function PricingPage() {
           }).map((plan, i) => {
             const isPopular = plan.slug === 'professor';
             const color = planColors[plan.slug] || '#FFF';
+            const trialDays = Number(plan.trialDays ?? 0);
             return (
               <div
                 key={plan.id}
@@ -244,13 +246,13 @@ export default function PricingPage() {
                 <div style={{ marginBottom: '1.25rem' }}>
                   <span style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '2.25rem', color }}>R$ {plan.price.toFixed(2)}</span>
                   <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>/mês</span>
-                  {plan.trialDays > 0 && (
+                  {trialDays > 0 && (
                     <div style={{ marginTop: '0.25rem' }}>
                       <span style={{
                         background: '#3B82F6', color: '#FFF', fontFamily: FONTS.condensed, fontWeight: 800,
                         fontSize: '0.65rem', letterSpacing: '0.08em', padding: '0.15rem 0.5rem', textTransform: 'uppercase',
                       }}>
-                        {plan.trialDays} DIAS GRÁTIS
+                        {trialDays} DIAS GRÁTIS
                       </span>
                     </div>
                   )}
@@ -340,31 +342,3 @@ export default function PricingPage() {
   );
 }
 
-const FEATURE_LABELS: { key: string; label: string }[] = [
-  { key: 'training_tracking', label: 'Registro de treinos' },
-  { key: 'training_history', label: 'Histórico completo' },
-  { key: 'streak', label: 'Sequência (streak)' },
-  { key: 'community', label: 'Comunidade' },
-  { key: 'achievements', label: 'Conquistas' },
-  { key: 'competitions', label: 'Competições' },
-  { key: 'goals', label: 'Metas' },
-  { key: 'challenges', label: 'Desafios' },
-  { key: 'events', label: 'Eventos' },
-  { key: 'profile_stats', label: 'Estatísticas do perfil' },
-  { key: 'professor_panel', label: 'Painel do professor' },
-  { key: 'student_management', label: 'Gestão de alunos' },
-  { key: 'unlimited_students', label: 'Alunos ilimitados' },
-  { key: 'enrollments', label: 'Matrículas' },
-  { key: 'payments', label: 'Pagamentos' },
-  { key: 'promotions', label: 'Promoções de faixa' },
-  { key: 'class_schedules', label: 'Agenda de aulas' },
-  { key: 'class_checkins', label: 'Chamada (check-in)' },
-  { key: 'training_analytics', label: 'Analytics de treinos' },
-  { key: 'exclusive_student_attention', label: 'Atendimento exclusivo' },
-  { key: 'admin_dashboard', label: 'Dashboard administrativo' },
-  { key: 'user_management', label: 'Gestão de usuários' },
-  { key: 'crm', label: 'CRM completo' },
-  { key: 'multiple_professors', label: 'Múltiplos professores' },
-  { key: 'reports', label: 'Relatórios' },
-  { key: 'revenue_analytics', label: 'Analytics financeiro' },
-];
