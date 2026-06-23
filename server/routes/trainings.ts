@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { trainings, users } from '../db/schema.js';
@@ -38,7 +38,7 @@ router.post('/', requireAuth, requireFeature('training_tracking'), async (req: A
   const id = nanoid();
   const values: Record<string, unknown> = { id, uid: ownerUid, ...rest };
   const photoUrl = trainingPhotoUrl ?? trainingPhoto;
-  if (photoUrl !== undefined) values.trainingPhotoUrl = photoUrl || null;
+  if (photoUrl !== undefined) values.trainingPhotoUrl = photoUrl;
   const [row] = await db.insert(trainings).values(values).returning();
 
   // Atualiza estatísticas do usuário
@@ -73,9 +73,18 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   if (!existing) { res.status(404).json({ error: 'Não encontrado' }); return; }
   if (existing.uid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const { id: _id, uid: _uid, createdAt: _ca, updatedAt: _ua, trainingPhoto, trainingPhotoUrl, ...data } = req.body;
-  const photoUrl = trainingPhotoUrl ?? trainingPhoto;
-  if (photoUrl !== undefined) (data as any).trainingPhotoUrl = photoUrl || null;
-  const [row] = await db.update(trainings).set(data).where(eq(trainings.id, req.params.id)).returning();
+  const photoUrl = trainingPhoto ?? trainingPhotoUrl;
+  if (photoUrl !== undefined) (data as any).trainingPhotoUrl = photoUrl;
+  // Tratar foto explicitamente: null → SQL NULL, undefined → não altera
+  const photoValue = (data as any).trainingPhotoUrl;
+  delete (data as any).trainingPhotoUrl;
+  const setData: Record<string, any> = { ...data as any };
+  if (photoValue === null) {
+    setData.trainingPhotoUrl = sql`NULL`;
+  } else if (photoValue !== undefined) {
+    setData.trainingPhotoUrl = photoValue;
+  }
+  const [row] = await db.update(trainings).set(setData).where(eq(trainings.id, req.params.id)).returning();
   res.json(serializeTraining(row));
 });
 
