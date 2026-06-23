@@ -187,6 +187,11 @@ CREATE TABLE "extra_trainings" (
 	"training_date" text NOT NULL,
 	"activity" text,
 	"duration" integer NOT NULL,
+	"distance" real,
+	"calories" integer,
+	"pace" text,
+	"extra_xp" integer DEFAULT 0,
+	"training_photo_url" text,
 	"notes" text,
 	"created_at" timestamp DEFAULT now()
 );

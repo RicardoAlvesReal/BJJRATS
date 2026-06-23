@@ -5,6 +5,7 @@ import { fadeUpReveal as fadeUp } from '@/lib/animations';
 import LegalModal from '@/components/LegalModal';
 import { TermsContent, PrivacyContent, SupportContent } from '@/lib/legalContent';
 import api, { type Plan } from '@/lib/api';
+import { getFeatureLabel } from '@/lib/features';
 
 const ROLE_META: Record<string, { icon: string; color: string }> = {
   student:   { icon: '🥋',   color: '#3B82F6' },
@@ -434,6 +435,7 @@ export default function Landing() {
             {landingPlans.map((plan, i) => {
               const meta = ROLE_META[plan.roleAssigned] || ROLE_META.student;
               const isPopular = plan.slug === popularPlanSlug;
+              const trialDays = Number(plan.trialDays ?? 0);
               return (
               <motion.div
                 key={plan.slug}
@@ -462,12 +464,19 @@ export default function Landing() {
                     {plan.price === 0 ? 'GRÁTIS' : `R$ ${plan.price.toFixed(2)}`}
                   </span>
                   {plan.price > 0 && <span className="text-[0.7rem] text-[#666] font-['Barlow_Condensed']">/mês</span>}
+                  {trialDays > 0 && (
+                    <div className="mt-2">
+                      <span className="inline-flex items-center rounded-md bg-[#3B82F6] px-2 py-1 text-[0.62rem] font-black uppercase tracking-[0.1em] text-white font-['Barlow_Condensed']">
+                        {trialDays} dias grátis
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <ul className="list-none p-0 m-0 flex-1 flex flex-col gap-1.5 mb-6">
                   {(plan.features || []).slice(0, 7).map(f => (
                     <li key={f} className="flex items-center gap-2 text-[0.8rem] text-[#BBB] font-['Barlow_Condensed']">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                      {f}
+                      {getFeatureLabel(f)}
                     </li>
                   ))}
                 </ul>

@@ -34,3 +34,7 @@ export const ALL_FEATURES: FeatureDef[] = [
 ];
 
 export const FEATURE_LABELS: { key: string; label: string }[] = ALL_FEATURES.map(f => ({ key: f.key, label: f.label }));
+
+export function getFeatureLabel(key: string): string {
+  return ALL_FEATURES.find(feature => feature.key === key)?.label ?? key;
+}

@@ -136,6 +136,11 @@ export const extraTrainings = pgTable('extra_trainings', {
   trainingDate: text('training_date').notNull(),
   activity:     text('activity'),
   duration:     integer('duration').notNull(),
+  distance:     real('distance'),
+  calories:     integer('calories'),
+  pace:         text('pace'),
+  extraXP:      integer('extra_xp').default(0),
+  trainingPhotoUrl: text('training_photo_url'),
   notes:        text('notes'),
   createdAt:    timestamp('created_at').defaultNow(),
 });

@@ -8,6 +8,7 @@ import api, { type Subscription } from '@/lib/api';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
 import { useAuth } from '@/contexts/AuthContext';
+import { getFeatureLabel } from '@/lib/features';
 
 const BILLING_LABELS: Record<string, string> = {
   PIX: 'PIX',
@@ -460,7 +461,7 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
                     fontFamily: FONTS.condensed, fontSize: '0.65rem',
                     padding: '0.2rem 0.5rem', borderRadius: '4px',
                   }}>
-                    {f}
+                    {getFeatureLabel(f)}
                   </span>
                 ))}
               </div>
