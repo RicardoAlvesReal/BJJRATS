@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { extraTrainings } from '../db/schema.js';
@@ -25,8 +25,8 @@ function normalizeExtraTrainingPayload(body: any) {
     trainingPhotoUrl,
     ...data
   } = body;
-  const photoUrl = trainingPhotoUrl ?? trainingPhoto;
-  if (photoUrl !== undefined) data.trainingPhotoUrl = photoUrl || null;
+  const photoUrl = trainingPhoto ?? trainingPhotoUrl;
+  if (photoUrl !== undefined) data.trainingPhotoUrl = photoUrl;
   return data;
 }
 
@@ -49,7 +49,16 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   const [existing] = await db.select({ uid: extraTrainings.uid }).from(extraTrainings).where(eq(extraTrainings.id, req.params.id)).limit(1);
   if (!existing || existing.uid !== req.userId) { res.status(403).json({ error: 'Proibido' }); return; }
   const data = normalizeExtraTrainingPayload(req.body);
-  const [row] = await db.update(extraTrainings).set(data).where(eq(extraTrainings.id, req.params.id)).returning();
+  // Tratar foto explicitamente: null → SQL NULL, undefined → não altera
+  const photoValue = data.trainingPhotoUrl;
+  delete data.trainingPhotoUrl;
+  const setData: Record<string, any> = { ...data };
+  if (photoValue === null) {
+    setData.trainingPhotoUrl = sql`NULL`;
+  } else if (photoValue !== undefined) {
+    setData.trainingPhotoUrl = photoValue;
+  }
+  const [row] = await db.update(extraTrainings).set(setData).where(eq(extraTrainings.id, req.params.id)).returning();
   res.json(serializeExtraTraining(row));
 });
 

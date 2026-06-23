@@ -23,7 +23,6 @@ export interface ExtraTrainingData {
   extraXP: number;
   notes?: string;
   trainingPhoto?: string;
-  trainingPhotoUrl?: string;
   createdAt?: any;
 }
 
@@ -136,6 +135,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
 
   // Upload de foto
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoRemovedRef = useRef(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(
     (editExtraTraining as any)?.trainingPhotoUrl || (editExtraTraining as any)?.trainingPhoto || (editTraining as any)?.trainingPhotoUrl || (editTraining as any)?.trainingPhoto || null
@@ -337,6 +337,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
   };
 
   const handleRemovePhoto = () => {
+    photoRemovedRef.current = true;
     setPhotoFile(null);
     setPhotoPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -358,6 +359,9 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
     if (!user || loading) return;
     setLoading(true);
     try {
+      const wasPhotoRemoved = photoRemovedRef.current;
+      photoRemovedRef.current = false;
+      console.log('[handleSave] isEditMode:', isEditMode, 'editTraining:', !!editTraining, 'editExtraTraining:', !!editExtraTraining, 'sessionType:', form.sessionType);
       const xpGained = calcXPLocal();
 
       // Upload da foto se houver novo arquivo selecionado
@@ -375,8 +379,8 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
           return;
         }
       }
-      // Se foto foi removida (preview null e sem novo arquivo)
-      if (!photoPreview && !photoFile) {
+      // Se foto foi removida explicitamente ou preview limpo sem novo arquivo
+      if (wasPhotoRemoved || (!photoPreview && !photoFile)) {
         trainingPhotoUrl = null;
       }
 
@@ -384,7 +388,12 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
         // ── MODO EDIÇÃO EXTRA: updateDoc em extraTrainings ─────────────────
         const extraId = editExtraTraining.firestoreId || editExtraTraining.id;
         if (!extraId) throw new Error('ID da atividade não encontrado');
-
+        const originalNotes = editExtraTraining.notes || '';
+        if (form.notes === originalNotes) {
+          toast.error('Altere o campo Observações para salvar as alterações no card do histórico.');
+          setLoading(false);
+          return;
+        }
         const newExtraXP = calcExtraXP();
         const updates: any = {
           trainingDate: form.trainingDate,
@@ -607,7 +616,7 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
       toast.error('Erro ao salvar treino');
       setLoading(false);
     }
-  }, [user, loading, photoFile, photoPreview, form, refreshProfile, isEditMode, editTraining]);
+  }, [user, loading, photoFile, photoPreview, form, refreshProfile, isEditMode, editTraining, editExtraTraining]);
   // ── Excluir treino ─────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!user) return;
@@ -859,6 +868,11 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
             <div className="bjj-header-title !text-[0.85rem]" style={{ color: '#0EA5E9' }}>
               🏃 ATIVIDADE COMPLEMENTAR
             </div>
+            {isEditMode && (
+              <div style={{ background: '#F59E0B20', border: '1px solid #F59E0B', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', marginBottom: '0.75rem', fontSize: '0.75rem', color: '#F59E0B' }}>
+                ⚠️ Após editar, altere também o campo <strong>Observações</strong> abaixo para salvar as alterações no card do histórico.
+              </div>
+            )}
 
             {/* Tipo de Atividade */}
             <div>
