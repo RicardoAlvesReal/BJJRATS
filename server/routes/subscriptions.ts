@@ -130,13 +130,26 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     )
     .limit(1);
 
+  let replacingFreeSubscriptionId: string | null = null;
   if (existingSub) {
-    res.status(409).json({
-      error: 'Você já possui uma assinatura ativa. Cancele a atual antes de assinar um novo plano.',
-      code: 'duplicate_subscription',
-      existingSubscription: { id: existingSub.id, status: existingSub.status, planId: existingSub.planId },
-    });
-    return;
+    const [existingPlan] = await db
+      .select({ price: plans.price })
+      .from(plans)
+      .where(eq(plans.id, existingSub.planId))
+      .limit(1);
+    const existingIsFree = Number.isFinite(Number(existingPlan?.price))
+      && Number(existingPlan?.price) <= 0;
+
+    if (existingIsFree) {
+      replacingFreeSubscriptionId = existingSub.id;
+    } else {
+      res.status(409).json({
+        error: 'Você já possui uma assinatura ativa. Cancele a atual antes de assinar um novo plano.',
+        code: 'duplicate_subscription',
+        existingSubscription: { id: existingSub.id, status: existingSub.status, planId: existingSub.planId },
+      });
+      return;
+    }
   }
 
   // Busca o plano
@@ -148,6 +161,45 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
   if (!plan) {
     res.status(404).json({ error: 'Plano não encontrado' });
+    return;
+  }
+
+  const planPrice = Number(plan.price);
+  const isFree = Number.isFinite(planPrice) && planPrice <= 0;
+  const now = new Date();
+  const subId = nanoid();
+
+  // Planos gratuitos não passam pelo Asaas porque não possuem cobrança.
+  if (isFree) {
+    if (replacingFreeSubscriptionId) {
+      res.status(409).json({
+        error: 'Este já é o seu plano atual.',
+        code: 'same_free_plan',
+      });
+      return;
+    }
+
+    await db.insert(subscriptions).values({
+      id: subId,
+      userUid: req.userId!,
+      planId,
+      status: 'active',
+      asaasId: null,
+      asaasCustomerId: null,
+      currentPeriodStart: now,
+      currentPeriodEnd: null,
+      trialEndsAt: null,
+    });
+
+    res.status(201).json({
+      subscription: {
+        id: subId,
+        asaasId: null,
+        status: 'active',
+        isFree: true,
+        payment: null,
+      },
+    });
     return;
   }
 
@@ -184,7 +236,6 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   }
 
   const trialDays = plan.trialDays ?? 0;
-  const now = new Date();
 
   // Próximo vencimento: trialDays + 30 dias a partir de hoje
   const nextDue = new Date();
@@ -199,7 +250,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   // Cria subscription no Asaas (com vencimento após trial se houver)
   const asaasSub = await asaasCreateSub({
     customer: customer.id,
-    value: plan.price,
+    value: planPrice,
     nextDueDate: nextDueStr,
     cycle: 'MONTHLY',
     billingType: bt,
@@ -208,29 +259,40 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
   });
 
   // Salva no banco
-  const subId = nanoid();
   const isTrial = trialDays > 0;
-  const isFree = plan.price === 0;
   const trialEndsAt = isTrial ? new Date(now.getTime() + trialDays * 86400000) : null;
   const periodEnd = new Date(trialEndsAt ?? now);
   periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-  // Plano gratuito: ativo imediatamente (Asaas não gera cobrança/webhook para R$0)
-  const initialStatus = isTrial ? 'trial'
-    : isFree ? 'active'
-    : 'pending';
+  const initialStatus = isTrial ? 'trial' : 'pending';
 
-  await db.insert(subscriptions).values({
-    id: subId,
-    userUid: req.userId!,
-    planId,
-    status: initialStatus,
-    asaasId: asaasSub.id,
-    asaasCustomerId: customer.id,
-    currentPeriodStart: now,
-    currentPeriodEnd: periodEnd,
-    trialEndsAt,
-  });
+  if (replacingFreeSubscriptionId) {
+    await db
+      .update(subscriptions)
+      .set({
+        planId,
+        status: initialStatus,
+        asaasId: asaasSub.id,
+        asaasCustomerId: customer.id,
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        trialEndsAt,
+        cancelledAt: null,
+      })
+      .where(eq(subscriptions.id, replacingFreeSubscriptionId));
+  } else {
+    await db.insert(subscriptions).values({
+      id: subId,
+      userUid: req.userId!,
+      planId,
+      status: initialStatus,
+      asaasId: asaasSub.id,
+      asaasCustomerId: customer.id,
+      currentPeriodStart: now,
+      currentPeriodEnd: periodEnd,
+      trialEndsAt,
+    });
+  }
 
   let firstPayment:
     | { id: string; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string; pixCopiaECola?: string; status: string }
@@ -272,8 +334,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
   res.status(201).json({
     subscription: {
-      id: subId,
+      id: replacingFreeSubscriptionId || subId,
       asaasId: asaasSub.id,
+      status: initialStatus,
+      isFree: false,
+      upgradedFromFree: Boolean(replacingFreeSubscriptionId),
       payment: firstPayment,
     },
   });
@@ -324,8 +389,32 @@ router.get('/my/billing', requireAuth, async (req: AuthRequest, res) => {
     )
     .limit(1);
 
-  if (!sub || !sub.asaasId) {
-    res.json({ billingType: null, availableMethods: ['PIX', 'CREDIT_CARD'], pendingPayment: null, graceDays: await getGraceDays() });
+  if (!sub) {
+    res.json({
+      billingType: null,
+      availableMethods: ['PIX', 'CREDIT_CARD'],
+      pendingPayment: null,
+      graceDays: await getGraceDays(),
+      isFree: false,
+    });
+    return;
+  }
+
+  if (!sub.asaasId) {
+    const [plan] = await db
+      .select({ price: plans.price })
+      .from(plans)
+      .where(eq(plans.id, sub.planId))
+      .limit(1);
+    const isFree = Number(plan?.price) <= 0;
+
+    res.json({
+      billingType: null,
+      availableMethods: isFree ? [] : ['PIX', 'CREDIT_CARD'],
+      pendingPayment: null,
+      graceDays: await getGraceDays(),
+      isFree,
+    });
     return;
   }
 
@@ -399,7 +488,17 @@ router.put('/my/billing', requireAuth, async (req: AuthRequest, res) => {
   }
 
   if (!sub.asaasId) {
-    res.status(400).json({ error: 'Assinatura não vinculada ao Asaas' });
+    const [plan] = await db
+      .select({ price: plans.price })
+      .from(plans)
+      .where(eq(plans.id, sub.planId))
+      .limit(1);
+
+    res.status(400).json({
+      error: Number(plan?.price) <= 0
+        ? 'Plano gratuito não possui forma de pagamento'
+        : 'Assinatura não vinculada ao Asaas',
+    });
     return;
   }
 

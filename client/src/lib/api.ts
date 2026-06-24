@@ -39,6 +39,11 @@ async function apiFetch<T>(urlPath: string, options: RequestInit = {}): Promise<
   const res = await fetch(`${BASE}${urlPath}`, { ...options, headers, signal: controller.signal, credentials: 'include' }).finally(() => clearTimeout(timeoutId));
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
+    if (body.code === 'feature_not_included' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bjjrats:upgrade-required', {
+        detail: { featureKey: body.requiredFeature || null },
+      }));
+    }
     const err = new Error(body.error || res.statusText) as any;
     err.status = res.status;
     err.code = body.code || body.error;
@@ -1056,13 +1061,27 @@ export const subscriptions = {
   listPlans: () => apiFetch<Plan[]>('/api/subscriptions/plans'),
   getMy: () => apiFetch<{ subscription: Subscription | null }>('/api/subscriptions/my'),
   create: (data: { planId: string; billingType?: string; cpfCnpj?: string; phone?: string }) =>
-    apiFetch<{ subscription: { id: string; asaasId: string; payment?: { id: string; invoiceUrl?: string; bankSlipUrl?: string; status: string } | null } }>('/api/subscriptions', {
+    apiFetch<{ subscription: {
+      id: string;
+      asaasId: string | null;
+      status: string;
+      isFree: boolean;
+      upgradedFromFree?: boolean;
+      payment?: {
+        id: string;
+        invoiceUrl?: string;
+        bankSlipUrl?: string;
+        pixQrCode?: string;
+        pixCopiaECola?: string;
+        status: string;
+      } | null;
+    } }>('/api/subscriptions', {
       method: 'POST', body: JSON.stringify(data),
     }),
   cancel: () =>
     apiFetch<{ success: boolean }>('/api/subscriptions/cancel', { method: 'POST' }),
   getBilling: () =>
-    apiFetch<{ billingType: string | null; availableMethods: string[]; pendingPayment?: { id: string; value: number; dueDate: string; status: string; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string } | null; graceDays?: number }>('/api/subscriptions/my/billing'),
+    apiFetch<{ billingType: string | null; availableMethods: string[]; pendingPayment?: { id: string; value: number; dueDate: string; status: string; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string } | null; graceDays?: number; isFree?: boolean }>('/api/subscriptions/my/billing'),
   updateBilling: (billingType: string) =>
     apiFetch<{ billingType: string; availableMethods: string[]; message: string }>('/api/subscriptions/my/billing', {
       method: 'PUT', body: JSON.stringify({ billingType }),

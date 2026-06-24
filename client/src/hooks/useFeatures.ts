@@ -15,6 +15,11 @@ interface UseFeaturesResult {
   hasActiveSubscription: boolean;
   /** Status da assinatura */
   subscriptionStatus: string | null;
+  /** Dados básicos do plano atual */
+  planId: string | null;
+  planName: string | null;
+  planPrice: number | null;
+  isFreePlan: boolean;
 }
 
 /**
@@ -28,6 +33,9 @@ export function useFeatures(): UseFeaturesResult {
   const [features, setFeatures] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [planName, setPlanName] = useState<string | null>(null);
+  const [planPrice, setPlanPrice] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +50,9 @@ export function useFeatures(): UseFeaturesResult {
           setFeatures(['training_tracking', 'training_history', 'streak', 'community', 'achievements', 'competitions', 'goals', 'events', 'challenges', 'profile_stats']);
         }
         setSubscriptionStatus(sub?.status ?? null);
+        setPlanId(sub?.planId ?? null);
+        setPlanName(sub?.plan?.name ?? null);
+        setPlanPrice(typeof sub?.plan?.price === 'number' ? sub.plan.price : null);
       })
       .catch(() => {
         // Usuário sem assinatura — sem features
@@ -57,6 +68,17 @@ export function useFeatures(): UseFeaturesResult {
   const hasActiveSubscription = subscriptionStatus === 'active'
     || subscriptionStatus === 'trial'
     || subscriptionStatus === 'past_due';
+  const isFreePlan = hasActiveSubscription && planPrice !== null && planPrice <= 0;
 
-  return { features, loading, hasFeature, hasActiveSubscription, subscriptionStatus };
+  return {
+    features,
+    loading,
+    hasFeature,
+    hasActiveSubscription,
+    subscriptionStatus,
+    planId,
+    planName,
+    planPrice,
+    isFreePlan,
+  };
 }

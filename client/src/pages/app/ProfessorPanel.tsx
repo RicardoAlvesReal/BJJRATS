@@ -11,7 +11,9 @@ import { BELT_COLORS, getLevelInfo, ACHIEVEMENTS, topTecnicas, calcStreak, LEVEL
 import { formatCep, getEventAddressLabel, getEventGoogleMapsUrl, getEventLocationLabel, getEventMapEmbedUrl, getEventMapDestination, getEventWazeUrl } from '@/lib/eventLocation';
 import api, { type AcademyProfessorLink, type AcademyStudentProfessorAssignment, type PaymentIntegrationSettings, type WhatsAppAutomationResult } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFeatures } from '@/hooks/useFeatures';
 import { toast } from 'sonner';
+import { FreePlanBanner, LockedFeaturePanel, PlusBadge, UpgradeModal, useUpgradePrompt } from '@/components/UpgradePrompt';
 import {
   ArrowLeft,
   BarChart3,
@@ -335,6 +337,15 @@ const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: Lucide
 ];
 
 const INTERNAL_PROFESSOR_HIDDEN_TABS: PanelTab[] = ['financial', 'relatorios', 'whatsapp', 'avisos', 'leads'];
+const PROFESSOR_TAB_FEATURES: Partial<Record<PanelTab, string[]>> = {
+  members: ['student_management', 'enrollments'],
+  frequencia: ['class_checkins'],
+  promocao: ['promotions'],
+  financial: ['payments'],
+  horarios: ['class_schedules'],
+  relatorios: ['training_analytics', 'reports'],
+  leads: ['exclusive_student_attention'],
+};
 
 import WhatsAppTab from './professor/WhatsAppTab';
 import AvisosTab from './professor/AvisosTab';
@@ -344,6 +355,8 @@ import { getWhatsAppAutomationToast } from './professor/utils';
 
 export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: Props) {
   const { user, profile, updateProfileData } = useAuth();
+  const { hasFeature, isFreePlan, planName } = useFeatures();
+  const upgradePrompt = useUpgradePrompt();
   const [activeTab, setActiveTab] = useState<PanelTab>('overview');
   const [activeTabGroup, setActiveTabGroup] = useState<PanelGroup>('principal');
   const [members, setMembers] = useState<Member[]>([]);
@@ -410,6 +423,14 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const isProfessorUnderAcademy = profile?.role === 'professor' && !!(profile as any)?.academyId;
   const canCreateEvents = !isProfessorUnderAcademy;
   const visiblePanelTabs = PANEL_TABS.filter(tab => !isProfessorUnderAcademy || !INTERNAL_PROFESSOR_HIDDEN_TABS.includes(tab.id));
+  const isPanelTabLocked = (tabId: PanelTab) => {
+    const requiredFeatures = PROFESSOR_TAB_FEATURES[tabId];
+    return Boolean(
+      isFreePlan
+      && requiredFeatures?.length
+      && !requiredFeatures.some(feature => hasFeature(feature)),
+    );
+  };
 
   // ── Dados da Academia (diretório) ────────────────────────────────────────
   const [academyProfile, setAcademyProfile] = useState<any>(null);
@@ -1915,9 +1936,21 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   const handleGroupSelect = (groupId: PanelGroup) => {
     setActiveTabGroup(groupId);
     if (activeTabInfo.group !== groupId) {
-      const firstTab = visiblePanelTabs.find(tab => tab.group === groupId);
-      if (firstTab) setActiveTab(firstTab.id);
+      const groupTabs = visiblePanelTabs.filter(tab => tab.group === groupId);
+      const firstAvailableTab = groupTabs.find(tab => !isPanelTabLocked(tab.id));
+      if (firstAvailableTab) {
+        setActiveTab(firstAvailableTab.id);
+      } else if (groupTabs[0]) {
+        upgradePrompt.showUpgrade(PROFESSOR_TAB_FEATURES[groupTabs[0].id]?.[0]);
+      }
     }
+  };
+  const handlePanelTabSelect = (tabId: PanelTab) => {
+    if (isPanelTabLocked(tabId)) {
+      upgradePrompt.showUpgrade(PROFESSOR_TAB_FEATURES[tabId]?.[0]);
+      return;
+    }
+    setActiveTab(tabId);
   };
 
   const getTabBadge = (tabId: PanelTab) => {
@@ -2004,6 +2037,10 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
         </button>
       </div>
 
+      {isFreePlan && (
+        <FreePlanBanner planName={planName} onUpgrade={() => upgradePrompt.showUpgrade()} />
+      )}
+
       {/* Sub-nav organizada por grupos */}
       <div style={{ background: '#0B0B0B', borderBottom: '1px solid #20242A', flexShrink: 0 }}>
         <div className="prof-panel-nav-shell" style={{ maxWidth: '1180px', margin: '0 auto', padding: '0.625rem 1rem 0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -2045,7 +2082,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handlePanelTabSelect(tab.id)}
                   style={{
                     padding: '0.625rem 0.875rem',
                     background: isActive ? accentColor : '#111',
@@ -2069,6 +2106,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                 >
                   <Icon size={15} strokeWidth={2.4} />
                   {tab.label}
+                  {isPanelTabLocked(tab.id) && <PlusBadge />}
                   {badge !== null && (
                     <span style={{ background: isActive ? '#FFFFFF' : accentColor, color: isActive ? accentColor : '#FFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.58rem', padding: '0.05rem 0.35rem', borderRadius: '999px', minWidth: '18px', textAlign: 'center' }}>
                       {badge}
@@ -2093,7 +2131,15 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
             transition={tabTransition}
             className="prof-panel-motion"
             style={{ maxWidth: '1180px', width: '100%', margin: '0 auto' }}
-          >        {/* ── Visão Geral ── */}
+          >
+        {isPanelTabLocked(activeTab) ? (
+          <LockedFeaturePanel
+            featureKey={PROFESSOR_TAB_FEATURES[activeTab]?.[0]}
+            onUpgrade={() => upgradePrompt.showUpgrade(PROFESSOR_TAB_FEATURES[activeTab]?.[0])}
+          />
+        ) : (
+          <>
+        {/* ── Visão Geral ── */}
         {activeTab === 'overview' && (
           <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div className="prof-panel-command-card" style={{ background: 'linear-gradient(135deg, #111 0%, #131923 58%, #0D1611 100%)', border: `1px solid ${accentColor}44`, borderLeft: `4px solid ${commandStatus.color}`, padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', alignItems: 'stretch' }}>
@@ -4426,6 +4472,14 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
 
       {/* ── ABA WHATSAPP ──────────────────────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'whatsapp' && !isProfessorUnderAcademy && <WhatsAppTab />}
+          </>
+        )}
+
+      <UpgradeModal
+        open={upgradePrompt.open}
+        featureKey={upgradePrompt.featureKey}
+        onClose={upgradePrompt.closeUpgrade}
+      />
 
 
       {/* ─── Modal: Revisão de Cobranças ─────────────────────────────────────────── */}

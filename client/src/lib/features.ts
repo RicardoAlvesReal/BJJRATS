@@ -8,6 +8,8 @@ export const ALL_FEATURES: FeatureDef[] = [
   { key: 'training_tracking', label: 'Registro de treinos', description: 'Registra treinos com duração, intensidade, técnicas e notas pessoais' },
   { key: 'training_history', label: 'Histórico completo', description: 'Acesso ao histórico completo de todos os treinos registrados' },
   { key: 'streak', label: 'Sequência (streak)', description: 'Acompanha dias consecutivos de treino para manter a motivação' },
+  { key: 'academy_search', label: 'Busca de academias', description: 'Encontra academias disponíveis, informações de contato e localização' },
+  { key: 'professor_search', label: 'Busca de professores', description: 'Encontra professores particulares disponíveis e seus locais de atendimento' },
   { key: 'community', label: 'Comunidade', description: 'Acesso ao feed da comunidade com posts, eventos e desafios' },
   { key: 'achievements', label: 'Conquistas', description: 'Sistema de conquistas e medalhas por metas atingidas' },
   { key: 'competitions', label: 'Competições', description: 'Registro e acompanhamento de competições de Jiu-Jitsu' },
