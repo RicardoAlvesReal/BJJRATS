@@ -12,6 +12,7 @@ import { formatCep, getEventAddressLabel, getEventGoogleMapsUrl, getEventLocatio
 import api, { type AcademyProfessorLink, type AcademyStudentProfessorAssignment, type PaymentIntegrationSettings, type WhatsAppAutomationResult } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFeatures } from '@/hooks/useFeatures';
+import { useSessionTab } from '@/hooks/useSessionTab';
 import { toast } from 'sonner';
 import { FreePlanBanner, LockedFeaturePanel, PlusBadge, UpgradeModal, useUpgradePrompt } from '@/components/UpgradePrompt';
 import {
@@ -319,6 +320,7 @@ const PANEL_TAB_GROUPS: { id: PanelGroup; label: string }[] = [
   { id: 'gestao', label: 'GESTÃO' },
   { id: 'comunidade', label: 'COMUNIDADE' },
 ];
+const PANEL_GROUP_IDS = PANEL_TAB_GROUPS.map(group => group.id);
 
 const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: LucideIcon }[] = [
   { id: 'overview', label: 'VISÃO GERAL', group: 'principal', icon: LayoutDashboard },
@@ -335,6 +337,9 @@ const PANEL_TABS: { id: PanelTab; label: string; group: PanelGroup; icon: Lucide
   { id: 'leads', label: 'LEADS', group: 'comunidade', icon: Target },
   { id: 'whatsapp', label: 'WHATSAPP', group: 'gestao', icon: MessageSquare },
 ];
+const PANEL_TAB_IDS = PANEL_TABS.map(tab => tab.id);
+const MEMBER_SUB_TAB_IDS = ['list', 'requests', 'ranking'] as const;
+const FINANCIAL_SUB_TAB_IDS: FinancialSubTab[] = ['enrollments', 'payments', 'suspensions', 'integrations'];
 
 const INTERNAL_PROFESSOR_HIDDEN_TABS: PanelTab[] = ['financial', 'relatorios', 'whatsapp', 'avisos', 'leads'];
 const PROFESSOR_TAB_FEATURES: Partial<Record<PanelTab, string[]>> = {
@@ -357,15 +362,27 @@ export default function ProfessorPanel({ onBack, onLogout, notificationSlot }: P
   const { user, profile, updateProfileData } = useAuth();
   const { hasFeature, isFreePlan, planName } = useFeatures();
   const upgradePrompt = useUpgradePrompt();
-  const [activeTab, setActiveTab] = useState<PanelTab>('overview');
-  const [activeTabGroup, setActiveTabGroup] = useState<PanelGroup>('principal');
+  const [activeTab, setActiveTab] = useSessionTab<PanelTab>(
+    'bjjrats:professor:active-tab',
+    PANEL_TAB_IDS,
+    'overview',
+  );
+  const [activeTabGroup, setActiveTabGroup] = useSessionTab<PanelGroup>(
+    'bjjrats:professor:active-group',
+    PANEL_GROUP_IDS,
+    'principal',
+  );
   const [members, setMembers] = useState<Member[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBelt, setFilterBelt] = useState('');
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const [membersSubTab, setMembersSubTab] = useState<'list' | 'requests' | 'ranking'>('list');
+  const [membersSubTab, setMembersSubTab] = useSessionTab<'list' | 'requests' | 'ranking'>(
+    'bjjrats:professor:members-subtab',
+    MEMBER_SUB_TAB_IDS,
+    'list',
+  );
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
@@ -626,7 +643,11 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
   }, [user]);
 
   // ── Financeiro ────────────────────────────────────────────────────────────
-  const [financialSubTab, setFinancialSubTab] = useState<FinancialSubTab>('enrollments');
+  const [financialSubTab, setFinancialSubTab] = useSessionTab<FinancialSubTab>(
+    'bjjrats:professor:financial-subtab',
+    FINANCIAL_SUB_TAB_IDS,
+    'enrollments',
+  );
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);

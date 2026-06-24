@@ -17,6 +17,7 @@ import AcademiaWhatsapp from './AcademiaWhatsapp';
 import AcademiaPromocoes from './AcademiaPromocoes';
 import SubscriptionModal from '../SubscriptionModal';
 import { useFeatures } from '@/hooks/useFeatures';
+import { useSessionTab } from '@/hooks/useSessionTab';
 import { FreePlanBanner, LockedFeaturePanel, PlusBadge, UpgradeModal, useUpgradePrompt } from '@/components/UpgradePrompt';
 
 type AcademiaTab = 'dashboard' | 'users' | 'professors' | 'promotions' | 'financeiro' | 'whatsapp' | 'crm' | 'community';
@@ -31,11 +32,16 @@ const NAV_ITEMS: { id: AcademiaTab; label: string; features?: string[] }[] = [
   { id: 'crm',        label: 'CRM', features: ['crm'] },
   { id: 'community',  label: 'Comunidade'  },
 ];
+const ACADEMY_TAB_IDS = NAV_ITEMS.map(item => item.id);
 
 export default function AcademiaLayout() {
   const { user, logout, updateProfileData } = useAuth();
   const [, navigate] = useLocation();
-  const [tab, setTab] = useState<AcademiaTab>('dashboard');
+  const [tab, setTab] = useSessionTab<AcademiaTab>(
+    'bjjrats:academy:active-tab',
+    ACADEMY_TAB_IDS,
+    'dashboard',
+  );
   const [uploading, setUploading] = useState(false);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);

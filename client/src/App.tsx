@@ -25,6 +25,9 @@ import SubscriptionManager from './pages/SubscriptionManager';
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
+  const userUid = user?.uid;
+  const userRole = user?.role;
+  const subscriptionExempt = user?.subscriptionExempt === true;
   const [checkingSub, setCheckingSub] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
   const [isPastDue, setIsPastDue] = useState(false);
@@ -32,11 +35,11 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   useEffect(() => {
     if (loading) return;
-    if (!user) { setCheckingSub(false); return; }
+    if (!userUid) { setCheckingSub(false); return; }
     setCheckingSub(true);
     const check = async () => {
       try {
-        if (user.role === 'superadmin' || user.subscriptionExempt) {
+        if (userRole === 'superadmin' || subscriptionExempt) {
           setHasAccess(true);
           setCheckingSub(false);
           return;
@@ -88,7 +91,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       }
     };
     check();
-  }, [user, loading]);
+  }, [userUid, userRole, subscriptionExempt, loading]);
 
   if (loading || checkingSub) {
     return (
@@ -125,13 +128,15 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
 
 function AcademiaRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, loading } = useAuth();
+  const userUid = user?.uid;
+  const subscriptionExempt = user?.subscriptionExempt === true;
   const [checkingSub, setCheckingSub] = useState(true);
   const [isPastDue, setIsPastDue] = useState(false);
 
   useEffect(() => {
     if (loading) return;
-    if (!user) { setCheckingSub(false); return; }
-    if (user.subscriptionExempt) { setCheckingSub(false); return; }
+    if (!userUid) { setCheckingSub(false); return; }
+    if (subscriptionExempt) { setCheckingSub(false); return; }
     const check = async () => {
       try {
         const { subscription } = await api.subscriptions.getMy();
@@ -157,7 +162,7 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
       setCheckingSub(false);
     };
     check();
-  }, [user, loading]);
+  }, [userUid, subscriptionExempt, loading]);
 
   if (loading || checkingSub) return null;
   if (!user) return <Redirect to="/login" />;

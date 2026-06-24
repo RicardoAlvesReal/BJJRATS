@@ -22,6 +22,7 @@ import SubscriptionModal from './SubscriptionModal';
 import NotificationBell from '@/components/NotificationBell';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFeatures } from '@/hooks/useFeatures';
+import { useSessionTab } from '@/hooks/useSessionTab';
 import { FreePlanBanner, LockedFeaturePanel, PlusBadge, UpgradeModal, useUpgradePrompt } from '@/components/UpgradePrompt';
 
 type Tab = 'dashboard' | 'history' | 'academy' | 'professores' | 'community' | 'goals' | 'profile';
@@ -68,6 +69,7 @@ const TABS: { id: Tab; label: string; feature?: string; icon: (active: boolean) 
     icon: (active) => <User size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
 ];
+const APP_TAB_IDS = TABS.map(tab => tab.id);
 
 function promotionModalSeenKey(userUid: string, notificationId: string) {
   return `promotion_modal_seen_${userUid}_${notificationId}`;
@@ -91,7 +93,11 @@ function markPromotionModalSeen(userUid: string, notificationId: string) {
 
 export default function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [activeTab, setActiveTab] = useSessionTab<Tab>(
+    'bjjrats:app:active-tab',
+    APP_TAB_IDS,
+    'dashboard',
+  );
   const [showNewTraining, setShowNewTraining] = useState(false);
   const [editTraining, setEditTraining] = useState<import('@/lib/bjjrats-constants').Training | null>(null);
   const [editExtraTraining, setEditExtraTraining] = useState<import('@/pages/app/NewTraining').ExtraTrainingData | null>(null);
