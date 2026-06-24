@@ -30,7 +30,7 @@ export default function PricingPage() {
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [creating, setCreating] = useState(false);
   const [pixData, setPixData] = useState<{ qrCode?: string; copiaECola?: string } | null>(null);
-  const [activeSubscription, setActiveSubscription] = useState<{ id: string; status: string; planId: string } | null>(null);
+  const [activeSubscription, setActiveSubscription] = useState<{ id: string; status: string; planId: string; isFree: boolean } | null>(null);
 
   useEffect(() => {
     api.subscriptions.listPlans()
@@ -43,7 +43,12 @@ export default function PricingPage() {
         .then(data => {
           const sub = data?.subscription;
           if (sub && ['active', 'trial', 'past_due'].includes(sub.status)) {
-            setActiveSubscription({ id: sub.id, status: sub.status, planId: sub.planId });
+            setActiveSubscription({
+              id: sub.id,
+              status: sub.status,
+              planId: sub.planId,
+              isFree: Number(sub.plan?.price) <= 0,
+            });
           }
         })
         .catch(() => {});
@@ -52,10 +57,12 @@ export default function PricingPage() {
 
   const handleSubscribe = async (planId: string) => {
     if (!user) { navigate('/register'); return; }
+    const selectedPlanData = plans.find(plan => plan.id === planId);
+    const isFreePlan = Number(selectedPlanData?.price ?? 0) <= 0;
     setSelectedPlan(planId);
     setCreating(true);
     try {
-      if (billingType === 'PIX' && (!cpfCnpj || cpfCnpj.replace(/\\D/g, '').length < 11)) {
+      if (!isFreePlan && billingType === 'PIX' && (!cpfCnpj || cpfCnpj.replace(/\D/g, '').length < 11)) {
         alert('Para pagamento via PIX é obrigatório informar o CPF ou CNPJ.');
         setCreating(false);
         setSelectedPlan(null);
@@ -63,6 +70,18 @@ export default function PricingPage() {
       }
       const result = await api.subscriptions.create({ planId, billingType, cpfCnpj });
       const payment = result.subscription.payment;
+
+      if (result.subscription.isFree) {
+        setActiveSubscription({
+          id: result.subscription.id,
+          status: result.subscription.status,
+          planId,
+          isFree: true,
+        });
+        alert('Plano gratuito ativado com sucesso!');
+        navigate(getPanelPath(user));
+        return;
+      }
 
       // PIX: mostra QR code no modal
       if (billingType === 'PIX') {
@@ -115,6 +134,15 @@ export default function PricingPage() {
     navigate('/');
   };
 
+  const visiblePlans = plans.filter(plan => {
+    if (!user || user.role === 'superadmin') return true;
+    if (user.role === 'student') return plan.roleAssigned === 'student';
+    if (user.role === 'professor') return plan.roleAssigned === 'professor';
+    if (user.role === 'academy' || user.role === 'admin') return plan.roleAssigned === 'academy';
+    return true;
+  });
+  const hasPaidPlans = visiblePlans.some(plan => Number(plan.price) > 0);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
@@ -149,7 +177,7 @@ export default function PricingPage() {
         </motion.div>
 
         {/* CPF/CNPJ — apenas para PIX */}
-        {billingType === 'PIX' && (
+        {hasPaidPlans && billingType === 'PIX' && (
           <div className="flex justify-center mb-3">
             <input
               type="text"
@@ -167,6 +195,7 @@ export default function PricingPage() {
             />
           </div>
         )}
+        {hasPaidPlans && (
         <motion.div variants={fadeUp} className="flex flex-col items-center gap-3 mb-6">
           <div className="flex justify-center gap-2">
           {(['PIX', 'CREDIT_CARD'] as BillingType[]).map(bt => (
@@ -188,6 +217,7 @@ export default function PricingPage() {
           ))}
           </div>
         </motion.div>
+        )}
 
         {/* Plan cards */}
         {activeSubscription && (
@@ -197,22 +227,21 @@ export default function PricingPage() {
             marginBottom: '0.5rem', maxWidth: '600px', width: '100%',
           }}>
             <p style={{ fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.8rem', color: '#4CAF50', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-              ✅ Você já é assinante! Acesse seu painel para gerenciar sua assinatura.
+              {activeSubscription.isFree
+                ? 'Você está no plano gratuito. Escolha um plano PLUS para liberar mais recursos.'
+                : '✅ Você já é assinante! Acesse seu painel para gerenciar sua assinatura.'}
             </p>
           </motion.div>
         )}
         <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.filter(plan => {
-            // Filtra por role do usuário logado usando roleAssigned (não slug)
-            if (!user || user.role === 'superadmin') return true;
-            if (user.role === 'student') return plan.roleAssigned === 'student';
-            if (user.role === 'professor') return plan.roleAssigned === 'professor';
-            if (user.role === 'academy' || user.role === 'admin') return plan.roleAssigned === 'academy';
-            return true;
-          }).map((plan, i) => {
+          {visiblePlans.map((plan, i) => {
             const isPopular = plan.slug === 'professor';
             const color = planColors[plan.slug] || '#FFF';
             const trialDays = Number(plan.trialDays ?? 0);
+            const isFreePlan = Number(plan.price) <= 0;
+            const isCurrentPlan = activeSubscription?.planId === plan.id;
+            const canUpgradeFromFree = activeSubscription?.isFree === true && !isFreePlan;
+            const subscriptionBlocksSelection = Boolean(activeSubscription) && !canUpgradeFromFree;
             return (
               <div
                 key={plan.id}
@@ -244,9 +273,13 @@ export default function PricingPage() {
                 </p>
 
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <span style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '2.25rem', color }}>R$ {plan.price.toFixed(2)}</span>
-                  <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>/mês</span>
-                  {trialDays > 0 && (
+                  <span style={{ fontFamily: FONTS.condensed, fontWeight: 900, fontSize: '2.25rem', color }}>
+                    {isFreePlan ? 'GRÁTIS' : `R$ ${plan.price.toFixed(2)}`}
+                  </span>
+                  {!isFreePlan && (
+                    <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>/mês</span>
+                  )}
+                  {!isFreePlan && trialDays > 0 && (
                     <div style={{ marginTop: '0.25rem' }}>
                       <span style={{
                         background: '#3B82F6', color: '#FFF', fontFamily: FONTS.condensed, fontWeight: 800,
@@ -269,29 +302,39 @@ export default function PricingPage() {
 
                 <button
                   onClick={() => handleSubscribe(plan.id)}
-                  disabled={creating || !!activeSubscription}
-                  title={activeSubscription ? 'Você já possui uma assinatura ativa' : undefined}
+                  disabled={creating || subscriptionBlocksSelection}
+                  title={isCurrentPlan ? 'Este é o seu plano atual' : undefined}
                   style={{
-                    background: activeSubscription ? '#2A2A2A' : color,
-                    color: activeSubscription ? '#555' : '#FFF',
-                    border: activeSubscription ? '1px solid #333' : 'none',
+                    background: subscriptionBlocksSelection ? '#2A2A2A' : color,
+                    color: subscriptionBlocksSelection ? '#777' : '#FFF',
+                    border: subscriptionBlocksSelection ? '1px solid #333' : 'none',
                     borderRadius: '6px',
                     padding: '0.75rem',
                     fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.8rem',
                     letterSpacing: '0.1em', textTransform: 'uppercase',
-                    cursor: activeSubscription ? 'not-allowed' : creating && selectedPlan === plan.id ? 'not-allowed' : 'pointer',
-                    opacity: activeSubscription ? 0.5 : creating && selectedPlan === plan.id ? 0.6 : 1,
+                    cursor: subscriptionBlocksSelection ? 'not-allowed' : creating && selectedPlan === plan.id ? 'not-allowed' : 'pointer',
+                    opacity: subscriptionBlocksSelection ? 0.6 : creating && selectedPlan === plan.id ? 0.6 : 1,
                     transition: 'all 0.15s',
                   }}
                 >
-                  {creating && selectedPlan === plan.id ? 'CRIANDO...' : activeSubscription ? 'JÁ ASSINANTE' : 'ASSINAR'}
+                  {creating && selectedPlan === plan.id
+                    ? 'ATIVANDO...'
+                    : isCurrentPlan
+                      ? 'PLANO ATUAL'
+                      : canUpgradeFromFree
+                        ? 'TORNAR-SE PLUS'
+                        : activeSubscription
+                          ? 'JÁ ASSINANTE'
+                      : isFreePlan
+                        ? 'ATIVAR GRÁTIS'
+                        : 'ASSINAR'}
                 </button>
               </div>
             );
           })}
         </motion.div>
 
-        {plans.length === 0 && (
+        {visiblePlans.length === 0 && (
           <p style={{ textAlign: 'center', color: '#555', fontFamily: FONTS.condensed, fontSize: '1rem', marginTop: '2rem' }}>
             Nenhum plano disponível no momento.
           </p>

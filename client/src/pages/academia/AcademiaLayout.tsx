@@ -16,17 +16,19 @@ import AcademiaFinanceiro from './AcademiaFinanceiro';
 import AcademiaWhatsapp from './AcademiaWhatsapp';
 import AcademiaPromocoes from './AcademiaPromocoes';
 import SubscriptionModal from '../SubscriptionModal';
+import { useFeatures } from '@/hooks/useFeatures';
+import { FreePlanBanner, LockedFeaturePanel, PlusBadge, UpgradeModal, useUpgradePrompt } from '@/components/UpgradePrompt';
 
 type AcademiaTab = 'dashboard' | 'users' | 'professors' | 'promotions' | 'financeiro' | 'whatsapp' | 'crm' | 'community';
 
-const NAV_ITEMS: { id: AcademiaTab; label: string }[] = [
-  { id: 'dashboard',  label: 'Dashboard'   },
-  { id: 'users',      label: 'Alunos'      },
-  { id: 'professors',  label: 'Professores' },
-  { id: 'promotions', label: 'Promocao'    },
-  { id: 'financeiro', label: 'Financeiro'  },
+const NAV_ITEMS: { id: AcademiaTab; label: string; features?: string[] }[] = [
+  { id: 'dashboard',  label: 'Dashboard', features: ['admin_dashboard', 'academy_dashboard'] },
+  { id: 'users',      label: 'Alunos', features: ['user_management', 'student_management'] },
+  { id: 'professors', label: 'Professores', features: ['multiple_professors'] },
+  { id: 'promotions', label: 'Promocao', features: ['promotions'] },
+  { id: 'financeiro', label: 'Financeiro', features: ['payments', 'revenue_analytics'] },
   { id: 'whatsapp',   label: 'WhatsApp'    },
-  { id: 'crm',        label: 'CRM'         },
+  { id: 'crm',        label: 'CRM', features: ['crm'] },
   { id: 'community',  label: 'Comunidade'  },
 ];
 
@@ -38,6 +40,22 @@ export default function AcademiaLayout() {
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { hasFeature, isFreePlan, planName } = useFeatures();
+  const upgradePrompt = useUpgradePrompt();
+  const isItemLocked = (item: typeof NAV_ITEMS[number]) => Boolean(
+    isFreePlan
+    && item.features?.length
+    && !item.features.some(feature => hasFeature(feature)),
+  );
+  const handleTabSelect = (item: typeof NAV_ITEMS[number]) => {
+    if (isItemLocked(item)) {
+      upgradePrompt.showUpgrade(item.features?.[0]);
+      return;
+    }
+    setTab(item.id);
+  };
+  const activeNavItem = NAV_ITEMS.find(item => item.id === tab);
+  const activeFeatureKey = activeNavItem?.features?.[0];
 
   const checkWhatsApp = useCallback(async () => {
     try {
@@ -170,7 +188,7 @@ export default function AcademiaLayout() {
         {NAV_ITEMS.map(item => (
           <button
             key={item.id}
-            onClick={() => setTab(item.id)}
+            onClick={() => handleTabSelect(item)}
             className="bg-none border-none font-bold text-[0.8rem] tracking-[0.12em] uppercase px-4 py-3.5 cursor-pointer transition-colors duration-150 whitespace-nowrap"
             style={{
               borderBottom: tab === item.id ? '3px solid #E87722' : '3px solid transparent',
@@ -178,9 +196,14 @@ export default function AcademiaLayout() {
             }}
           >
             {item.label}
+            {isItemLocked(item) && <PlusBadge />}
           </button>
         ))}
       </nav>
+
+      {isFreePlan && (
+        <FreePlanBanner planName={planName} onUpgrade={() => upgradePrompt.showUpgrade()} />
+      )}
 
       {/* Banner WhatsApp conectado */}
       {whatsappConnected && (
@@ -201,19 +224,33 @@ export default function AcademiaLayout() {
             exit="exit"
             transition={tabTransition}
           >
-            {tab === 'dashboard' && <AcademiaDashboard />}
-            {tab === 'users'     && <AcademiaAlunos />}
-            {tab === 'professors' && <AcademiaProfessores />}
-            {tab === 'promotions' && <AcademiaPromocoes />}
-            {tab === 'financeiro' && <AcademiaFinanceiro />}
-            {tab === 'whatsapp'   && <AcademiaWhatsapp />}
-            {tab === 'crm'       && <AcademiaCrm />}
-            {tab === 'community' && <Community />}
+            {activeNavItem && isItemLocked(activeNavItem) ? (
+              <LockedFeaturePanel
+                featureKey={activeFeatureKey}
+                onUpgrade={() => upgradePrompt.showUpgrade(activeFeatureKey)}
+              />
+            ) : (
+              <>
+                {tab === 'dashboard' && <AcademiaDashboard />}
+                {tab === 'users'     && <AcademiaAlunos />}
+                {tab === 'professors' && <AcademiaProfessores />}
+                {tab === 'promotions' && <AcademiaPromocoes />}
+                {tab === 'financeiro' && <AcademiaFinanceiro />}
+                {tab === 'whatsapp'   && <AcademiaWhatsapp />}
+                {tab === 'crm'       && <AcademiaCrm />}
+                {tab === 'community' && <Community />}
+              </>
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
 
       <SubscriptionModal open={subscriptionOpen} onClose={() => setSubscriptionOpen(false)} />
+      <UpgradeModal
+        open={upgradePrompt.open}
+        featureKey={upgradePrompt.featureKey}
+        onClose={upgradePrompt.closeUpgrade}
+      />
     </div>
   );
 }

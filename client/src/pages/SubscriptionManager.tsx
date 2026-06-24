@@ -155,7 +155,9 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
     expired: 'Expirada',
   };
 
-  const canChangeBilling = sub.status === 'active' || sub.status === 'trial' || sub.status === 'past_due';
+  const isFreePlan = Number(sub.plan.price) <= 0;
+  const canChangeBilling = !isFreePlan
+    && (sub.status === 'active' || sub.status === 'trial' || sub.status === 'past_due');
   const panelAccessBlocked = isPanelAccessBlocked(sub, graceDays);
 
   return (
@@ -177,7 +179,7 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
                 {sub.plan.name}
               </span>
               <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666', display: 'block', marginTop: '0.125rem' }}>
-                R$ {sub.plan.price.toFixed(2)}/mês
+                {isFreePlan ? 'Plano gratuito' : `R$ ${sub.plan.price.toFixed(2)}/mês`}
               </span>
             </div>
             <span style={{

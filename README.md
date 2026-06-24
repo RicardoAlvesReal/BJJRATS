@@ -122,6 +122,8 @@ CORS_ORIGIN=http://localhost:3000
 - Integração com Asaas: PIX e Cartão de Crédito
 - Período de trial configurável por plano
 - Tolerância de inadimplência configurável (Admin > App)
+- Planos com preço `R$ 0,00` são ativados diretamente no banco e não criam cliente, assinatura ou cobrança no Asaas
+- Usuários de plano gratuito podem migrar para um plano pago sem criar uma segunda assinatura local
 
 ### Cobranças de Alunos (Academias/Professores)
 - Pagamentos manuais (PIX, dinheiro, transferência)
@@ -133,6 +135,29 @@ CORS_ORIGIN=http://localhost:3000
 - Página `/app/subscription` acessível por todos os usuários
 - Visualização do plano atual, status e forma de pagamento
 - Troca de método de pagamento (PIX ↔ Cartão)
+- Planos gratuitos não exibem forma de pagamento ou próximo vencimento financeiro
+
+## ⭐ Planos Gratuitos e PLUS
+
+- O superadmin define os recursos de cada plano pela lista de `features`
+- Usuários gratuitos recebem um banner de upgrade e selos `PLUS` nos recursos não incluídos
+- Ao tentar acessar um recurso bloqueado, o frontend abre um modal explicando o benefício e direciona para `/pricing`
+- Respostas da API com código `feature_not_included` também acionam automaticamente o modal de upgrade
+- O backend continua sendo a fonte de segurança por meio do middleware `requireFeature`
+- Usuários pagantes podem acessar os recursos previstos para seu plano; o selo PLUS é usado para orientar usuários com plano de preço zero
+
+### Features de navegação do aluno
+
+| Feature | Área controlada |
+|---------|-----------------|
+| `training_tracking` | Registro de novo treino |
+| `training_history` | Aba Treinos |
+| `academy_search` | Aba Academia e busca de academias |
+| `professor_search` | Aba Professores e busca de professores |
+| `community` | Aba Comunidade |
+| `goals` | Aba Metas |
+
+Os painéis de professor e academia também relacionam suas abas de gestão às features configuradas pelo superadmin, como `student_management`, `payments`, `promotions`, `class_schedules`, `class_checkins`, `crm`, `multiple_professors`, `reports` e `revenue_analytics`.
 
 ## 📊 CRM do Superadmin
 

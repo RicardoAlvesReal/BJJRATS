@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, CalendarCheck, School, GraduationCap, Users, Target, User, CreditCard } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, School, GraduationCap, Users, Target, User, CreditCard, LockKeyhole } from 'lucide-react';
 import { pageVariant as pageVariants, pageTransition, overlayVariant as overlayVariants, modalVariant as modalVariants } from '@/lib/animations';
 import { COLORS } from '@/lib/design';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
@@ -21,10 +21,12 @@ import ProfessorPanel from './app/ProfessorPanel';
 import SubscriptionModal from './SubscriptionModal';
 import NotificationBell from '@/components/NotificationBell';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFeatures } from '@/hooks/useFeatures';
+import { FreePlanBanner, LockedFeaturePanel, PlusBadge, UpgradeModal, useUpgradePrompt } from '@/components/UpgradePrompt';
 
 type Tab = 'dashboard' | 'history' | 'academy' | 'professores' | 'community' | 'goals' | 'profile';
 
-const TABS: { id: Tab; label: string; icon: (active: boolean) => ReactNode }[] = [
+const TABS: { id: Tab; label: string; feature?: string; icon: (active: boolean) => ReactNode }[] = [
   {
     id: 'dashboard',
     label: 'INÍCIO',
@@ -33,26 +35,31 @@ const TABS: { id: Tab; label: string; icon: (active: boolean) => ReactNode }[] =
   {
     id: 'history',
     label: 'TREINOS',
+    feature: 'training_history',
     icon: (active) => <CalendarCheck size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'academy',
     label: 'ACADEMIA',
+    feature: 'academy_search',
     icon: (active) => <School size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'professores',
     label: 'PROFESSORES',
+    feature: 'professor_search',
     icon: (active) => <GraduationCap size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'community',
     label: 'COMUNIDADE',
+    feature: 'community',
     icon: (active) => <Users size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
     id: 'goals',
     label: 'METAS',
+    feature: 'goals',
     icon: (active) => <Target size={20} color={active ? '#CC0000' : '#555'} strokeWidth={1.5} />,
   },
   {
@@ -93,6 +100,8 @@ export default function AppLayout() {
   const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const professorPanelDismissedRef = useRef(false);
   const { profile, user, updateProfileData, logout } = useAuth();
+  const { hasFeature, isFreePlan, planName } = useFeatures();
+  const upgradePrompt = useUpgradePrompt();
 
   const handleLogout = async () => {
     if (!confirm('Deseja sair da sua conta?')) return;
@@ -121,6 +130,26 @@ export default function AppLayout() {
   const visibleTabs = (isProfessor || isAcademyOwner)
     ? TABS.filter(tab => tab.id !== 'professores' && tab.id !== 'goals')
     : TABS;
+  const isFeatureLocked = (feature?: string) => Boolean(
+    isFreePlan && feature && !hasFeature(feature),
+  );
+  const handleTabSelect = (tab: typeof TABS[number]) => {
+    if (isFeatureLocked(tab.feature)) {
+      upgradePrompt.showUpgrade(tab.feature);
+      return;
+    }
+    setActiveTab(tab.id);
+    if (tab.id === 'community') setCommunityBadge(false);
+  };
+  const handleNewTraining = () => {
+    if (isFeatureLocked('training_tracking')) {
+      upgradePrompt.showUpgrade('training_tracking');
+      return;
+    }
+    setShowNewTraining(true);
+  };
+  const activeTabConfig = TABS.find(tab => tab.id === activeTab);
+  const activeFeatureLocked = isFeatureLocked(activeTabConfig?.feature);
 
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
@@ -638,10 +667,11 @@ export default function AppLayout() {
             <button
               key={tab.id}
               className={`bjj-sidebar-item ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => { setActiveTab(tab.id); if (tab.id === 'community') setCommunityBadge(false); }}
+              onClick={() => handleTabSelect(tab)}
             >
               {tab.icon(activeTab === tab.id)}
               <span>{tab.label}</span>
+              {isFeatureLocked(tab.feature) && <PlusBadge />}
               {tab.id === 'community' && communityBadge && activeTab !== 'community' && (
                 <span className="bjj-sidebar-badge" />
               )}
@@ -650,10 +680,14 @@ export default function AppLayout() {
         </nav>
 
         <div className="bjj-sidebar-footer">
-          <button className="bjj-sidebar-new-btn" onClick={() => setShowNewTraining(true)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
+          <button className="bjj-sidebar-new-btn" onClick={handleNewTraining}>
+            {isFeatureLocked('training_tracking') ? (
+              <LockKeyhole size={14} />
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            )}
             <span>NOVO TREINO</span>
           </button>
           <button className="bjj-sidebar-logout-btn" onClick={() => setSubscriptionOpen(true)} style={{ color: '#AAA', borderColor: '#333' }}>
@@ -680,6 +714,9 @@ export default function AppLayout() {
 
       {/* Main Content */}
       <div className="bjj-main-content">
+        {isFreePlan && (
+          <FreePlanBanner planName={planName} onUpgrade={() => upgradePrompt.showUpgrade()} />
+        )}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -690,13 +727,22 @@ export default function AppLayout() {
             exit="exit"
             transition={pageTransition}
           >
-            {activeTab === 'dashboard' && <Dashboard onNewTraining={() => setShowNewTraining(true)} onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} />}
-            {activeTab === 'history' && <History onNewTraining={() => setShowNewTraining(true)} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
-            {activeTab === 'academy' && <Academy />}
-            {activeTab === 'professores' && <Professores />}
-            {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
-            {activeTab === 'goals' && <Goals />}
-            {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onEdit={(t) => setEditTraining(t)} />}
+            {activeFeatureLocked ? (
+              <LockedFeaturePanel
+                featureKey={activeTabConfig?.feature}
+                onUpgrade={() => upgradePrompt.showUpgrade(activeTabConfig?.feature)}
+              />
+            ) : (
+              <>
+                {activeTab === 'dashboard' && <Dashboard onNewTraining={handleNewTraining} onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} />}
+                {activeTab === 'history' && <History onNewTraining={handleNewTraining} onShare={(data) => setShareData(data)} onEdit={(t) => setEditTraining(t)} onEditExtra={(t) => setEditExtraTraining(t)} />}
+                {activeTab === 'academy' && <Academy />}
+                {activeTab === 'professores' && <Professores />}
+                {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
+                {activeTab === 'goals' && <Goals />}
+                {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onEdit={(t) => setEditTraining(t)} />}
+              </>
+            )}
           </motion.div>
         </AnimatePresence>
 
@@ -720,9 +766,14 @@ export default function AppLayout() {
           <button
             key={tab.id}
             className={`bjj-tab-item ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => { setActiveTab(tab.id); if (tab.id === 'community') setCommunityBadge(false); }}
+            onClick={() => handleTabSelect(tab)}
           >
             {tab.icon(activeTab === tab.id)}
+            {isFeatureLocked(tab.feature) && (
+              <span style={{ position: 'absolute', top: '3px', right: '5px', color: '#FFD166' }}>
+                <LockKeyhole size={10} strokeWidth={2.8} />
+              </span>
+            )}
             {tab.id === 'community' && communityBadge && activeTab !== 'community' && (
               <span className="absolute top-[4px] right-[8px] w-2 h-2 rounded-full bg-[#CC0000] border-[1.5px] border-[#0A0A0A]" />
             )}
@@ -732,6 +783,11 @@ export default function AppLayout() {
       </nav>
 
       <SubscriptionModal open={subscriptionOpen} onClose={() => setSubscriptionOpen(false)} />
+      <UpgradeModal
+        open={upgradePrompt.open}
+        featureKey={upgradePrompt.featureKey}
+        onClose={upgradePrompt.closeUpgrade}
+      />
     </div>
   );
 }
