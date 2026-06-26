@@ -14,7 +14,7 @@ on:
 jobs:
   build-ios:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
@@ -41,6 +41,13 @@ jobs:
 
       - name: Capacitor sync iOS
         run: npx cap sync ios
+
+      - name: Prepare iOS platform
+        timeout-minutes: 30
+        run: |
+          xcodebuild -version
+          xcodebuild -downloadPlatform iOS
+          xcodebuild -showsdks
 
       - name: Resolve SPM packages
         run: |
