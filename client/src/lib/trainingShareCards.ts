@@ -65,6 +65,7 @@ function clipRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
 function drawImageCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
   const iw = img.naturalWidth || img.width;
   const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
   const scale = Math.max(w / iw, h / ih);
   const sw = iw * scale;
   const sh = ih * scale;
@@ -73,6 +74,56 @@ function drawImageCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x:
   ctx.rect(x, y, w, h);
   ctx.clip();
   ctx.drawImage(img, x + (w - sw) / 2, y + (h - sh) / 2, sw, sh);
+  ctx.restore();
+}
+
+function drawImageContain(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+  const scale = Math.min(w / iw, h / ih);
+  const sw = iw * scale;
+  const sh = ih * scale;
+  ctx.drawImage(img, x + (w - sw) / 2, y + (h - sh) / 2, sw, sh);
+}
+
+function drawTrainingPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, mode: 'dark' | 'light') {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return;
+
+  const imageAspect = iw / ih;
+  const isVertical = imageAspect < 0.9;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  if (!isVertical) {
+    drawImageCover(ctx, img, x, y, w, h);
+    ctx.restore();
+    return;
+  }
+
+  ctx.fillStyle = mode === 'dark' ? '#080808' : '#F3F4F6';
+  ctx.fillRect(x, y, w, h);
+
+  ctx.save();
+  ctx.globalAlpha = mode === 'dark' ? 0.62 : 0.5;
+  ctx.filter = 'blur(26px)';
+  drawImageCover(ctx, img, x - 44, y - 44, w + 88, h + 88);
+  ctx.restore();
+
+  ctx.fillStyle = mode === 'dark' ? 'rgba(0,0,0,0.30)' : 'rgba(255,255,255,0.20)';
+  ctx.fillRect(x, y, w, h);
+
+  const inset = mode === 'dark' ? 18 : 0;
+  ctx.save();
+  ctx.shadowColor = mode === 'dark' ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.18)';
+  ctx.shadowBlur = mode === 'dark' ? 22 : 16;
+  drawImageContain(ctx, img, x + inset, y + inset, w - inset * 2, h - inset * 2);
+  ctx.restore();
   ctx.restore();
 }
 
@@ -216,7 +267,7 @@ function drawMinimal(ctx: CanvasRenderingContext2D, training: TrainingData, user
     ctx.rect(0, 0, W, photoH);
     ctx.clip();
     if (photo) {
-      drawImageCover(ctx, photo, 0, 0, W, photoH);
+      drawTrainingPhoto(ctx, photo, 0, 0, W, photoH, 'light');
     } else {
       ctx.fillStyle = '#E5E7EB';
       ctx.fillRect(0, 0, W, photoH);
@@ -280,7 +331,7 @@ function drawBold(ctx: CanvasRenderingContext2D, training: TrainingData, user: S
 
   const photoY = 450;
   const photoH = 510;
-  if (photo) drawImageCover(ctx, photo, 0, photoY, W, photoH);
+  if (photo) drawTrainingPhoto(ctx, photo, 0, photoY, W, photoH, 'dark');
   else {
     ctx.fillStyle = '#111';
     ctx.fillRect(0, photoY, W, photoH);

@@ -40,9 +40,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        // Capacitor 8.4+ espera URL, não NSUserActivity
+        // O XCFramework SwiftPM do Capacitor 8.4.1 expõe de forma estável apenas
+        // o encaminhamento por URL no Xcode 16.
         guard let url = userActivity.webpageURL else { return false }
-        return ApplicationDelegateProxy.shared.application(application, continue: url)
+        return ApplicationDelegateProxy.shared.application(application, open: url, options: [:])
     }
 
 }
