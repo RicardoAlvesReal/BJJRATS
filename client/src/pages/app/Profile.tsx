@@ -219,7 +219,8 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const hrs = Math.round(totalMins / 60 * 10) / 10;
   const tecnicas = topTecnicas(trainings);
   const unlockedAchievements = ACHIEVEMENTS.filter(a => a.check(trainings));
-  const beltColor = BELT_COLORS[profile?.belt || 'Branca'] || '#FFFFFF';
+  const profileBelt = profile?.belt || 'Branca';
+  const beltColor = BELT_COLORS[profileBelt] || '#FFFFFF';
   const athleteType = ATHLETE_TYPES.find(t => t.id === profile?.athleteType) || ATHLETE_TYPES[2];
   const fadeUpVariant = fadeUp as any;
   const containerVariant = staggerContainer as any;
@@ -683,7 +684,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[1.25rem] font-black text-white uppercase tracking-[0.05em] truncate font-['Barlow_Condensed']">{profile?.name || 'ATLETA'}</p>
-            <p className="text-[0.875rem] font-bold font-['Barlow_Condensed'] mt-0.5" style={{ color: beltColor }}>Faixa {profile?.belt || 'Branca'}</p>
+            <p className="text-[0.875rem] font-bold font-['Barlow_Condensed'] mt-0.5" style={{ color: beltColor }}>Faixa {profileBelt}</p>
             {profile?.role === 'professor'
               ? (profile as any)?.academyName && <p className="text-[0.75rem] text-[#555] truncate mt-1 font-['Barlow']">🏫 {(profile as any).academyName}{(profile as any)?.academyCity ? ` · ${(profile as any).academyCity}` : ''}</p>
               : profile?.academy && <p className="text-[0.75rem] text-[#555] truncate mt-1 font-['Barlow']">🏫 {profile.academy}</p>}
@@ -700,7 +701,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
         {profile?.role !== 'professor' && (
         <motion.div variants={fadeUpVariant} className="bjj-card">
           <div className="flex justify-between items-baseline mb-2">
-            <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed']">NÍVEL {currentLevel.level} — {currentLevel.name.toUpperCase()}</p>
+            <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed']">NÍVEL {currentLevel.level} — FAIXA {profileBelt.toUpperCase()}</p>
             <p className="text-[1.25rem] font-black text-[#CC0000] font-['Barlow_Condensed']">{userXP} XP</p>
           </div>
           <div className="bjj-xp-bar">

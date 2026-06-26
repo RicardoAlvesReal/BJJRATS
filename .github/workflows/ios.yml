@@ -14,14 +14,32 @@ on:
 jobs:
   build-ios:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+        run: |
+          set -euo pipefail
+          echo "Available Xcode apps:"
+          ls -1 /Applications | grep '^Xcode' || true
+
+          XCODE_DEVELOPER_DIR=""
+          if [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+            XCODE_DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+          else
+            XCODE_DEVELOPER_DIR="$(ls -d /Applications/Xcode_16*.app/Contents/Developer 2>/dev/null | sort | tail -n 1 || true)"
+          fi
+
+          if [ -z "$XCODE_DEVELOPER_DIR" ]; then
+            echo "No compatible Xcode installation found."
+            exit 1
+          fi
+
+          sudo xcode-select -s "$XCODE_DEVELOPER_DIR"
+          xcodebuild -version
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,6 +59,13 @@ jobs:
 
       - name: Capacitor sync iOS
         run: npx cap sync ios
+
+      - name: Prepare iOS platform
+        timeout-minutes: 30
+        run: |
+          xcodebuild -version
+          xcodebuild -downloadPlatform iOS
+          xcodebuild -showsdks
 
       - name: Resolve SPM packages
         run: |

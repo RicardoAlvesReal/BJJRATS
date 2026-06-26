@@ -75,7 +75,8 @@ export default function Dashboard({ onNewTraining, onOpenProfessorPanel }: Props
   const weekTrainings = treinsNaSemana(trainings);
   const monthTrainings = treinsNoMes(trainings);
   const unlockedCount = ACHIEVEMENTS.filter(a => a.check(trainings)).length;
-  const beltColor = BELT_COLORS[profile?.belt || 'Branca'] || '#FFFFFF';
+  const profileBelt = profile?.belt || user?.belt || 'Branca';
+  const beltColor = BELT_COLORS[profileBelt] || '#FFFFFF';
   const levelColor = LEVEL_COLORS[currentLevel.name] || '#CC0000';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fadeUp = fadeUpVariant as any;
@@ -170,7 +171,7 @@ export default function Dashboard({ onNewTraining, onOpenProfessorPanel }: Props
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <p className="text-[0.65rem] font-bold tracking-[0.15em] text-[#555] uppercase font-['Barlow_Condensed'] mb-1">
-                    <span style={{ color: levelColor }}>NÍVEL {currentLevel.level}</span> — {currentLevel.name.toUpperCase()}
+                    <span style={{ color: levelColor }}>NÍVEL {currentLevel.level}</span> — <span style={{ color: beltColor }}>FAIXA {profileBelt.toUpperCase()}</span>
                   </p>
                   <p className="text-[2rem] font-black text-white leading-none font-['Barlow_Condensed']">
                     {userXP} <span className="bjj-text-gradient text-[0.875rem]">XP</span>

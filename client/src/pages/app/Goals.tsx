@@ -154,6 +154,7 @@ export default function Goals() {
 
   const userXP = calcXP(trainings);
   const { currentLevel, xpProgress, xpToNext } = getLevelInfo(userXP);
+  const profileBelt = profile?.belt || 'Branca';
 
   const goals: Goal[] = [
     {
@@ -318,7 +319,7 @@ export default function Goals() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888' }}>NÍVEL ATUAL</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#FFFFFF', lineHeight: 1 }}>{currentLevel.name}</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.25rem', color: '#FFFFFF', lineHeight: 1 }}>Nível {currentLevel.level} - Faixa {profileBelt}</p>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.5rem', color: '#CC0000', lineHeight: 1 }}>{userXP} XP</p>
