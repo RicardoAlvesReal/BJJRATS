@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, Redirect } from "wouter";
+import { Capacitor } from '@capacitor/core';
 import ErrorBoundary from "./components/ErrorBoundary";
 import CookieConsent from "./components/CookieConsent";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -186,10 +187,13 @@ function PublicRoute({ component: Component }: { component: React.ComponentType 
 }
 
 function Router() {
+  const isNativeApp = Capacitor.isNativePlatform();
   const AppRoute = useMemo(() => () => <ProtectedRoute component={AppLayout} />, []);
   const AdminRouteWrapped = useMemo(() => () => <AdminRoute component={AdminLayout} />, []);
   const AcademiaRouteWrapped = useMemo(() => () => <AcademiaRoute component={AcademiaLayout} />, []);
   const LoginRoute = useMemo(() => () => <PublicRoute component={Login} />, []);
+  const HomeRoute = useMemo(() => isNativeApp ? LoginRoute : Landing, [isNativeApp, LoginRoute]);
+  const FallbackRoute = useMemo(() => () => <Redirect to={isNativeApp ? '/login' : '/'} />, [isNativeApp]);
   const RegisterRoute = useMemo(() => () => <PublicRoute component={Register} />, []);
   const TrialAcademiaRoute = useMemo(() => () => <PublicTrial targetKind="academy" />, []);
   const TrialProfessorRoute = useMemo(() => () => <PublicTrial targetKind="professor" />, []);
@@ -197,7 +201,7 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/" component={Landing} />
+      <Route path="/" component={HomeRoute} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/terms" component={Terms} />
       <Route path="/support" component={Support} />
@@ -215,7 +219,7 @@ function Router() {
       <Route path="/pricing" component={Pricing} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/app/subscription" component={() => <AuthenticatedRoute component={SubscriptionManager} />} />
-      <Route component={() => <Redirect to="/" />} />
+      <Route component={FallbackRoute} />
     </Switch>
   );
 }
