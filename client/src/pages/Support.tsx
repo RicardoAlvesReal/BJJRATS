@@ -88,7 +88,7 @@ export default function Support() {
                   Como cancelo minha conta?
                 </h3>
                 <p className="text-gray-300 text-sm">
-                  Vá em Configurações → Conta → Excluir Conta. Seus dados serão permanentemente removidos após confirmação.
+                  Acesse a <Link href="/excluir-conta"><a className="text-[#CC0000] hover:underline font-semibold">página de exclusão de conta</a></Link> ou vá em Perfil → Zona de risco → Excluir conta. Seus dados serão permanentemente removidos após confirmação.
                 </p>
               </div>
             </div>

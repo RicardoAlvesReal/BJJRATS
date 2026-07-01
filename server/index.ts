@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import cors from "cors";
+import type { CorsOptions } from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 
@@ -43,6 +44,43 @@ const __dirname = path.dirname(__filename);
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(__dirname, "..", "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const DEFAULT_CORS_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+  "capacitor://localhost",
+  "https://localhost",
+  "https://thebjjrats.com",
+  "https://www.thebjjrats.com",
+  "https://bjjrats.fly.dev",
+];
+
+function parseCorsOrigins(value: string | undefined): string[] {
+  return (value || "")
+    .split(",")
+    .map(origin => origin.trim())
+    .filter(Boolean);
+}
+
+const configuredCorsOrigins = parseCorsOrigins(process.env.CORS_ORIGIN);
+const allowAnyCorsOrigin = configuredCorsOrigins.includes("*");
+const allowedCorsOrigins = new Set([
+  ...DEFAULT_CORS_ORIGINS,
+  ...configuredCorsOrigins.filter(origin => origin !== "*"),
+]);
+
+const corsOptions: CorsOptions = {
+  origin(requestOrigin, callback) {
+    if (!requestOrigin || allowAnyCorsOrigin || allowedCorsOrigins.has(requestOrigin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, false);
+  },
+  credentials: true,
+};
 
 async function startServer() {
   const app = express();
@@ -52,7 +90,7 @@ async function startServer() {
     // CSP desativado para não quebrar o SPA (Vite injeta scripts inline)
     contentSecurityPolicy: false,
   }));
-  app.use(cors({ origin: process.env.CORS_ORIGIN || "*", credentials: true }));
+  app.use(cors(corsOptions));
   app.use(cookieParser());
   app.use(express.json({ limit: "2mb" }));
   app.use("/uploads", express.static(UPLOADS_DIR));

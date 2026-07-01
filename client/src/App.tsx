@@ -11,6 +11,7 @@ import Landing from "./pages/Landing";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 import Support from "./pages/Support";
+import DeleteAccount from "./pages/DeleteAccount";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AppLayout from "./pages/AppLayout";
@@ -201,6 +202,8 @@ function Router() {
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/terms" component={Terms} />
       <Route path="/support" component={Support} />
+      <Route path="/excluir-conta" component={DeleteAccount} />
+      <Route path="/delete-account" component={DeleteAccount} />
       <Route path="/login" component={LoginRoute} />
       <Route path="/register" component={RegisterRoute} />
       <Route path="/app"   component={AppRoute} />
