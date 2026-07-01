@@ -52,7 +52,7 @@ interface ProfileProps {
 }
 
 export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps = {}) {
-  const { user, profile, refreshProfile, updateProfileData } = useAuth();
+  const { user, profile, refreshProfile, updateProfileData, logout } = useAuth();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
   const [promotions, setPromotions] = useState<{ id: string; previousBelt: string; newBelt: string; newStripes: number; promotedAtStr: string }[]>([]);
@@ -60,6 +60,7 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [locatingAcademy, setLocatingAcademy] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
   const [showHistory, setShowHistory] = useState(false);
@@ -101,6 +102,30 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
     setEditingGoal(false);
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+
+    const firstConfirm = confirm('Excluir sua conta permanentemente? Esta ação remove seu perfil e dados associados. Esta operação não pode ser desfeita.');
+    if (!firstConfirm) return;
+
+    const typed = prompt('Para confirmar, digite EXCLUIR em letras maiúsculas:');
+    if (typed !== 'EXCLUIR') {
+      toast.error('Exclusão de conta cancelada.');
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      await api.users.deleteAccount(user.uid);
+      toast.success('Conta excluída com sucesso.');
+      await logout();
+      window.location.href = '/';
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir conta.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
   const loadCompetitions = useCallback(async () => {
     if (!user) return;
     try {
@@ -1474,6 +1499,43 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
         {canUseStudentFinance && user?.uid && (
           <MensalidadesCard onOpen={() => setShowMensalidades(true)} userUid={user?.uid || ''} />
         )}
+        {/* Zona de risco */}
+        {profile?.role !== 'superadmin' && (
+          <motion.div
+            variants={fadeUpVariant}
+            className="bjj-card"
+            style={{ border: '1px solid #4A0000', background: '#120606' }}
+          >
+            <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#FF4D4D', marginBottom: '0.5rem' }}>
+              ZONA DE RISCO
+            </p>
+            <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.75rem', color: '#B0B0B0', lineHeight: 1.5, marginBottom: '0.875rem' }}>
+              Excluir sua conta remove permanentemente seu perfil e dados associados. Esta ação não pode ser desfeita.
+            </p>
+            <button
+              type="button"
+              onClick={handleDeleteAccount}
+              disabled={deletingAccount}
+              style={{
+                width: '100%',
+                background: deletingAccount ? '#2A0000' : '#4A0000',
+                border: '1px solid #CC0000',
+                color: '#FFF',
+                fontFamily: 'Barlow Condensed, sans-serif',
+                fontWeight: 900,
+                fontSize: '0.8rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0.7rem 1rem',
+                cursor: deletingAccount ? 'not-allowed' : 'pointer',
+                opacity: deletingAccount ? 0.7 : 1,
+              }}
+            >
+              {deletingAccount ? 'EXCLUINDO...' : 'EXCLUIR CONTA'}
+            </button>
+          </motion.div>
+        )}
+
         {/* ── Passkeys (Biometria) ── */}
         <PasskeyManager />
 

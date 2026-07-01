@@ -284,7 +284,7 @@ export function SupportContent() {
 
         <div style={{ ...S, borderLeft: '2px solid #CC0000', paddingLeft: '0.75rem' }}>
           <h3 style={{ ...H2, borderLeft: 'none', paddingLeft: 0, fontSize: '0.95rem', color: '#FFF', marginBottom: '0.25rem' }}>Como cancelo minha conta?</h3>
-          <p style={P}>Vá em Configurações → Conta → Excluir Conta. Seus dados serão permanentemente removidos após confirmação.</p>
+          <p style={P}>Acesse <a href="/excluir-conta" style={{ color: '#CC0000', fontWeight: 700 }}>a página de exclusão de conta</a> ou vá em Perfil → Zona de risco → Excluir conta. Seus dados serão permanentemente removidos após confirmação.</p>
         </div>
       </section>
 
