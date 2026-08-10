@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.thebjjrats.app',
+  appId: 'com.thebjjrats.app.oficial',
   appName: 'BJJRats',
   webDir: 'dist/public',
   server: {
