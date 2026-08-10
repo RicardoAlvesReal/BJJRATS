@@ -63,14 +63,20 @@ jobs:
       - name: Prepare iOS platform
         timeout-minutes: 30
         run: |
+          set -euo pipefail
           xcodebuild -version
-          xcodebuild -downloadPlatform iOS
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-path
           xcodebuild -showsdks
 
       - name: Resolve SPM packages
         run: |
           cd ios/App
-          xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project App.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS'
 
       - name: Build iOS (unsigned archive)
         run: |

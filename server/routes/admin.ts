@@ -628,6 +628,7 @@ router.get(
           userUid: subscriptions.userUid,
           planId: subscriptions.planId,
           status: subscriptions.status,
+          asaasId: subscriptions.asaasId,
           currentPeriodEnd: subscriptions.currentPeriodEnd,
           planPrice: plans.price,
           planName: plans.name,
@@ -713,9 +714,9 @@ router.get(
       amount: number; status: string; dueDate: string | null; paidAt: string | null;
     }[] = [];
     const subsWithAsaas = await Promise.all(
-      activeSubs.map(async (s) => {
+      activeSubs.filter(s => !!s.asaasId).map(async (s) => {
         try {
-          const payments = await listSubscriptionPayments(s.id);
+          const payments = await listSubscriptionPayments(s.asaasId!);
           return { userUid: s.userUid, payments };
         } catch { return null; }
       })

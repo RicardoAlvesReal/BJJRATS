@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
+import { Capacitor } from '@capacitor/core';
 import TurnstileWidget from '@/components/TurnstileWidget';
 import { passkeys } from '@/lib/api';
 
@@ -14,6 +15,7 @@ const LOGO = '/favicon.png';
 export default function Login() {
   const { login, resetPassword } = useAuth();
   const [, navigate] = useLocation();
+  const isNativeApp = Capacitor.isNativePlatform();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -80,12 +82,14 @@ export default function Login() {
       <div className="bjj-login-panel">
 
         {/* Botão voltar */}
+        {!isNativeApp && (
         <button className="bjj-login-back-btn" onClick={() => navigate('/')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M19 12H5M12 5l-7 7 7 7" />
           </svg>
           VOLTAR AO SITE
         </button>
+        )}
 
         {/* Logo — mobile only */}
         <div className="bjj-login-mobile-logo">
