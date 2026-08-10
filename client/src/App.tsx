@@ -80,8 +80,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
               setIsPastDue(true);
               setHasAccess(false);
             }
-          } else {
+          } else if (subscription.status === 'active' || subscription.status === 'trial') {
             setHasAccess(true);
+            setIsPastDue(false);
+          } else {
+            setHasAccess(false);
+            setIsPastDue(false);
           }
         } else {
           setHasAccess(false);
@@ -134,15 +138,26 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
   const subscriptionExempt = user?.subscriptionExempt === true;
   const [checkingSub, setCheckingSub] = useState(true);
   const [isPastDue, setIsPastDue] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
     if (loading) return;
-    if (!userUid) { setCheckingSub(false); return; }
-    if (subscriptionExempt) { setCheckingSub(false); return; }
+    if (!userUid) { setHasAccess(false); setCheckingSub(false); return; }
+    if (subscriptionExempt) { setHasAccess(true); setCheckingSub(false); return; }
     const check = async () => {
       try {
         const { subscription } = await api.subscriptions.getMy();
-        if (subscription?.status === 'past_due') {
+        if (!subscription) {
+          setHasAccess(false);
+          setIsPastDue(false);
+          return;
+        }
+        if (subscription.status === 'active' || subscription.status === 'trial') {
+          setHasAccess(true);
+          setIsPastDue(false);
+          return;
+        }
+        if (subscription.status === 'past_due') {
           // Verifica período de carência
           try {
             const pubSettings = await api.settings.public();
@@ -151,15 +166,24 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
               const lockDate = new Date(subscription.currentPeriodEnd);
               lockDate.setDate(lockDate.getDate() + graceDays);
               if (new Date() >= lockDate) {
+                setHasAccess(false);
                 setIsPastDue(true);
+              } else {
+                setHasAccess(true);
+                setIsPastDue(false);
               }
             } else {
+              setHasAccess(false);
               setIsPastDue(true);
             }
           } catch {
+            setHasAccess(false);
             setIsPastDue(true);
           }
+          return;
         }
+        setHasAccess(false);
+        setIsPastDue(false);
       } catch { /* ignora */ }
       setCheckingSub(false);
     };
@@ -170,6 +194,7 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
   if (!user) return <Redirect to="/login" />;
   if (user.role !== 'academy' && user.role !== 'admin') return <Redirect to="/app" />;
   if (isPastDue) return <Redirect to="/app/subscription" />;
+  if (!hasAccess) return <Redirect to="/pricing" />;
   return <Component />;
 }
 

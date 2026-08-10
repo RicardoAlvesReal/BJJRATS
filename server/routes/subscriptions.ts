@@ -28,6 +28,111 @@ async function getGraceDays(): Promise<number> {
   }
 }
 
+
+type SubscriptionRow = typeof subscriptions.$inferSelect;
+type PlanRow = typeof plans.$inferSelect;
+
+const BILLING_SYNC_STATUSES = new Set(['active', 'trial', 'past_due', 'pending']);
+const ASAAS_CANCELLED_STATUSES = new Set(['CANCELLED', 'DELETED', 'EXPIRED', 'INACTIVE']);
+
+function parseDate(value: string | Date | null | undefined, endOfDay = false): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  if (endOfDay) date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+function isPaidPlan(plan: PlanRow | null | undefined) {
+  const price = Number(plan?.price);
+  return Number.isFinite(price) && price > 0;
+}
+
+function isOverdueAsaasPayment(payment: Awaited<ReturnType<typeof listSubscriptionPayments>>[number]) {
+  const status = String(payment.status || '').toUpperCase();
+  if (status === 'OVERDUE') return true;
+  if (status !== 'PENDING') return false;
+
+  const due = parseDate(payment.dueDate);
+  if (!due) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  return due < today;
+}
+
+async function loadPlan(planId: string) {
+  const [plan] = await db
+    .select()
+    .from(plans)
+    .where(eq(plans.id, planId))
+    .limit(1);
+  return plan ?? null;
+}
+
+async function syncSubscriptionAccess(sub: SubscriptionRow, plan?: PlanRow | null): Promise<SubscriptionRow> {
+  const currentStatus = String(sub.status || '').toLowerCase();
+  if (!BILLING_SYNC_STATUSES.has(currentStatus)) return sub;
+
+  const resolvedPlan = plan ?? await loadPlan(sub.planId);
+  if (!isPaidPlan(resolvedPlan)) return sub;
+
+  const now = new Date();
+  const currentPeriodEnd = parseDate(sub.currentPeriodEnd);
+  const localPeriodExpired = !currentPeriodEnd || currentPeriodEnd.getTime() <= now.getTime();
+
+  if (!localPeriodExpired && currentStatus !== 'past_due' && currentStatus !== 'pending') {
+    return sub;
+  }
+
+  const updates: Partial<SubscriptionRow> = {};
+
+  if (sub.asaasId) {
+    try {
+      const [asaasSub, asaasPayments] = await Promise.all([
+        getSubscription(sub.asaasId),
+        listSubscriptionPayments(sub.asaasId),
+      ]);
+      const asaasStatus = String(asaasSub.status || '').toUpperCase();
+
+      if (asaasSub.deleted || ASAAS_CANCELLED_STATUSES.has(asaasStatus)) {
+        updates.status = 'cancelled';
+        updates.cancelledAt = new Date();
+      } else if (asaasStatus === 'OVERDUE' || asaasPayments.some(isOverdueAsaasPayment)) {
+        updates.status = 'past_due';
+      } else if (asaasStatus === 'ACTIVE') {
+        const nextDueDate = parseDate(asaasSub.nextDueDate, true);
+        if (nextDueDate && nextDueDate.getTime() > now.getTime()) {
+          const periodStart = new Date(nextDueDate);
+          periodStart.setMonth(periodStart.getMonth() - 1);
+          updates.status = 'active';
+          updates.currentPeriodStart = periodStart;
+          updates.currentPeriodEnd = nextDueDate;
+        } else if (localPeriodExpired) {
+          updates.status = 'past_due';
+        }
+      } else if (localPeriodExpired) {
+        updates.status = 'past_due';
+      }
+    } catch (err) {
+      console.warn('[subscriptions] Falha ao sincronizar assinatura com Asaas; aplicando fallback local:', err);
+      if (localPeriodExpired) updates.status = 'past_due';
+    }
+  } else if (localPeriodExpired) {
+    updates.status = 'past_due';
+  }
+
+  const hasChanges = Object.entries(updates).some(([key, value]) => (sub as any)[key] !== value);
+  if (!hasChanges) return sub;
+
+  const [updated] = await db
+    .update(subscriptions)
+    .set(updates as any)
+    .where(eq(subscriptions.id, sub.id))
+    .returning();
+
+  return updated ?? { ...sub, ...updates };
+}
 // ─── GET /api/subscriptions/plans ──────────────────────────────────────────
 // Lista planos disponíveis
 router.get('/plans', async (_req, res) => {
@@ -104,7 +209,9 @@ router.get('/my', requireAuth, async (req: AuthRequest, res) => {
     .from(plans)
     .where(eq(plans.id, sub[0].planId))
     .limit(1);
-  res.json({ subscription: { ...sub[0], plan: plan[0] ?? null } });
+  const syncedSub = await syncSubscriptionAccess(sub[0], plan[0] ?? null);
+  const isVisibleStatus = ['active', 'trial', 'past_due', 'pending'].includes(String(syncedSub.status || '').toLowerCase());
+  res.json({ subscription: isVisibleStatus ? { ...syncedSub, plan: plan[0] ?? null } : null });
 });
 
 // ─── POST /api/subscriptions ──────────────────────────────────────────────
