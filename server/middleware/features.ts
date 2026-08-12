@@ -4,7 +4,7 @@
 import { Response, NextFunction } from 'express';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { subscriptions, plans } from '../db/schema.js';
+import { users, subscriptions, plans } from '../db/schema.js';
 import { AuthRequest } from './auth.js';
 
 /**
@@ -26,6 +26,23 @@ export function requireFeature(featureKey: string) {
 
       // Superadmin sempre tem acesso a tudo
       if (req.userRole === 'superadmin') {
+        next();
+        return;
+      }
+
+      // Isento de assinatura ou trial ativo (ex: 30 dias grátis concedido pelo admin)
+      const [user] = await db
+        .select({ subscriptionExempt: users.subscriptionExempt, trialEndsAt: users.trialEndsAt })
+        .from(users)
+        .where(eq(users.uid, uid))
+        .limit(1);
+
+      if (user?.subscriptionExempt) {
+        next();
+        return;
+      }
+
+      if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
         next();
         return;
       }
@@ -60,7 +77,8 @@ export function requireFeature(featureKey: string) {
       }
 
       // Só bloqueia se não for active, trial, ou past_due
-      if (!['active', 'trial', 'past_due'].includes(sub.status)) {
+      const status = String(sub.status || '').toLowerCase();
+      if (!['active', 'trial', 'past_due'].includes(status)) {
         res.status(403).json({
           error: 'Assinatura inativa. Regularize para acessar.',
           code: 'subscription_inactive',
