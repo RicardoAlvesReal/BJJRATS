@@ -184,8 +184,9 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
         }
         setHasAccess(false);
         setIsPastDue(false);
-      } catch { /* ignora */ }
-      setCheckingSub(false);
+      } catch { /* ignora */ } finally {
+        setCheckingSub(false);
+      }
     };
     check();
   }, [userUid, subscriptionExempt, loading]);
