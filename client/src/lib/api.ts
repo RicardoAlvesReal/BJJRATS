@@ -473,7 +473,7 @@ export const admin = {
 
   plans: {
     list: () => apiFetch<Plan[]>('/api/admin/plans'),
-    create: (data: { name: string; slug: string; description?: string; price: number; roleAssigned: string; features?: string[] }) =>
+    create: (data: { name: string; slug: string; description?: string; price: number; roleAssigned: string; features?: string[]; trialDays?: number; isActive?: boolean }) =>
       apiFetch<Plan>('/api/admin/plans', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: Partial<Plan>) =>
       apiFetch<Plan>(`/api/admin/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

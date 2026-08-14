@@ -83,6 +83,18 @@ export default function PricingPage() {
         return;
       }
 
+      if (result.subscription.status === 'trial') {
+        setActiveSubscription({
+          id: result.subscription.id,
+          status: result.subscription.status,
+          planId,
+          isFree: false,
+        });
+        alert('Período grátis ativado! Nenhum pagamento será feito agora.');
+        navigate(getPanelPath(user));
+        return;
+      }
+
       // PIX: mostra QR code no modal
       if (billingType === 'PIX') {
         if (payment?.pixQrCode) {
