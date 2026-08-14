@@ -3,11 +3,12 @@
 // Fluxo Aluno:     1 (acesso) → 2 (tipo) → 3 (perfil atleta) → cadastro
 // Fluxo Professor: 1 (acesso) → 2 (tipo) → 3 (perfil atleta) → 4 (academia) → 5 (logo/foto) → cadastro + upload
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
-import api from '@/lib/api';
+import api, { type Plan } from '@/lib/api';
+import { getFeatureLabel } from '@/lib/features';
 import LegalModal from '@/components/LegalModal';
 import { TermsContent, PrivacyContent } from '@/lib/legalContent';
 import TurnstileWidget from '@/components/TurnstileWidget';
@@ -51,6 +52,7 @@ export default function Register() {
   const [step, setStep] = useState(1);
   const [role, setRole] = useState<Role>(null);
   const [loading, setLoading] = useState(false);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [legalModal, setLegalModal] = useState<'terms' | 'privacy' | null>(null);
@@ -64,6 +66,21 @@ export default function Register() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  // Carrega planos configurados pelo admin (preços dinâmicos)
+  useEffect(() => {
+    api.subscriptions.listPlans()
+      .then(setPlans)
+      .catch(() => { /* silencioso */ });
+  }, []);
+
+  const rolePlan = (role: string): Plan | undefined =>
+    plans.find(p => p.roleAssigned === role && p.isActive !== false);
+
+  const formatPrice = (price: number): string =>
+    price <= 0
+      ? 'GRÁTIS'
+      : `R$ ${price.toFixed(2).replace('.', ',')} / mês`;
 
   const [form, setForm] = useState({
     // Passo 1
@@ -480,7 +497,7 @@ export default function Register() {
               <div style={{ width: '56px', height: '56px', background: '#1A0000', border: '2px solid #CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🥋</div>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>ALUNO</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>R$ 19,90 / mês</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>{formatPrice(rolePlan('student')?.price ?? 19.9)}</p>
               </div>
             </div>
             <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
@@ -498,7 +515,7 @@ export default function Register() {
               <div style={{ width: '56px', height: '56px', background: '#1A0033', border: '2px solid #8B5CF6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>👨‍🏫</div>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>PROFESSOR</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>R$ 47,90 / mês</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#8B5CF6', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>{formatPrice(rolePlan('professor')?.price ?? 47.9)}</p>
               </div>
             </div>
             <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
@@ -516,7 +533,7 @@ export default function Register() {
               <div style={{ width: '56px', height: '56px', background: '#1A0000', border: '2px solid #CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🏛️</div>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>ACADEMIA</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>R$ 97,90 / mês</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>{formatPrice(rolePlan('academy')?.price ?? 97.9)}</p>
               </div>
             </div>
             <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
@@ -534,9 +551,9 @@ export default function Register() {
       {step === 3 && (
         <div className="flex-1 px-6 py-8">
           {/* Card do plano específico */}
-          {role === 'student' && <PlanCard icon="🥋" name="Aluno" price="19,90" color="#3B82F6" features={['Registro de treinos', 'Histórico completo', 'Sequência (streak)', 'Comunidade', 'Conquistas', 'Competições', 'Metas e desafios']} />}
-          {role === 'professor' && <PlanCard icon="👨‍🏫" name="Professor Particular" price="47,90" color="#8B5CF6" features={['Todas as funções de atleta', 'Alunos ilimitados', 'Matrículas e pagamentos', 'Promoções de faixa', 'Chamada (check-in)', 'Agenda de aulas', 'Atendimento exclusivo']} />}
-          {role === 'academy' && <PlanCard icon="🏛️" name="Academia" price="97,90" color="#CC0000" features={['Dashboard administrativo', 'Gestão de usuários', 'CRM completo', 'Múltiplos professores', 'Relatórios', 'Analytics financeiro', 'Todos os recursos professores']} />}
+          {role === 'student' && <PlanCard icon="🥋" color="#3B82F6" plan={rolePlan('student')} fallbackName="Aluno" fallbackPrice="R$ 19,90 / mês" fallbackFeatures={['Registro de treinos', 'Histórico completo', 'Sequência (streak)', 'Comunidade', 'Conquistas', 'Competições', 'Metas e desafios']} />}
+          {role === 'professor' && <PlanCard icon="👨‍🏫" color="#8B5CF6" plan={rolePlan('professor')} fallbackName="Professor Particular" fallbackPrice="R$ 47,90 / mês" fallbackFeatures={['Todas as funções de atleta', 'Alunos ilimitados', 'Matrículas e pagamentos', 'Promoções de faixa', 'Chamada (check-in)', 'Agenda de aulas', 'Atendimento exclusivo']} />}
+          {role === 'academy' && <PlanCard icon="🏛️" color="#CC0000" plan={rolePlan('academy')} fallbackName="Academia" fallbackPrice="R$ 97,90 / mês" fallbackFeatures={['Dashboard administrativo', 'Gestão de usuários', 'CRM completo', 'Múltiplos professores', 'Relatórios', 'Analytics financeiro', 'Todos os recursos professores']} />}
 
           <form onSubmit={handleStep3} className="flex flex-col gap-5">
             <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '1.1rem', textTransform: 'uppercase', color: '#888', marginBottom: '0.5rem', letterSpacing: '0.05em' }}>
@@ -852,7 +869,35 @@ export default function Register() {
 }
 
 /** Card do plano exibido no passo 3 do cadastro */
-function PlanCard({ icon, name, price, color, features }: { icon: string; name: string; price: string; color: string; features: string[] }) {
+function PlanCard({
+  icon,
+  name,
+  price,
+  color,
+  features,
+  plan,
+  fallbackName,
+  fallbackPrice,
+  fallbackFeatures,
+}: {
+  icon: string;
+  name?: string;
+  price?: string;
+  color: string;
+  features?: string[];
+  plan?: Plan | undefined;
+  fallbackName?: string;
+  fallbackPrice?: string;
+  fallbackFeatures?: string[];
+}) {
+  const planName = plan?.name ?? name ?? fallbackName ?? '';
+  const planPrice = plan
+    ? (Number(plan.price) <= 0 ? 'GRÁTIS' : `R$ ${plan.price.toFixed(2).replace('.', ',')} / mês`)
+    : (price ?? fallbackPrice ?? '');
+  const planFeatures = plan?.features?.length
+    ? plan.features.map(getFeatureLabel)
+    : (features ?? fallbackFeatures ?? []);
+
   return (
     <div style={{
       background: '#111',
@@ -867,21 +912,21 @@ function PlanCard({ icon, name, price, color, features }: { icon: string; name: 
         <span style={{ fontSize: '1.5rem' }}>{icon}</span>
         <div>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1, margin: 0 }}>
-            Plano {name}
+            Plano {planName}
           </p>
           <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.8rem', color, margin: 0 }}>
-            R$ {price} / mês
+            {planPrice}
           </p>
         </div>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 0.75rem' }}>
-        {features.slice(0, 4).map(f => (
+        {planFeatures.slice(0, 4).map(f => (
           <span key={f} style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#777', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
             <span style={{ color, fontWeight: 700 }}>✓</span> {f}
           </span>
         ))}
-        {features.length > 4 && (
-          <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555' }}>+{features.length - 4} itens</span>
+        {planFeatures.length > 4 && (
+          <span style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.7rem', color: '#555' }}>+{planFeatures.length - 4} itens</span>
         )}
       </div>
     </div>
