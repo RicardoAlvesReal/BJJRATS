@@ -273,7 +273,17 @@ export default function Register() {
         const bemVindo = form.sex === 'F' ? 'Bem-vinda' : 'Bem-vindo';
         toast.success(`${bemVindo} ao tatami, ${genero}! 🥋`);
       }
-      // Aluno novo → direto pra página de planos
+      // Aluno novo → tenta inscrever no plano gratuito, senão vai pra pricing
+      try {
+        const allPlans = await api.subscriptions.listPlans();
+        const freePlan = allPlans.find(p => p.roleAssigned === 'student' && Number(p.price) <= 0 && p.isActive !== false);
+        if (freePlan) {
+          await api.subscriptions.create({ planId: freePlan.id, billingType: 'PIX' });
+          toast.success('Plano gratuito ativado!');
+          navigate('/app');
+          return;
+        }
+      } catch { /* ignora erro de auto-inscrição, vai pra pricing */ }
       navigate('/pricing');
     } catch (err: any) {
       toast.error(err.status === 409 ? 'Este email já está cadastrado' : err.body?.error || 'Erro ao criar conta');
@@ -346,6 +356,20 @@ export default function Register() {
 
       const msg = role === 'academy' ? 'Academia cadastrada! Bem-vindo! 🏛️' : 'Academia cadastrada! Bem-vindo, Professor! 🏫';
       toast.success(msg);
+
+      // Professor/Academia → tenta inscrever no plano gratuito, senão vai pra pricing
+      try {
+        const allPlans = await api.subscriptions.listPlans();
+        const roleKey = role === 'academy' ? 'academy' : 'professor';
+        const freePlan = allPlans.find(p => p.roleAssigned === roleKey && Number(p.price) <= 0 && p.isActive !== false);
+        if (freePlan) {
+          await api.subscriptions.create({ planId: freePlan.id, billingType: 'PIX' });
+          toast.success('Plano gratuito ativado!');
+          const panelPath = role === 'academy' ? '/academia' : '/app';
+          navigate(panelPath);
+          return;
+        }
+      } catch { /* ignora erro de auto-inscrição, vai pra pricing */ }
       navigate('/pricing');
     } catch (err: any) {
       toast.error(err.status === 409 ? 'Este email já está cadastrado' : err.body?.error || 'Erro ao criar conta');
