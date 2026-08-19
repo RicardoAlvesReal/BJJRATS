@@ -8,6 +8,7 @@ import { X, CreditCard, Target, Calendar, School, Loader2, Clock, CheckCircle, C
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import DateInput from '@/components/DateInput';
 
 interface ProfessorStudentModalProps {
   professor: {
@@ -522,12 +523,10 @@ export default function ProfessorStudentModal({ professor, onClose }: ProfessorS
                     <div style={{ background: '#111', border: '1px solid #1E1E1E', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       <div>
                         <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>DATA</label>
-                        <input
-                          type="date"
+                        <DateInput
                           value={bookDate}
-                          onChange={e => { setBookDate(e.target.value); setBookTime(''); loadAvailableTimes(e.target.value); }}
+                          onChange={v => { setBookDate(v); setBookTime(''); loadAvailableTimes(v); }}
                           min={new Date().toISOString().split('T')[0]}
-                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', padding: '0.4rem' }}
                         />
                       </div>
                       <div>

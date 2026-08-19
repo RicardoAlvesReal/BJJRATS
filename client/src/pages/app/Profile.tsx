@@ -17,6 +17,7 @@ import TrainingHistory from './TrainingHistory';
 import StatsShareCard from './StatsShareCard';
 import MinhasMensalidades from './MinhasMensalidades';
 import { LocateFixed } from 'lucide-react';
+import DateInput from '@/components/DateInput';
 
 interface Competition {
   id: string;
@@ -1380,12 +1381,10 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
                   />
                 </div>
                 <div>
-                  <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: '0.25rem' }}>DATA *</label>
-                  <input
-                    type="date"
+                  <DateInput
+                    label="DATA *"
                     value={compForm.date || ''}
-                    onChange={e => setCompForm(f => ({ ...f, date: e.target.value }))}
-                    className="bjj-input !p-[0.5rem]"
+                    onChange={v => setCompForm(f => ({ ...f, date: v }))}
                   />
                 </div>
                 <div>

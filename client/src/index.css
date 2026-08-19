@@ -271,6 +271,29 @@
     background: #151515;
   }
   .bjj-input::placeholder { color: #555; }
+  .bjj-input[type="date"] { color-scheme: dark; }
+
+  /* DateInput calendar popover */
+  [data-slot="popover-content"] {
+    background: #111 !important;
+    border: 1px solid #2A2A2A !important;
+    color: #FFF !important;
+  }
+  [data-slot="popover-content"] button {
+    color: #CCC !important;
+  }
+  [data-slot="popover-content"] button:hover {
+    background: #222 !important;
+  }
+  [data-slot="popover-content"] [data-selected="true"] button {
+    background: #CC0000 !important;
+    color: #FFF !important;
+  }
+  [data-slot="popover-content"] select {
+    background: #1A1A1A !important;
+    border-color: #333 !important;
+    color: #FFF !important;
+  }
 
   .bjj-label {
     font-family: 'Barlow Condensed', sans-serif;

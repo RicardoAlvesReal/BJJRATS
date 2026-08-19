@@ -13,6 +13,7 @@ import LegalModal from '@/components/LegalModal';
 import { TermsContent, PrivacyContent } from '@/lib/legalContent';
 import TurnstileWidget from '@/components/TurnstileWidget';
 import { LocateFixed } from 'lucide-react';
+import DateInput from '@/components/DateInput';
 
 const LOGO = '/favicon.png';
 
@@ -705,7 +706,7 @@ export default function Register() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div>
                   <label className="bjj-label">Nascimento</label>
-                  <input type="date" className="bjj-input" value={form.dob} onChange={e => update('dob', e.target.value)} style={{ colorScheme: 'dark' }} />
+                  <DateInput value={form.dob} onChange={v => update('dob', v)} />
                 </div>
                 <div>
                   <label className="bjj-label">Sexo</label>
@@ -726,7 +727,7 @@ export default function Register() {
               </div>
               <div style={{ marginTop: '0.75rem' }}>
                 <label className="bjj-label">Pratica BJJ desde</label>
-                <input type="date" className="bjj-input" value={form.bjjSince} onChange={e => update('bjjSince', e.target.value)} style={{ colorScheme: 'dark' }} />
+                <DateInput value={form.bjjSince} onChange={v => update('bjjSince', v)} />
               </div>
             </div>
 
