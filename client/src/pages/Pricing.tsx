@@ -154,6 +154,8 @@ export default function PricingPage() {
     return true;
   });
   const hasPaidPlans = visiblePlans.some(plan => Number(plan.price) > 0);
+  const selectedPlanData = plans.find(p => p.id === selectedPlan);
+  const isFreePlanSelected = selectedPlanData ? Number(selectedPlanData.price) <= 0 : false;
 
   if (loading) {
     return (
@@ -188,8 +190,8 @@ export default function PricingPage() {
           </p>
         </motion.div>
 
-        {/* CPF/CNPJ — apenas para PIX */}
-        {hasPaidPlans && billingType === 'PIX' && (
+        {/* CPF/CNPJ — apenas para planos pagos via PIX */}
+        {hasPaidPlans && billingType === 'PIX' && !isFreePlanSelected && (
           <div className="flex justify-center mb-3">
             <input
               type="text"
@@ -207,7 +209,7 @@ export default function PricingPage() {
             />
           </div>
         )}
-        {hasPaidPlans && (
+        {hasPaidPlans && !isFreePlanSelected && (
         <motion.div variants={fadeUp} className="flex flex-col items-center gap-3 mb-6">
           <div className="flex justify-center gap-2">
           {(['PIX', 'CREDIT_CARD'] as BillingType[]).map(bt => (
