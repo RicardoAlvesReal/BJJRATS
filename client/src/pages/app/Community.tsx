@@ -11,6 +11,7 @@ import { getEventLocationLabel, getEventMapEmbedUrl, getEventGoogleMapsUrl, getE
 import { toast } from 'sonner';
 import { BELT_COLORS } from '@/lib/bjjrats-constants';
 import RankingList from '@/components/RankingList';
+import DateInput from '@/components/DateInput';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -1432,13 +1433,11 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                     <div style={{ display: 'flex', gap: '0.625rem' }}>
                       <div style={{ flex: 1 }}>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>INÍCIO *</p>
-                        <input type="date" value={challengeForm.startDate} onChange={e => setChallengeForm(p => ({ ...p, startDate: e.target.value }))}
-                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                        <DateInput value={challengeForm.startDate} onChange={v => setChallengeForm(p => ({ ...p, startDate: v }))} />
                       </div>
                       <div style={{ flex: 1 }}>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>TÉRMINO *</p>
-                        <input type="date" value={challengeForm.endDate} onChange={e => setChallengeForm(p => ({ ...p, endDate: e.target.value }))}
-                          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                        <DateInput value={challengeForm.endDate} onChange={v => setChallengeForm(p => ({ ...p, endDate: v }))} />
                       </div>
                     </div>
                     <div>
@@ -1595,8 +1594,7 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                     <div style={{ display: 'flex', gap: '0.625rem' }}>
                       <div style={{ flex: 1 }}>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>DATA *</p>
-                        <input type="date" value={eventForm.date} min={new Date().toISOString().split('T')[0]} onChange={e => setEventForm(p => ({ ...p, date: e.target.value }))}
-                          style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${eventForm.date ? '#E87722' : '#2A2A2A'}`, color: eventForm.date ? '#FFF' : '#666', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                        <DateInput value={eventForm.date} min={new Date().toISOString().split('T')[0]} onChange={v => setEventForm(p => ({ ...p, date: v }))} />
                       </div>
                       <div style={{ flex: 1 }}>
                         <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', marginBottom: '0.25rem' }}>HORÁRIO *</p>

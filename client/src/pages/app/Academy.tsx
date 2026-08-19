@@ -12,6 +12,7 @@ import AcademySearch from './AcademySearch';
 import RankingList from '@/components/RankingList';
 import { getEventLocationLabel } from '@/lib/eventLocation';
 import { AlertTriangle, Loader2, LogOut, X } from 'lucide-react';
+import DateInput from '@/components/DateInput';
 
 type AcademyTab = 'feed' | 'events' | 'challenges' | 'members' | 'ranking' | 'horarios' | 'financeiro';
 
@@ -1832,7 +1833,7 @@ function EventoModal({ academyId, user, profile, onClose, onSaved }: any) {
       <select value={form.type} onChange={e => upd('type', e.target.value)} style={inputStyle}>
         {EVENT_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
       </select>
-      <input type="date" value={form.date} onChange={e => upd('date', e.target.value)} style={inputStyle} />
+      <DateInput value={form.date} onChange={v => upd('date', v)} />
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
       <input type="time" value={form.time} onChange={e => upd('time', e.target.value)} placeholder="Horário" style={inputStyle} />
@@ -1873,8 +1874,8 @@ function DesafioModal({ academyId, user, profile, onClose, onSaved }: any) {
     <input type="text" value={form.title} onChange={e => upd('title', e.target.value)} placeholder="Nome do desafio" style={inputStyle} />
     <input type="text" value={form.metric} onChange={e => upd('metric', e.target.value)} placeholder="Métrica (ex: Mais treinos no mês)" style={inputStyle} />
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
-      <input type="date" value={form.startDate} onChange={e => upd('startDate', e.target.value)} style={inputStyle} />
-      <input type="date" value={form.endDate} onChange={e => upd('endDate', e.target.value)} style={inputStyle} />
+      <DateInput value={form.startDate} onChange={v => upd('startDate', v)} />
+      <DateInput value={form.endDate} onChange={v => upd('endDate', v)} />
     </div>
     <input type="text" value={form.prize} onChange={e => upd('prize', e.target.value)} placeholder="Prêmio (opcional)" style={inputStyle} />
     <button onClick={handleSave} disabled={saving || !form.title.trim() || !form.metric || !form.startDate || !form.endDate} style={{ background: '#CC0000', color: '#FFFFFF', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1rem', textTransform: 'uppercase', padding: '1rem', border: 'none', width: '100%', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}>
@@ -2318,9 +2319,8 @@ function AcademyBookForm({ professorUid, userId }: { professorUid: string; userI
       <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em' }}>📅 AGENDAR AULA</p>
       <div>
         <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>DATA</label>
-        <input type="date" value={bookDate} onChange={e => { setBookDate(e.target.value); setBookTime(''); loadTimes(e.target.value); }}
-          min={new Date().toISOString().split('T')[0]}
-          style={{ width: '100%', background: '#0A0A0A', border: '1px solid #333', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', padding: '0.4rem', boxSizing: 'border-box' }} />
+        <DateInput value={bookDate} onChange={v => { setBookDate(v); setBookTime(''); loadTimes(v); }}
+          min={new Date().toISOString().split('T')[0]} />
       </div>
       <div>
         <label style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.6rem', color: '#666', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>HORÁRIO</label>

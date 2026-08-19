@@ -48,6 +48,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+import DateInput from '@/components/DateInput';
 
 interface Post {
   id: string;
@@ -3123,8 +3124,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                 <div style={{ display: 'flex', gap: '0.625rem' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>DATA *</p>
-                    <input type="date" value={eventForm.date} min={new Date().toISOString().split('T')[0]} onChange={e => setEventForm(prev => ({ ...prev, date: e.target.value }))}
-                      style={{ width: '100%', background: '#0A0A0A', border: `1px solid ${eventForm.date ? accentColor : '#2A2A2A'}`, color: eventForm.date ? '#FFF' : '#666', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                    <DateInput value={eventForm.date} min={new Date().toISOString().split('T')[0]} onChange={v => setEventForm(prev => ({ ...prev, date: v }))} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>HORÁRIO *</p>
@@ -3214,13 +3214,11 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                 <div style={{ display: 'flex', gap: '0.625rem' }}>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>INÍCIO *</p>
-                    <input type="date" value={challengeForm.startDate} onChange={e => setChallengeForm(prev => ({ ...prev, startDate: e.target.value }))}
-                      style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    <DateInput value={challengeForm.startDate} onChange={v => setChallengeForm(prev => ({ ...prev, startDate: v }))} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>TÉRMINO *</p>
-                    <input type="date" value={challengeForm.endDate} onChange={e => setChallengeForm(prev => ({ ...prev, endDate: e.target.value }))}
-                      style={{ width: '100%', background: '#0A0A0A', border: '1px solid #2A2A2A', color: '#FFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', padding: '0.625rem 0.75rem', outline: 'none', boxSizing: 'border-box' }} />
+                    <DateInput value={challengeForm.endDate} onChange={v => setChallengeForm(prev => ({ ...prev, endDate: v }))} />
                   </div>
                 </div>
                 <div>
@@ -4598,12 +4596,10 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
                       {/* Data de vencimento editável */}
                       <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.62rem', color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em' }}>VENCIMENTO:</span>
-                        <input
-                          type="date"
+                        <DateInput
                           value={item.dueDate}
                           disabled={item.excluded}
-                          onChange={e => setBillingReviewItems(prev => prev.map((p, i) => i === idx ? { ...p, dueDate: e.target.value } : p))}
-                          style={{ background: '#0A0A0A', border: '1px solid #333', color: '#FFFFFF', fontFamily: 'Barlow, sans-serif', fontSize: '0.72rem', padding: '0.2rem 0.375rem', outline: 'none', flex: 1 }}
+                          onChange={v => setBillingReviewItems(prev => prev.map((p, i) => i === idx ? { ...p, dueDate: v } : p))}
                         />
                       </div>
                     </div>
