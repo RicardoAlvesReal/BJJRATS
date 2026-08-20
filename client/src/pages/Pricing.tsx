@@ -147,6 +147,10 @@ export default function PricingPage() {
   };
 
   const visiblePlans = plans.filter(plan => {
+    if (!user || user.role === 'superadmin') return true;
+    if (user.role === 'student') return plan.roleAssigned === 'student';
+    if (user.role === 'professor') return plan.roleAssigned === 'professor';
+    if (user.role === 'academy' || user.role === 'admin') return plan.roleAssigned === 'academy';
     return true;
   });
   const hasPaidPlans = visiblePlans.some(plan => Number(plan.price) > 0);
