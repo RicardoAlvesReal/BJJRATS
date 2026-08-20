@@ -65,7 +65,7 @@ async function seed() {
       name: 'Professor Particular',
       description: 'Gerencie seus alunos com exclusividade e acompanhe o desenvolvimento de cada um.',
       price: 47.90,
-      roleAssigned: 'academy',
+      roleAssigned: 'professor',
       features: [
         'professor_panel',
         'student_management',
@@ -84,7 +84,7 @@ async function seed() {
       name: 'Academia',
       description: 'Gestão completa da sua academia com múltiplos professores, CRM e relatórios.',
       price: 97.90,
-      roleAssigned: 'professor',
+      roleAssigned: 'academy',
       features: [
         'admin_dashboard',
         'user_management',
@@ -109,7 +109,11 @@ async function seed() {
       .limit(1);
 
     if (exists.length > 0) {
-      console.log(`✓ Plano já existe: ${p.name}`);
+      // Corrige roleAssigned se estiver trocado (bug antigo do seed)
+      await db.update(plans)
+        .set({ roleAssigned: p.roleAssigned })
+        .where(eq(plans.slug, p.slug));
+      console.log(`✓ Plano já existe: ${p.name} (roleAssigned: ${p.roleAssigned})`);
     } else {
       await db.insert(plans).values({
         id: nanoid(),
