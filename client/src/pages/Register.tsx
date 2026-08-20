@@ -517,18 +517,18 @@ export default function Register() {
           </div>
 
           {/* Card Aluno */}
-          <button onClick={() => handleStep2('student')} style={{ background: '#111', border: '2px solid #CC0000', padding: '1.5rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <button onClick={() => handleStep2('student')} style={{ background: '#111', border: '2px solid #3B82F6', padding: '1.5rem', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '56px', height: '56px', background: '#1A0000', border: '2px solid #CC0000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🥋</div>
+              <div style={{ width: '56px', height: '56px', background: '#0A1A33', border: '2px solid #3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', flexShrink: 0 }}>🥋</div>
               <div>
                 <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 900, fontSize: '1.4rem', textTransform: 'uppercase', color: '#FFF', lineHeight: 1 }}>ALUNO</p>
-                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>{formatPrice(rolePlan('student')?.price ?? 19.9)}</p>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.7rem', color: '#3B82F6', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.25rem' }}>{formatPrice(rolePlan('student')?.price ?? 19.9)}</p>
               </div>
             </div>
             <div style={{ borderTop: '1px solid #2A2A2A', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
               {['Registrar treinos e evoluir XP', 'Histórico completo e streak', 'Comunidade, conquistas e desafios'].map(item => (
                 <p key={item} style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.8rem', color: '#888', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ color: '#CC0000', fontWeight: 700 }}>✓</span> {item}
+                  <span style={{ color: '#3B82F6', fontWeight: 700 }}>✓</span> {item}
                 </p>
               ))}
             </div>
