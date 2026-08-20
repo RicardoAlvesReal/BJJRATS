@@ -148,11 +148,9 @@ export default function PricingPage() {
 
   const visiblePlans = plans.filter(plan => {
     if (!user || user.role === 'superadmin') return true;
-    // student→Aluno, professor→Professor Particular, academia→Academia
-    // Seed trocou roleAssigned: professor slug→academy, academia slug→professor
     if (user.role === 'student') return plan.roleAssigned === 'student';
-    if (user.role === 'professor') return plan.roleAssigned === 'academy';
-    if (user.role === 'academy' || user.role === 'admin') return plan.roleAssigned === 'professor';
+    if (user.role === 'professor') return plan.roleAssigned === 'professor';
+    if (user.role === 'academy' || user.role === 'admin') return plan.roleAssigned === 'academy';
     return true;
   });
   const hasPaidPlans = visiblePlans.some(plan => Number(plan.price) > 0);
