@@ -9,9 +9,9 @@ workflows:
       xcode: 16.4
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: com.thebjjrats.app.oficial
+        bundle_identifier: com.bjjrats.app
       vars:
-        BUNDLE_ID: com.thebjjrats.app.oficial
+        BUNDLE_ID: com.bjjrats.app
     scripts:
       - name: Preflight configuration
         script: |
