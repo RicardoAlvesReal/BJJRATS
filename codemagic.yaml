@@ -1,0 +1,64 @@
+workflows:
+  ios-build:
+    name: iOS Build & Deploy
+    max_build_duration: 60
+    environment:
+      flutter: no
+      node: 20.x
+      cocoapods: no
+      groups:
+        - app_store_connect_credentials
+    triggering:
+      events:
+        - push
+        - tag
+      branch_patterns:
+        - pattern: "main"
+          include: true
+          source: true
+        - pattern: "production"
+          include: true
+          source: true
+    scripts:
+      - name: Install pnpm
+        script: |
+          npm install -g pnpm@10.4.1
+      - name: Install dependencies
+        script: |
+          pnpm install --frozen-lockfile
+      - name: Build web app
+        script: |
+          pnpm build
+      - name: Sync Capacitor iOS
+        script: |
+          npx cap sync ios
+      - name: Setup iOS project
+        script: |
+          cd ios/App
+          xcodebuild -resolvePackageDependencies -workspace App.xcworkspace -scheme App
+      - name: Build iOS archive
+        script: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath $CM_BUILD_DIR/App.xcarchive \
+            -allowProvisioningUpdates \
+            clean archive 2>&1 | xcpretty
+      - name: Export IPA
+        script: |
+          cd ios/App
+          xcodebuild -exportArchive \
+            -archivePath $CM_BUILD_DIR/App.xcarchive \
+            -exportOptionsPlist /Users/builder/export_options.plist \
+            -exportPath $CM_BUILD_DIR/output \
+            -allowProvisioningUpdates 2>&1 | xcpretty
+    artifacts:
+      - output/*.ipa
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_API_KEY
+        key_id: $APP_STORE_CONNECT_KEY_ID
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+      submit_to_app_store: false
