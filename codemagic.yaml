@@ -2,12 +2,16 @@ workflows:
   ios-build:
     name: iOS Build & TestFlight
     max_build_duration: 60
+    integrations:
+      app_store_connect: bjjrats_appstore
     environment:
       node: 20.x
       xcode: 16.4
-      cocoapods: no
-    vars:
-      BUNDLE_ID: com.thebjjrats.app.oficial
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.thebjjrats.app.oficial
+      vars:
+        BUNDLE_ID: com.thebjjrats.app.oficial
     scripts:
       - name: Preflight configuration
         script: |
@@ -28,9 +32,6 @@ workflows:
         script: |
           cd ios/App
           xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
-      - name: Set up code signing
-        script: |
-          xcode-project use-profiles
       - name: Update build number
         script: |
           cd ios/App
