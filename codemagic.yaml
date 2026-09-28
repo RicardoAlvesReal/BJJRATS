@@ -1,25 +1,17 @@
 workflows:
   ios-build:
-    name: iOS Build & Deploy
+    name: iOS Build & TestFlight
     max_build_duration: 60
     environment:
-      flutter: no
       node: 20.x
+      xcode: 16.4
       cocoapods: no
-      groups:
-        - app_store_connect_credentials
-    triggering:
-      events:
-        - push
-        - tag
-      branch_patterns:
-        - pattern: "main"
-          include: true
-          source: true
-        - pattern: "production"
-          include: true
-          source: true
+    vars:
+      BUNDLE_ID: com.thebjjrats.app.oficial
     scripts:
+      - name: Preflight configuration
+        script: |
+          node scripts/codemagic-preflight.mjs
       - name: Install pnpm
         script: |
           npm install -g pnpm@10.4.1
@@ -32,19 +24,27 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
-      - name: Setup iOS project
+      - name: Resolve SPM dependencies
         script: |
           cd ios/App
-          xcodebuild -resolvePackageDependencies -workspace App.xcworkspace -scheme App
+          xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
+      - name: Set up code signing
+        script: |
+          xcode-project use-profiles
+      - name: Update build number
+        script: |
+          cd ios/App
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-testflight-build-number "$BUNDLE_ID" 2>/dev/null || echo 0)
+          UPDATED_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+          agvtool new-version -all "$UPDATED_BUILD_NUMBER"
       - name: Build iOS archive
         script: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace \
+          xcodebuild -project App.xcodeproj \
             -scheme App \
-            -sdk iphoneos \
             -configuration Release \
+            -destination generic/platform=iOS \
             -archivePath $CM_BUILD_DIR/App.xcarchive \
-            -allowProvisioningUpdates \
             clean archive 2>&1 | xcpretty
       - name: Export IPA
         script: |
@@ -58,7 +58,6 @@ workflows:
       - output/*.ipa
     publishing:
       app_store_connect:
-        api_key: $APP_STORE_CONNECT_API_KEY
-        key_id: $APP_STORE_CONNECT_KEY_ID
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-      submit_to_app_store: false
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false
