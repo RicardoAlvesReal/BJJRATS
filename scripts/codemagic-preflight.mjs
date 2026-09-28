@@ -1,4 +1,18 @@
 import fs from "node:fs";
+import path from "node:path";
+
+function execSafeDir(dir, exts = [".ts", ".tsx", ".js", ".jsx"]) {
+  const out = [];
+  const walk = (d) => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else if (exts.some((e) => entry.name.endsWith(e))) out.push(fs.readFileSync(p, "utf8"));
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  return out;
+}
 
 const cfgPath = "capacitor.config.ts";
 const raw = fs.readFileSync(cfgPath, "utf8");
@@ -45,6 +59,20 @@ const iosBundleId = fs
   .readFileSync("ios/App/App.xcodeproj/project.pbxproj", "utf8")
   .match(/PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);/)?.[1]
   .trim();
+
+const infoPlist = fs.readFileSync("ios/App/App/Info.plist", "utf8");
+const clientSources = execSafeDir("client/src").join("\n");
+const usesGeolocation = /navigator\s*\.\s*geolocation|getCurrentPosition/.test(clientSources);
+const usesMedia = /getUserMedia/.test(clientSources);
+
+if (usesGeolocation && !infoPlist.includes("NSLocationWhenInUseUsageDescription")) {
+  problems.push(
+    "cliente chama navigator.geolocation mas Info.plist nao tem NSLocationWhenInUseUsageDescription - o iOS encerra o app em runtime.",
+  );
+}
+if (usesMedia && !infoPlist.includes("NSCameraUsageDescription")) {
+  problems.push("cliente chama getUserMedia mas Info.plist nao tem NSCameraUsageDescription.");
+}
 
 if (appId && iosBundleId && appId !== iosBundleId) {
   warnings.push(
