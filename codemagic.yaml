@@ -2,14 +2,9 @@ workflows:
   ios-build:
     name: iOS Build & TestFlight
     max_build_duration: 60
-    integrations:
-      app_store_connect: bjjrats_appstore
     environment:
       node: 20.x
       xcode: 16.4
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.bjjrats.app
       vars:
         BUNDLE_ID: com.bjjrats.app
     scripts:
@@ -32,6 +27,22 @@ workflows:
         script: |
           cd ios/App
           xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
+      - name: Fetch signing assets
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --platform IOS \
+            --create
+      - name: Initialize keychain
+        script: |
+          keychain initialize
+      - name: Add certificates to keychain
+        script: |
+          keychain add-certificates
+      - name: Apply provisioning profiles to Xcode project
+        script: |
+          cd ios/App
+          xcode-project use-profiles
       - name: Update build number
         script: |
           cd ios/App
@@ -59,6 +70,8 @@ workflows:
       - output/*.ipa
     publishing:
       app_store_connect:
-        auth: integration
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         submit_to_app_store: false
