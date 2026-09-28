@@ -5,8 +5,6 @@ workflows:
     environment:
       node: 20.x
       xcode: 16.4
-      groups:
-        - apple-signing
       vars:
         BUNDLE_ID: com.bjjrats.app
     scripts:
