@@ -1,7 +1,7 @@
 // BJJRats — Subscription routes (Asaas integration)
 
 import { Router } from 'express';
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, or, desc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { academyProfessorLinks, users, plans, subscriptions, settings } from '../db/schema.js';
@@ -160,6 +160,7 @@ router.get('/my', requireAuth, async (req: AuthRequest, res) => {
         ),
       ),
     )
+    .orderBy(desc(subscriptions.createdAt))
     .limit(1);
   if (!sub.length) {
     const [academyCoveredAccess] = await db

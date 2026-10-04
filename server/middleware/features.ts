@@ -2,7 +2,7 @@
 // Verifica se a assinatura ativa do usuário inclui determinada funcionalidade
 
 import { Response, NextFunction } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { users, subscriptions, plans } from '../db/schema.js';
 import { AuthRequest } from './auth.js';
@@ -47,7 +47,8 @@ export function requireFeature(featureKey: string) {
         return;
       }
 
-      // Busca assinatura ativa/trial/past_due
+      // Escolhe a assinatura elegível mais recente. Sem o filtro de status,
+      // uma assinatura antiga cancelada podia bloquear uma assinatura ativa.
       const [sub] = await db
         .select({
           planId: subscriptions.planId,
@@ -57,9 +58,10 @@ export function requireFeature(featureKey: string) {
         .where(
           and(
             eq(subscriptions.userUid, uid),
-            // Aceita active, trial e past_due (período de graça para regularizar)
+            inArray(subscriptions.status, ['active', 'trial', 'past_due']),
           )
         )
+        .orderBy(desc(subscriptions.createdAt))
         .limit(1);
 
       if (!sub) {
