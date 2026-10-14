@@ -1,0 +1,15 @@
+# Robots.txt for BJJRats (https://thebjjrats.com)
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+Allow: /termos
+Allow: /privacidade
+
+# Rotas privadas e internas protegidas de indexação
+Disallow: /api/
+Disallow: /admin/
+Disallow: /app/
+
+# Sitemap XML para Google Search Console
+Sitemap: https://thebjjrats.com/sitemap.xml

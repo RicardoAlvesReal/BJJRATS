@@ -1231,7 +1231,12 @@ export default function Community({ onClearBadge, onNewPosts }: CommunityProps =
                     </div>
 
                     {post.text && <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.875rem', color: '#CCC', lineHeight: 1.6, marginBottom: '0.75rem', whiteSpace: 'pre-line' }}>{post.text}</p>}
-                    {post.photoURL && <img src={post.photoURL} alt="" style={{ width: '100%', maxHeight: '300px', objectFit: 'cover', marginBottom: '0.75rem' }} />}
+                    {post.photoURL && (
+                      <div style={{ position: 'relative', width: '100%', maxHeight: '520px', borderRadius: '12px', overflow: 'hidden', background: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '0.75rem' }}>
+                        <img src={post.photoURL} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(16px)', opacity: 0.25, transform: 'scale(1.1)', pointerEvents: 'none' }} />
+                        <img src={post.photoURL} alt="Foto do treino" style={{ maxWidth: '100%', maxHeight: '520px', width: 'auto', height: 'auto', objectFit: 'contain', position: 'relative', zIndex: 1, display: 'block' }} />
+                      </div>
+                    )}
                     {hasTrainingDetails && (
                       <div className="bjj-card !bg-[#0A0A0A] !border-[#CC000033]" style={{ borderLeft: '3px solid #CC0000' }}>
                         <div style={{ display: 'flex', flex: 1, gap: '1rem', flexWrap: 'wrap' }}>

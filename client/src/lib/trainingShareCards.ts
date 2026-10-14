@@ -100,7 +100,11 @@ function drawTrainingPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement,
   ctx.rect(x, y, w, h);
   ctx.clip();
 
-  if (!isVertical) {
+  const targetAspect = w / h;
+  const aspectDiff = Math.abs(imageAspect - targetAspect);
+
+  // Se a proporção for muito próxima do enquadramento (pouco corte), usa cover direto
+  if (aspectDiff < 0.25) {
     drawImageCover(ctx, img, x, y, w, h);
     ctx.restore();
     return;

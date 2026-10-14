@@ -1096,10 +1096,11 @@ export default function NewTraining({ onBack, onSaved, onDeleted, editTraining, 
           <label className="bjj-label">FOTO DO TREINO</label>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} />
           {photoPreview ? (
-            <div className="bjj-card !bg-[#0A0A0A] !border-[#CC0000] flex items-center justify-center" style={{ minHeight: '120px', position: 'relative' }}>
-              <img src={photoPreview} alt="Preview" style={{ width: '100%', height: 'auto', maxHeight: '320px', objectFit: 'contain', display: 'block' }} />
-              <button type="button" onClick={handleRemovePhoto} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.75)', border: 'none', color: '#FFF', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', borderRadius: '2px' }}>×</button>
-              <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.65)', padding: '4px 10px', cursor: 'pointer' }} onClick={() => fileInputRef.current?.click()}>
+            <div className="bjj-card !bg-[#0A0A0A] !border-[#CC0000] flex items-center justify-center overflow-hidden" style={{ minHeight: '160px', maxHeight: '440px', position: 'relative' }}>
+              <img src={photoPreview} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-110 pointer-events-none" />
+              <img src={photoPreview} alt="Preview" style={{ maxWidth: '100%', maxHeight: '420px', width: 'auto', height: 'auto', objectFit: 'contain', position: 'relative', zIndex: 1, display: 'block' }} />
+              <button type="button" onClick={handleRemovePhoto} style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(0,0,0,0.75)', border: 'none', color: '#FFF', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', borderRadius: '2px', zIndex: 2 }}>×</button>
+              <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(0,0,0,0.65)', padding: '4px 10px', cursor: 'pointer', zIndex: 2 }} onClick={() => fileInputRef.current?.click()}>
                 <span style={{ color: '#FFFFFF', fontSize: '11px', fontFamily: 'Barlow Condensed, sans-serif', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📷 Alterar</span>
               </div>
             </div>

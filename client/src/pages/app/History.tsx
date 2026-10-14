@@ -191,8 +191,9 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
         </div>
         <div className="bjj-content">
           {selectedExtraPhoto && (
-            <div className="w-full bg-background border border-[#1E1E1E] rounded-xl overflow-hidden">
-              <img src={selectedExtraPhoto} alt="Foto da atividade" className="w-full h-auto block" />
+            <div className="w-full max-h-[520px] bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl overflow-hidden flex items-center justify-center relative">
+              <img src={selectedExtraPhoto} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-110 pointer-events-none" />
+              <img src={selectedExtraPhoto} alt="Foto da atividade" className="relative max-h-[500px] w-auto max-w-full object-contain block z-10" />
             </div>
           )}
 
@@ -281,11 +282,16 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
           <div className="w-5" />
         </div>
         <div className="bjj-content">
-          {selected.trainingPhoto && (
-            <div className="w-full bg-background border border-[#1E1E1E] rounded-xl overflow-hidden">
-              <img src={selected.trainingPhoto} alt="Foto do treino" className="w-full h-auto block" />
-            </div>
-          )}
+          {(() => {
+            const selectedPhoto = (selected as any).trainingPhotoUrl || selected.trainingPhoto;
+            if (!selectedPhoto) return null;
+            return (
+              <div className="w-full max-h-[520px] bg-[#0A0A0A] border border-[#1E1E1E] rounded-xl overflow-hidden flex items-center justify-center relative">
+                <img src={selectedPhoto} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-110 pointer-events-none" />
+                <img src={selectedPhoto} alt="Foto do treino" className="relative max-h-[500px] w-auto max-w-full object-contain block z-10" />
+              </div>
+            );
+          })()}
 
           <div className="bjj-card" style={{ borderLeft: `3px solid ${sess.color}` }}>
             <div className="flex justify-between items-start">
