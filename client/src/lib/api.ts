@@ -3,6 +3,8 @@
  * Autenticação via cookie HTTP-only (primário) com fallback para localStorage.
  */
 
+import { compressImage } from './imageCompression';
+
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 
 function resolveApiAssetUrl(value: string | null | undefined): string | null | undefined {
@@ -1092,8 +1094,17 @@ export const subscriptions = {
 
 export const upload = {
   file: async (file: File, category = 'geral'): Promise<string> => {
+    // Comprime a imagem no cliente antes do envio para economizar tempo, banda e espaço
+    let fileToUpload = file;
+    try {
+      fileToUpload = await compressImage(file);
+    } catch {
+      // Fallback seguro: se falhar a compressão no browser, envia o arquivo original
+      fileToUpload = file;
+    }
+
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', fileToUpload);
     const res = await apiFetch<{ url: string }>(`/api/upload?category=${encodeURIComponent(category)}`, {
       method: 'POST',
       body: form,
