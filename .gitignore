@@ -7,6 +7,9 @@ dist/
 build/
 *.dist
 
+# Documents and PDFs
+*.pdf
+
 # Environment variables
 .env
 .env.example
