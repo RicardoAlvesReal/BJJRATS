@@ -13,7 +13,7 @@ const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || 'uploads');
 
 /** Categorias válidas de upload */
 const VALID_CATEGORIES = new Set([
-  'perfil', 'comunidade', 'treinos', 'mensalidades', 'desafios', 'geral', 'comprovantes', 'avisos', 'pix',
+  'perfil', 'comunidade', 'treinos', 'videos', 'mensalidades', 'desafios', 'geral', 'comprovantes', 'avisos', 'pix',
 ]);
 
 /** Sanitiza nome para uso em paths de diretório (remove acentos e chars especiais) */
@@ -39,10 +39,13 @@ function roleFolderName(role: string, isAcademyAdmin = false): string {
 // Multer em memória para permitir compressão com sharp antes de gravar em disco
 const storage = multer.memoryStorage();
 
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4']);
+const ALLOWED_MIME = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v',
+]);
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
+  limits: { fileSize: 60 * 1024 * 1024 }, // 60 MB (suficiente para vídeos comprimidos de 2min)
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
     else cb(new Error('Tipo de arquivo não permitido'));
@@ -101,10 +104,17 @@ router.post('/', requireAuth, upload.single('file'), async (req: AuthRequest, re
         .webp({ quality: 80, effort: 4 })
         .toFile(outputPath);
     } else {
-      // Para GIF animado ou vídeos (ex: video/mp4), mantém formato original
+      const extMap: Record<string, string> = {
+        'video/mp4': '.mp4',
+        'video/webm': '.webm',
+        'video/quicktime': '.mov',
+        'video/x-m4v': '.m4v',
+        'image/gif': '.gif',
+      };
       const ext =
         path.extname(req.file.originalname).toLowerCase() ||
-        (req.file.mimetype === 'video/mp4' ? '.mp4' : '.bin');
+        extMap[req.file.mimetype] ||
+        '.bin';
       outputFilename = `${nanoid()}${ext}`;
       outputPath = path.join(dir, outputFilename);
       await fs.promises.writeFile(outputPath, req.file.buffer);

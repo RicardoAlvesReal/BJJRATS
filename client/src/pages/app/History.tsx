@@ -11,6 +11,8 @@ import {
 } from '@/lib/bjjrats-constants';
 import { type TrainingData as ShareTrainingData } from './TrainingShareModal';
 import { type ExtraTrainingData } from './NewTraining';
+import { Film } from 'lucide-react';
+import TrainingVideosTab from './TrainingVideosTab';
 
 // Atividades extras (mesma lista do NewTraining.tsx)
 const EXTRA_ACTIVITIES = [
@@ -44,6 +46,7 @@ interface Props { onNewTraining: () => void; onShare?: (data: ShareTrainingData)
 
 export default function History({ onNewTraining, onShare, onEdit, onEditExtra }: Props) {
   const { user, profile } = useAuth();
+  const [subTab, setSubTab] = useState<'historico' | 'videos'>('historico');
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [extraTrainings, setExtraTrainings] = useState<ExtraTraining[]>([]);
   const [loading, setLoading] = useState(true);
@@ -391,7 +394,32 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
         <p className="text-[0.75rem] font-bold text-[#555] font-['Barlow_Condensed']">{trainings.length + extraTrainings.length} registros</p>
       </div>
       <div className="bjj-content">
-        <motion.div initial="hidden" animate="show" variants={ffadeUp} className="grid grid-cols-3 gap-2">
+        {/* Abas Sub-Navegação: Histórico vs Vídeos */}
+        <div className="flex bg-[#111] p-1 rounded-xl border border-[#222] mb-3">
+          <button
+            onClick={() => setSubTab('historico')}
+            className={`flex-1 py-2 font-['Barlow_Condensed'] font-black text-[0.8rem] uppercase tracking-[0.08em] rounded-lg transition-all cursor-pointer ${
+              subTab === 'historico' ? 'bg-[#CC0000] text-white shadow-md' : 'text-[#777] hover:text-[#CCC]'
+            }`}
+          >
+            HISTÓRICO DE TREINOS
+          </button>
+          <button
+            onClick={() => setSubTab('videos')}
+            className={`flex-1 py-2 font-['Barlow_Condensed'] font-black text-[0.8rem] uppercase tracking-[0.08em] rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              subTab === 'videos' ? 'bg-[#CC0000] text-white shadow-md' : 'text-[#777] hover:text-[#CCC]'
+            }`}
+          >
+            <Film size={15} />
+            VÍDEOS DE TREINOS (ATÉ 2 MIN)
+          </button>
+        </div>
+
+        {subTab === 'videos' ? (
+          <TrainingVideosTab />
+        ) : (
+          <>
+            <motion.div initial="hidden" animate="show" variants={ffadeUp} className="grid grid-cols-3 gap-2">
           {[
             { label: 'TREINOS', value: trainings.length + extraTrainings.length },
             { label: 'HORAS', value: `${hrs}h` },
@@ -513,6 +541,8 @@ export default function History({ onNewTraining, onShare, onEdit, onEditExtra }:
               }
             })}
           </motion.div>
+        )}
+          </>
         )}
       </div>
     </div>

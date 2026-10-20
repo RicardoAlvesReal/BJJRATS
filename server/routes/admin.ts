@@ -58,6 +58,7 @@ router.get(
         userUid: subscriptions.userUid,
         status: subscriptions.status,
         planId: subscriptions.planId,
+        asaasId: subscriptions.asaasId,
         currentPeriodEnd: subscriptions.currentPeriodEnd,
       })
       .from(subscriptions)
@@ -95,6 +96,7 @@ router.get(
         // Assinatura ativa
         subStatus:   bestSub.status,
         subPlanId:   bestSub.planId,
+        subAsaasId:  bestSub.asaasId,
         subPlanName: plans.name,
         subPlanPrice: plans.price,
         subCurrentPeriodEnd: bestSub.currentPeriodEnd,
@@ -103,11 +105,16 @@ router.get(
       .leftJoin(bestSub, eq(bestSub.userUid, users.uid))
       .leftJoin(plans, eq(plans.id, bestSub.planId));
 
-    // Pega o último pagamento de cada usuário
+    // Pega o primeiro e último pagamentos manuais (mensalidades) de cada usuário
     const userIds = rows.map(r => r.uid);
-    let lastPaymentsMap = new Map<string, { date: string; amount: number }>();
+    interface PaymentSummary {
+      firstPayment: { date: string; amount: number } | null;
+      lastPayment: { date: string; amount: number } | null;
+      totalPaid: number;
+      paymentsCount: number;
+    }
+    const manualPaymentMap = new Map<string, PaymentSummary>();
     if (userIds.length > 0) {
-      // Subquery: último pagamento pago por usuário
       const paymentRows = await db
         .select({
           studentUid: payments.studentUid,
@@ -123,13 +130,21 @@ router.get(
         )
         .orderBy(desc(payments.paidAt));
 
-      // Pega só o mais recente por usuário
       for (const p of paymentRows) {
-        if (!lastPaymentsMap.has(p.studentUid)) {
-          lastPaymentsMap.set(p.studentUid, {
-            date: p.paidAt as unknown as string,
-            amount: Number(p.amount),
+        const amt = Number(p.amount) || 0;
+        const dt = p.paidAt as unknown as string;
+        const existing = manualPaymentMap.get(p.studentUid);
+        if (!existing) {
+          manualPaymentMap.set(p.studentUid, {
+            lastPayment: { date: dt, amount: amt },
+            firstPayment: { date: dt, amount: amt },
+            totalPaid: amt,
+            paymentsCount: 1,
           });
+        } else {
+          existing.firstPayment = { date: dt, amount: amt };
+          existing.totalPaid += amt;
+          existing.paymentsCount += 1;
         }
       }
     }
@@ -170,40 +185,37 @@ router.get(
       return true;
     });
 
-    // Busca pagamentos reais do Asaas para usuários com assinatura ativa
-    const asaasPaymentMap = new Map<string, { date: string; amount: number }>();
-    const usersWithAsaas = all.filter(u => u.subStatus && (u as any).asaasSubId);
+    // Busca pagamentos reais do Asaas para usuários com assinatura do app
+    const asaasPaymentMap = new Map<string, PaymentSummary>();
+    const usersWithAsaas = all.filter(u => u.subAsaasId);
     if (usersWithAsaas.length > 0) {
       await Promise.all(usersWithAsaas.map(async (u) => {
         try {
-          const subRow = await db
-            .select({ asaasId: subscriptions.asaasId })
-            .from(subscriptions)
-            .where(
-              and(
-                eq(subscriptions.userUid, u.uid),
-                or(
-                  eq(subscriptions.status, 'active'),
-                  eq(subscriptions.status, 'trial'),
-                  eq(subscriptions.status, 'past_due'),
-                ),
-              ),
-            )
-            .limit(1);
-          const asaasSubId = subRow[0]?.asaasId;
+          const asaasSubId = u.subAsaasId;
           if (!asaasSubId) return;
-          const payments = await listSubscriptionPayments(asaasSubId);
-          const lastPaid = payments
+          const asaasPayments = await listSubscriptionPayments(asaasSubId);
+          const paidList = asaasPayments
             .filter(p => ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(p.status))
             .sort((a, b) => {
               const da = new Date(a.paymentDate || a.dueDate).getTime();
               const db = new Date(b.paymentDate || b.dueDate).getTime();
               return db - da;
-            })[0];
-          if (lastPaid) {
+            });
+          if (paidList.length > 0) {
+            const mostRecent = paidList[0];
+            const oldest = paidList[paidList.length - 1];
+            const total = paidList.reduce((acc, p) => acc + (Number(p.value) || 0), 0);
             asaasPaymentMap.set(u.uid, {
-              date: lastPaid.paymentDate || lastPaid.dueDate,
-              amount: lastPaid.value,
+              lastPayment: {
+                date: mostRecent.paymentDate || mostRecent.dueDate,
+                amount: Number(mostRecent.value) || 0,
+              },
+              firstPayment: {
+                date: oldest.paymentDate || oldest.dueDate,
+                amount: Number(oldest.value) || 0,
+              },
+              totalPaid: total,
+              paymentsCount: paidList.length,
             });
           }
         } catch {
@@ -213,8 +225,10 @@ router.get(
     }
 
     const usersWithSubs = all.map(u => {
-      const manualPayment = lastPaymentsMap.get(u.uid);
-      const asaasPayment = asaasPaymentMap.get(u.uid);
+      const manual = manualPaymentMap.get(u.uid);
+      const asaas = asaasPaymentMap.get(u.uid);
+      const payData = asaas || manual || null;
+
       return {
         uid: u.uid,
         name: u.name,
@@ -238,8 +252,10 @@ router.get(
           planPrice: u.subPlanPrice,
           currentPeriodEnd: u.subCurrentPeriodEnd,
         } : null,
-        // Prioridade: pagamento manual > Asaas > sem dados
-        lastPayment: manualPayment || asaasPayment || null,
+        firstPayment: payData?.firstPayment || null,
+        lastPayment: payData?.lastPayment || null,
+        totalPaid: payData?.totalPaid ?? 0,
+        paymentsCount: payData?.paymentsCount ?? 0,
       };
     });
 

@@ -37,6 +37,7 @@ import announcementsRouter from "./routes/announcements.js";
 import whatsappRouter      from "./routes/whatsapp.js";
 import supportRouter       from "./routes/support.js";
 import passkeyRouter       from "./routes/passkeys.js";
+import trainingVideosRouter from "./routes/trainingVideos.js";
 import { startFinancialAutomationJobs } from "./services/financialAutomation.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -124,6 +125,7 @@ async function startServer() {
   app.use("/api/whatsapp",         whatsappRouter);
   app.use("/api/support",          supportRouter);
   app.use("/api/passkeys",         passkeyRouter);
+  app.use("/api/training-videos",  trainingVideosRouter);
 
   // SPA static files — only in production (dev uses Vite dev server)
   if (process.env.NODE_ENV === "production") {

@@ -82,8 +82,15 @@ export const subscriptions = pgTable('subscriptions', {
   userUid:            text('user_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
   planId:             text('plan_id').notNull().references(() => plans.id, { onDelete: 'restrict' }),
   status:             text('status').default('active'),  // active|trial|cancelled|past_due|expired
+  provider:           text('provider').default('asaas'), // asaas|google_play|apple|manual
   asaasId:            text('asaas_id'),
   asaasCustomerId:    text('asaas_customer_id'),
+  googlePurchaseToken: text('google_purchase_token'),
+  googleOrderId:      text('google_order_id'),
+  googleProductId:    text('google_product_id'),
+  appleOriginalTransactionId: text('apple_original_transaction_id'),
+  appleTransactionId: text('apple_transaction_id'),
+  appleProductId:     text('apple_product_id'),
   currentPeriodStart: timestamp('current_period_start'),
   currentPeriodEnd:   timestamp('current_period_end'),
   trialEndsAt:        timestamp('trial_ends_at'),
@@ -475,3 +482,25 @@ export const whatsappInstances = pgTable('whatsapp_instances', {
 }, (table) => [
   uniqueIndex('idx_whatsapp_professor').on(table.professorUid),
 ]);
+
+// ─── training_videos ─────────────────────────────────────────────────────────
+export const trainingVideos = pgTable('training_videos', {
+  id:              text('id').primaryKey(),
+  userUid:         text('user_uid').notNull().references(() => users.uid, { onDelete: 'cascade' }),
+  userName:        text('user_name'),
+  userPhoto:       text('user_photo'),
+  userBelt:        text('user_belt'),
+  academyId:       text('academy_id'),
+  academyName:     text('academy_name'),
+  title:           text('title').notNull(),
+  description:     text('description'),
+  videoUrl:        text('video_url').notNull(),
+  thumbnailUrl:    text('thumbnail_url'),
+  durationSeconds: integer('duration_seconds').default(0),
+  category:        text('category').default('posicao'), // 'posicao' | 'rola' | 'treino' | 'drill'
+  techniques:      jsonb('techniques').default([]),
+  likes:           jsonb('likes').default([]),           // array de uid strings
+  commentCount:    integer('comment_count').default(0),
+  createdAt:       timestamp('created_at').defaultNow(),
+});
+

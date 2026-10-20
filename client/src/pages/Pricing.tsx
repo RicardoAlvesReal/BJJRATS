@@ -10,6 +10,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
 import { FEATURE_LABELS } from '@/lib/features';
+import {
+  initGooglePlayBilling,
+  isGooglePlayAvailable,
+  purchaseSubscriptionOnGooglePlay,
+} from '@/lib/googlePlayBilling';
+import {
+  initAppleBilling,
+  isAppleAvailable,
+  purchaseSubscriptionOnApple,
+  restorePurchasesOnApple,
+} from '@/lib/appleBilling';
 
 type BillingType = 'PIX' | 'CREDIT_CARD';
 
@@ -31,8 +42,34 @@ export default function PricingPage() {
   const [creating, setCreating] = useState(false);
   const [pixData, setPixData] = useState<{ qrCode?: string; copiaECola?: string } | null>(null);
   const [activeSubscription, setActiveSubscription] = useState<{ id: string; status: string; planId: string; isFree: boolean } | null>(null);
+  const [restoringApple, setRestoringApple] = useState(false);
+
+  const handleRestoreApple = async () => {
+    if (!user) { navigate('/login'); return; }
+    setRestoringApple(true);
+    try {
+      const res = await restorePurchasesOnApple();
+      if (res.success) {
+        alert('Assinatura restaurada com sucesso!');
+        navigate(getPanelPath(user));
+      } else {
+        alert(res.error || 'Nenhuma assinatura ativa encontrada na conta Apple para restaurar.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao restaurar compras na Apple.');
+    } finally {
+      setRestoringApple(false);
+    }
+  };
 
   useEffect(() => {
+    if (isGooglePlayAvailable()) {
+      initGooglePlayBilling().catch(() => {});
+    }
+    if (isAppleAvailable()) {
+      initAppleBilling().catch(() => {});
+    }
+
     api.subscriptions.listPlans()
       .then(setPlans)
       .finally(() => setLoading(false));
@@ -61,6 +98,45 @@ export default function PricingPage() {
     const isFreePlan = Number(selectedPlanData?.price ?? 0) <= 0;
     setSelectedPlan(planId);
     setCreating(true);
+
+    // No app iOS, assinaturas de planos pagos são processadas nativamente via Apple In-App Purchase / Apple Pay
+    if (!isFreePlan && isAppleAvailable()) {
+      try {
+        const res = await purchaseSubscriptionOnApple(selectedPlanData?.slug || planId);
+        if (res.success) {
+          alert('Assinatura ativada com sucesso pela Apple!');
+          navigate(getPanelPath(user));
+        } else if (res.error) {
+          alert(res.error);
+        }
+      } catch (err: any) {
+        alert(err?.message || 'Erro ao processar assinatura na Apple.');
+      } finally {
+        setCreating(false);
+        setSelectedPlan(null);
+      }
+      return;
+    }
+
+    // No app Android, assinaturas de planos pagos são processadas nativamente pela Play Store
+    if (!isFreePlan && isGooglePlayAvailable()) {
+      try {
+        const res = await purchaseSubscriptionOnGooglePlay(selectedPlanData?.slug || planId);
+        if (res.success) {
+          alert('Assinatura ativada com sucesso pelo Google Play!');
+          navigate(getPanelPath(user));
+        } else if (res.error) {
+          alert(res.error);
+        }
+      } catch (err: any) {
+        alert(err?.message || 'Erro ao processar assinatura no Google Play.');
+      } finally {
+        setCreating(false);
+        setSelectedPlan(null);
+      }
+      return;
+    }
+
     try {
       if (!isFreePlan && billingType === 'PIX' && (!cpfCnpj || cpfCnpj.replace(/\D/g, '').length < 11)) {
         alert('Para pagamento via PIX é obrigatório informar o CPF ou CNPJ.');
@@ -190,8 +266,32 @@ export default function PricingPage() {
           </p>
         </motion.div>
 
-        {/* CPF/CNPJ — apenas para planos pagos via PIX */}
-        {hasPaidPlans && billingType === 'PIX' && !isFreePlanSelected && (
+        {/* Banner do Google Play para app Android */}
+        {hasPaidPlans && !isFreePlanSelected && isGooglePlayAvailable() && (
+          <div className="flex justify-center mb-6">
+            <div
+              style={{
+                background: '#161616',
+                border: '1px solid #333',
+                padding: '0.6rem 1.25rem',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                color: '#EEE',
+                fontFamily: FONTS.condensed,
+                fontSize: '0.85rem',
+                letterSpacing: '0.04em',
+              }}
+            >
+              <span style={{ fontSize: '1.1rem', color: '#34A853' }}>▶</span>
+              <span>Assinatura protegida e cobrada pela sua conta <strong>Google Play</strong></span>
+            </div>
+          </div>
+        )}
+
+        {/* CPF/CNPJ — apenas para planos pagos via PIX no navegador */}
+        {hasPaidPlans && billingType === 'PIX' && !isFreePlanSelected && !isGooglePlayAvailable() && !isAppleAvailable() && (
           <div className="flex justify-center mb-3">
             <input
               type="text"
@@ -209,7 +309,7 @@ export default function PricingPage() {
             />
           </div>
         )}
-        {hasPaidPlans && !isFreePlanSelected && (
+        {hasPaidPlans && !isFreePlanSelected && !isGooglePlayAvailable() && !isAppleAvailable() && (
         <motion.div variants={fadeUp} className="flex flex-col items-center gap-3 mb-6">
           <div className="flex justify-center gap-2">
           {(['PIX', 'CREDIT_CARD'] as BillingType[]).map(bt => (
@@ -341,7 +441,11 @@ export default function PricingPage() {
                           ? 'JÁ ASSINANTE'
                       : isFreePlan
                         ? 'ATIVAR GRÁTIS'
-                        : 'ASSINAR'}
+                        : isGooglePlayAvailable()
+                          ? 'ASSINAR COM GOOGLE PLAY'
+                          : isAppleAvailable()
+                            ? 'ASSINAR COM APPLE PAY'
+                            : 'ASSINAR'}
                 </button>
               </div>
             );
@@ -353,6 +457,69 @@ export default function PricingPage() {
             Nenhum plano disponível no momento.
           </p>
         )}
+
+        {/* Apple App Store & Google Play Compliance / Restore Purchases Footer */}
+        <motion.div variants={fadeUp} style={{ marginTop: '2.5rem', textAlign: 'center', maxWidth: '640px', marginInline: 'auto' }}>
+          {isAppleAvailable() && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <button
+                onClick={handleRestoreApple}
+                disabled={restoringApple}
+                style={{
+                  background: '#1A1A1A',
+                  color: '#DDD',
+                  border: '1px solid #333',
+                  borderRadius: '6px',
+                  padding: '0.65rem 1.25rem',
+                  fontFamily: FONTS.condensed,
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  cursor: restoringApple ? 'not-allowed' : 'pointer',
+                  opacity: restoringApple ? 0.6 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <span>🔄</span>
+                <span>{restoringApple ? 'RESTAURANDO COMPRAS...' : 'RESTAURAR COMPRAS ANTERIORES'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Guidelines 3.1.2 Auto-Renewing Subscriptions Disclosure */}
+          <div style={{ background: '#11111188', border: '1px solid #222', borderRadius: '8px', padding: '1rem', color: '#777', fontSize: '0.72rem', lineHeight: '1.4', fontFamily: FONTS.condensed }}>
+            <p style={{ margin: '0 0 0.5rem', color: '#999', fontWeight: 700 }}>
+              INFORMAÇÕES SOBRE A ASSINATURA:
+            </p>
+            <p style={{ margin: '0 0 0.5rem' }}>
+              • O pagamento é processado pela conta da plataforma (Apple ID no iOS ou Google Play no Android) na confirmação da compra.
+              <br />
+              • A assinatura é renovada automaticamente todo mês, a menos que seja cancelada pelo menos 24 horas antes do término do período vigente.
+              <br />
+              • Você pode gerenciar ou cancelar sua assinatura a qualquer momento nos Ajustes da sua conta da loja de aplicativos.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid #222' }}>
+              <a
+                href="/termos"
+                onClick={(e) => { e.preventDefault(); navigate('/termos'); }}
+                style={{ color: '#CC0000', textDecoration: 'underline', cursor: 'pointer', fontWeight: 700 }}
+              >
+                Termos de Uso (EULA)
+              </a>
+              <span style={{ color: '#444' }}>•</span>
+              <a
+                href="/privacidade"
+                onClick={(e) => { e.preventDefault(); navigate('/privacidade'); }}
+                style={{ color: '#CC0000', textDecoration: 'underline', cursor: 'pointer', fontWeight: 700 }}
+              >
+                Política de Privacidade
+              </a>
+            </div>
+          </div>
+        </motion.div>
       </motion.div>
 
       {/* Modal PIX */}

@@ -203,7 +203,7 @@ export default function AdminUsers() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Barlow Condensed, sans-serif' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #CC0000' }}>
-                {['Nome', 'E-mail', 'Role', 'Plano', 'Valor', 'Vencimento', 'Últ. Pag.', 'Conta', 'Ações'].map((h) => (
+                {['Nome', 'E-mail', 'Role', 'Plano', 'Valor', 'Vencimento', '1º Pagamento', 'Últ. Pagamento', 'Total Pago', 'Conta', 'Ações'].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -212,6 +212,7 @@ export default function AdminUsers() {
               {filtered.map((u) => {
                 const sub = u.subscription;
                 const pay = u.lastPayment;
+                const firstPay = u.firstPayment;
                 const createdAt = u.createdAt ? new Date(u.createdAt) : null;
                 const accountDays = createdAt
                   ? Math.floor((Date.now() - createdAt.getTime()) / 86400000)
@@ -238,15 +239,52 @@ export default function AdminUsers() {
                   <td style={{ ...tdStyle, color: '#AAA' }}>
                     {sub ? `R$ ${(sub.planPrice ?? 0).toFixed(2)}` : '—'}
                   </td>
-                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>
+                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                     {sub?.currentPeriodEnd
                       ? new Date(sub.currentPeriodEnd).toLocaleDateString('pt-BR')
                       : '—'}
                   </td>
-                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>
-                    {pay
-                      ? `${new Date(pay.date).toLocaleDateString('pt-BR')} (R$ ${pay.amount.toFixed(2)})`
-                      : '—'}
+                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                    {firstPay ? (
+                      <div>
+                        <span style={{ color: '#CCC', fontWeight: 700 }}>
+                          {new Date(firstPay.date).toLocaleDateString('pt-BR')}
+                        </span>
+                        <span style={{ display: 'block', color: '#777', fontSize: '0.7rem' }}>
+                          R$ {Number(firstPay.amount).toFixed(2)}
+                        </span>
+                      </div>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                    {pay ? (
+                      <div>
+                        <span style={{ color: '#4CAF50', fontWeight: 700 }}>
+                          {new Date(pay.date).toLocaleDateString('pt-BR')}
+                        </span>
+                        <span style={{ display: 'block', color: '#AAA', fontSize: '0.7rem' }}>
+                          R$ {Number(pay.amount).toFixed(2)}
+                        </span>
+                      </div>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#888', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                    {u.totalPaid && u.totalPaid > 0 ? (
+                      <div>
+                        <span style={{ color: '#FFF', fontWeight: 800 }}>
+                          R$ {Number(u.totalPaid).toFixed(2)}
+                        </span>
+                        <span style={{ display: 'block', color: '#666', fontSize: '0.68rem' }}>
+                          {u.paymentsCount || 1}x pago{u.paymentsCount !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td style={{ ...tdStyle, color: '#666', fontSize: '0.75rem' }}>
                     {accountDays > 0 ? `${accountDays}d` : 'Hoje'}
@@ -311,6 +349,48 @@ export default function AdminUsers() {
             <h2 style={{ ...headingStyle, fontSize: '1.1rem', marginBottom: '1.25rem' }}>
               {editTarget ? 'Editar usuário' : 'Novo usuário'}
             </h2>
+
+            {editTarget && (
+              <div style={{
+                background: '#0D0D0D', border: '1px solid #222',
+                borderLeft: '3px solid #CC0000', borderRadius: '4px',
+                padding: '0.75rem', marginBottom: '1rem',
+              }}>
+                <p style={{
+                  fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.75rem',
+                  color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.5rem',
+                }}>
+                  💳 Resumo Financeiro & Pagamentos
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', display: 'block' }}>1º Pagamento</span>
+                    <span style={{ fontSize: '0.8rem', color: '#CCC', fontWeight: 600 }}>
+                      {editTarget.firstPayment ? `${new Date(editTarget.firstPayment.date).toLocaleDateString('pt-BR')} (R$ ${Number(editTarget.firstPayment.amount).toFixed(2)})` : 'Nenhum'}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', display: 'block' }}>Último Pagamento</span>
+                    <span style={{ fontSize: '0.8rem', color: '#4CAF50', fontWeight: 700 }}>
+                      {editTarget.lastPayment ? `${new Date(editTarget.lastPayment.date).toLocaleDateString('pt-BR')} (R$ ${Number(editTarget.lastPayment.amount).toFixed(2)})` : 'Nenhum'}
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', display: 'block' }}>Total Acumulado</span>
+                    <span style={{ fontSize: '0.8rem', color: '#FFF', fontWeight: 800 }}>
+                      R$ {Number(editTarget.totalPaid || 0).toFixed(2)} ({editTarget.paymentsCount || 0} faturas)
+                    </span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', display: 'block' }}>Plano / Vencimento</span>
+                    <span style={{ fontSize: '0.8rem', color: '#E87722', fontWeight: 600 }}>
+                      {editTarget.subscription?.planName || 'Sem plano'}
+                      {editTarget.subscription?.currentPeriodEnd ? ` (até ${new Date(editTarget.subscription.currentPeriodEnd).toLocaleDateString('pt-BR')})` : ''}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <Field label="Nome" required>
               <input style={inputStyle} value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />

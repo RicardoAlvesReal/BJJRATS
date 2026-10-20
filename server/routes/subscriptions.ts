@@ -12,8 +12,13 @@ import {
   type AsaasWebhookEvent,
 } from '../services/asaas.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
+import googlePlayRouter from './googlePlay.js';
+import appleRouter from './apple.js';
+import { verifyGoogleSubscription } from '../services/googlePlay.js';
 
 const router = Router();
+router.use('/google-play', googlePlayRouter);
+router.use('/apple', appleRouter);
 
 async function getGraceDays(): Promise<number> {
   try {
@@ -116,6 +121,22 @@ async function syncSubscriptionAccess(sub: SubscriptionRow, plan?: PlanRow | nul
       }
     } catch (err) {
       console.warn('[subscriptions] Falha ao sincronizar assinatura com Asaas; aplicando fallback local:', err);
+      if (localPeriodExpired) updates.status = 'past_due';
+    }
+  } else if ((sub.provider === 'google_play' || sub.googlePurchaseToken) && sub.googlePurchaseToken) {
+    try {
+      const verified = await verifyGoogleSubscription(sub.googlePurchaseToken, sub.googleProductId || undefined);
+      if (verified.status === 'cancelled' || verified.status === 'expired') {
+        updates.status = verified.status;
+        if (verified.status === 'cancelled') updates.cancelledAt = new Date();
+      } else if (verified.status === 'past_due') {
+        updates.status = 'past_due';
+      } else if (verified.status === 'active' && verified.expiryTime) {
+        updates.status = 'active';
+        updates.currentPeriodEnd = verified.expiryTime;
+      }
+    } catch (err) {
+      console.warn('[subscriptions] Falha ao sincronizar assinatura com Google Play:', err);
       if (localPeriodExpired) updates.status = 'past_due';
     }
   } else if (localPeriodExpired) {
@@ -538,33 +559,60 @@ router.get('/my/billing', requireAuth, async (req: AuthRequest, res) => {
       pixQrCode?: string;
     } | null = null;
 
-    // Se estiver past_due, busca cobranças pendentes
-    if (sub.status === 'past_due' || asaasSub.status === 'OVERDUE') {
-      try {
-        const payments = await listSubscriptionPayments(sub.asaasId);
-        const overdue = payments.find(p => ['OVERDUE', 'PENDING'].includes(p.status));
-        if (overdue) {
-          pendingPayment = {
-            id: overdue.id,
-            value: overdue.value,
-            dueDate: overdue.dueDate,
-            status: overdue.status,
-            invoiceUrl: overdue.invoiceUrl,
-            bankSlipUrl: overdue.bankSlipUrl,
-            pixQrCode: overdue.pixQrCode,
-          };
-        }
-      } catch { /* silencioso */ }
+    let invoices: Array<{
+      id: string;
+      value: number;
+      dueDate: string;
+      paymentDate?: string | null;
+      status: 'PAID' | 'PENDING' | 'OVERDUE' | 'CANCELLED';
+      invoiceUrl?: string;
+      bankSlipUrl?: string;
+      pixQrCode?: string;
+    }> = [];
+
+    try {
+      const payments = await listSubscriptionPayments(sub.asaasId);
+      invoices = payments.map(p => {
+        const isPaid = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(p.status);
+        const isOverdue = p.status === 'OVERDUE';
+        const isPending = ['PENDING', 'AWAITING_RISK_ANALYSIS'].includes(p.status);
+        return {
+          id: p.id,
+          value: p.value,
+          dueDate: p.dueDate,
+          paymentDate: p.paymentDate || p.clientPaymentDate || null,
+          status: isPaid ? 'PAID' : isOverdue ? 'OVERDUE' : isPending ? 'PENDING' : 'CANCELLED',
+          invoiceUrl: p.invoiceUrl,
+          bankSlipUrl: p.bankSlipUrl,
+          pixQrCode: p.pixQrCode,
+        };
+      });
+
+      const overdue = payments.find(p => ['OVERDUE', 'PENDING'].includes(p.status));
+      if (overdue) {
+        pendingPayment = {
+          id: overdue.id,
+          value: overdue.value,
+          dueDate: overdue.dueDate,
+          status: overdue.status,
+          invoiceUrl: overdue.invoiceUrl,
+          bankSlipUrl: overdue.bankSlipUrl,
+          pixQrCode: overdue.pixQrCode,
+        };
+      }
+    } catch (err) {
+      console.warn('[subscriptions/my/billing] Erro ao listar pagamentos Asaas:', err);
     }
 
     res.json({
       billingType: asaasSub.billingType || 'PIX',
       availableMethods: ['PIX', 'CREDIT_CARD'],
       pendingPayment,
+      invoices,
       graceDays: await getGraceDays(),
     });
   } catch {
-    res.json({ billingType: 'PIX', availableMethods: ['PIX', 'CREDIT_CARD'], pendingPayment: null, graceDays: await getGraceDays() });
+    res.json({ billingType: 'PIX', availableMethods: ['PIX', 'CREDIT_CARD'], pendingPayment: null, invoices: [], graceDays: await getGraceDays() });
   }
 });
 

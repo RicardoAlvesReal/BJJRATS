@@ -1571,57 +1571,67 @@ function MensalidadesCard({ onOpen, userUid }: MensalidadesCardProps) {
     load();
   }, [userUid]);
 
-  const hasAlert = summary && (summary.overdue > 0 || summary.pending > 0);
+  const isOverdue = Boolean(summary && summary.overdue > 0);
+  const isPending = Boolean(summary && !isOverdue && summary.pending > 0);
 
   return (
-    <div style={{ padding: '0.25rem 0' }}>
-      {/* Atalho secundário — financeiro principal está na aba ACADEMIA > 💳 FINANCEIRO */}
+    <motion.div
+      variants={fadeUpVariant}
+      className="bjj-card overflow-hidden"
+      style={{
+        border: isOverdue ? '1px solid #CC0000' : isPending ? '1px solid #FF8C00' : '1px solid #1E3A1E',
+        background: isOverdue
+          ? 'linear-gradient(135deg, #180505 0%, #0D0D0D 100%)'
+          : isPending
+          ? 'linear-gradient(135deg, #181005 0%, #0D0D0D 100%)'
+          : 'linear-gradient(135deg, #051405 0%, #0D0D0D 100%)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-base">💳</span>
+          <p className="text-[0.875rem] font-black uppercase text-white font-['Barlow_Condensed'] tracking-[0.05em] m-0">
+            EXTRATO DE MENSALIDADES
+          </p>
+        </div>
+        <span
+          className="text-[0.62rem] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded font-['Barlow_Condensed']"
+          style={{
+            background: isOverdue ? '#2A0000' : isPending ? '#2A1800' : '#0A2A0A',
+            color: isOverdue ? '#FF4D4D' : isPending ? '#FFA500' : '#4CAF50',
+            border: `1px solid ${isOverdue ? '#CC0000' : isPending ? '#FF8C00' : '#2A7A2A'}`,
+          }}
+        >
+          {isOverdue ? 'ATRASADO' : isPending ? 'PENDENTE' : 'EM DIA'}
+        </span>
+      </div>
+
+      <p className="text-[0.75rem] text-[#BBB] font-['Barlow'] mb-3 leading-snug">
+        {isOverdue
+          ? `Atenção: Você possui R$ ${summary?.overdue.toFixed(2)} em atraso. Regularize para evitar suspensão preventiva de acessos.`
+          : isPending
+          ? `Mensalidade de R$ ${summary?.pending.toFixed(2)} pendente${
+              summary?.nextDue
+                ? ` · vencimento em ${new Date(summary.nextDue + 'T00:00:00').toLocaleDateString('pt-BR')}`
+                : ''
+            }.`
+          : 'Suas mensalidades com a academia e professores estão em dia.'}
+      </p>
+
       <button
+        type="button"
         onClick={onOpen}
+        className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-[0.75rem] font-bold uppercase tracking-[0.08em] font-['Barlow_Condensed'] cursor-pointer transition-colors"
         style={{
-          width: '100%',
-          background: 'transparent',
-          border: `1px solid ${hasAlert ? (summary!.overdue > 0 ? '#4A0000' : '#1A3A1A') : '#1C1C1C'}`,
-          color: '#FFFFFF',
-          fontFamily: 'Barlow Condensed, sans-serif',
-          padding: '0.5rem 0.875rem',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.5rem',
-          textAlign: 'left',
-          opacity: 0.8,
+          background: isOverdue ? '#CC0000' : isPending ? '#FF8C00' : '#1A1A1A',
+          color: isOverdue || isPending ? '#FFFFFF' : '#CCC',
+          border: isOverdue || isPending ? 'none' : '1px solid #333',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={hasAlert ? (summary!.overdue > 0 ? '#CC0000' : '#4CAF50') : '#555'} strokeWidth="2.5">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-            <line x1="1" y1="10" x2="23" y2="10"/>
-          </svg>
-          <div>
-            <p style={{ fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: hasAlert ? (summary!.overdue > 0 ? '#CC0000' : '#4CAF50') : '#555', margin: 0 }}>
-              MENSALIDADES
-              <span style={{ fontWeight: 400, fontSize: '0.58rem', color: '#3A3A3A', marginLeft: '0.35rem', textTransform: 'none', letterSpacing: 0 }}>· atalho</span>
-            </p>
-            {summary && hasAlert && (
-              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.62rem', color: '#666', margin: '0.08rem 0 0' }}>
-                {summary.overdue > 0
-                  ? `⚠️ R$ ${summary.overdue.toFixed(2)} em atraso`
-                  : `R$ ${summary.pending.toFixed(2)} pendente${summary.nextDue ? ` · vence ${new Date(summary.nextDue + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''}`
-                }
-              </p>
-            )}
-            {summary && !hasAlert && (
-              <p style={{ fontFamily: 'Barlow, sans-serif', fontSize: '0.62rem', color: '#3A7A3A', margin: '0.08rem 0 0' }}>✓ Em dia</p>
-            )}
-          </div>
-        </div>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#3A3A3A" strokeWidth="2.5">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
+        <span>{isOverdue ? 'REGULARIZAR MENSALIDADE' : 'VER EXTRATO E COBRANÇAS'}</span>
+        <span>→</span>
       </button>
-    </div>
+    </motion.div>
   );
 }
 

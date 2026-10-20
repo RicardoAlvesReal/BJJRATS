@@ -35,6 +35,17 @@ function isPanelAccessBlocked(sub: Subscription | null, graceDays: number) {
   return new Date() >= lockDate;
 }
 
+interface InvoiceItem {
+  id: string;
+  value: number;
+  dueDate: string;
+  paymentDate?: string | null;
+  status: 'PAID' | 'PENDING' | 'OVERDUE' | 'CANCELLED';
+  invoiceUrl?: string;
+  bankSlipUrl?: string;
+  pixQrCode?: string;
+}
+
 export default function SubscriptionManager({ compact }: { compact?: boolean }) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -49,6 +60,8 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
     id: string; value: number; dueDate: string; status: string;
     invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string;
   } | null>(null);
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'PAID' | 'PENDING' | 'OVERDUE'>('all');
   const [graceDays, setGraceDays] = useState(3);
 
   const load = useCallback(async () => {
@@ -60,10 +73,12 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
           const billing = await api.subscriptions.getBilling();
           setBillingType(billing.billingType);
           setPendingPayment(billing.pendingPayment || null);
+          if (billing.invoices) setInvoices(billing.invoices as InvoiceItem[]);
           if (typeof billing.graceDays === 'number') setGraceDays(billing.graceDays);
         } catch {
           setBillingType(null);
           setPendingPayment(null);
+          setInvoices([]);
         }
       }
     } catch {
@@ -156,7 +171,10 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
   };
 
   const isFreePlan = Number(sub.plan.price) <= 0;
-  const canChangeBilling = !isFreePlan
+  const isAppleSub = sub.provider === 'apple';
+  const isGoogleSub = sub.provider === 'google';
+  const isStoreSub = isAppleSub || isGoogleSub;
+  const canChangeBilling = !isFreePlan && !isStoreSub
     && (sub.status === 'active' || sub.status === 'trial' || sub.status === 'past_due');
   const panelAccessBlocked = isPanelAccessBlocked(sub, graceDays);
 
@@ -178,9 +196,27 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
               <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '1.25rem', color: '#FFF' }}>
                 {sub.plan.name}
               </span>
-              <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666', display: 'block', marginTop: '0.125rem' }}>
-                {isFreePlan ? 'Plano gratuito' : `R$ ${sub.plan.price.toFixed(2)}/mês`}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}>
+                <span style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#666' }}>
+                  {isFreePlan ? 'Plano gratuito' : `R$ ${sub.plan.price.toFixed(2)}/mês`}
+                </span>
+                {isAppleSub && (
+                  <span style={{
+                    background: '#222', color: '#FFF', fontSize: '0.6rem', padding: '0.15rem 0.4rem',
+                    borderRadius: '3px', fontWeight: 700, fontFamily: FONTS.condensed,
+                  }}>
+                     Apple Pay
+                  </span>
+                )}
+                {isGoogleSub && (
+                  <span style={{
+                    background: '#1A2A1A', color: '#4CAF50', fontSize: '0.6rem', padding: '0.15rem 0.4rem',
+                    borderRadius: '3px', fontWeight: 700, fontFamily: FONTS.condensed,
+                  }}>
+                    ▶ Google Play
+                  </span>
+                )}
+              </div>
             </div>
             <span style={{
               background: (statusColors[sub.status] || '#666') + '22',
@@ -450,6 +486,153 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
             </div>
           )}
 
+          {/* Informações de Cobrança Apple */}
+          {isAppleSub && (
+            <div style={{ borderTop: '1px solid #1A1A1A', paddingTop: '1rem', marginTop: '1rem' }}>
+              <div style={{
+                background: '#141414',
+                border: '1px solid #282828',
+                borderRadius: '8px',
+                padding: '1rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '1.4rem' }}></span>
+                  <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.85rem', color: '#FFF', textTransform: 'uppercase' }}>
+                    Assinatura Apple Pay / App Store
+                  </span>
+                </div>
+                <p style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', color: '#888', margin: '0 0 0.5rem', lineHeight: '1.4' }}>
+                  Cobranças e renovações são processadas com segurança diretamente pelo seu ID Apple.
+                  O histórico completo de faturas está disponível nos recibos da sua conta Apple.
+                </p>
+                <div style={{ background: '#0A0A0A', border: '1px solid #1F1F1F', borderRadius: '6px', padding: '0.6rem 0.75rem', fontSize: '0.7rem', color: '#AAA', fontFamily: FONTS.condensed }}>
+                  Para alterar forma de pagamento ou cancelar: <br />
+                  <span style={{ color: '#CCC' }}>Ajustes &gt; [Seu Nome] &gt; Assinaturas &gt; BJJRats</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Extrato de Cobranças da Assinatura (Asaas) */}
+          {!isFreePlan && !isStoreSub && (
+            <div style={{ borderTop: '1px solid #1A1A1A', paddingTop: '1rem', marginTop: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <p style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', fontWeight: 800, color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                  📑 Extrato de Mensalidades da Assinatura
+                </p>
+                <span style={{ fontFamily: FONTS.condensed, fontSize: '0.65rem', color: '#888' }}>
+                  {invoices.length} fatura{invoices.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Filtros */}
+              <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.75rem', overflowX: 'auto' }}>
+                {[
+                  { id: 'all', label: 'Todas' },
+                  { id: 'PAID', label: 'Pagas' },
+                  { id: 'PENDING', label: 'Pendentes' },
+                  { id: 'OVERDUE', label: 'Vencidas' },
+                ].map(flt => (
+                  <button
+                    key={flt.id}
+                    onClick={() => setInvoiceFilter(flt.id as any)}
+                    style={{
+                      background: invoiceFilter === flt.id ? '#CC0000' : '#141414',
+                      border: `1px solid ${invoiceFilter === flt.id ? '#CC0000' : '#222'}`,
+                      color: invoiceFilter === flt.id ? '#FFF' : '#888',
+                      fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.65rem',
+                      textTransform: 'uppercase', letterSpacing: '0.05em',
+                      padding: '0.25rem 0.55rem', borderRadius: '4px', cursor: 'pointer',
+                    }}
+                  >
+                    {flt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Lista */}
+              {invoices.length === 0 ? (
+                <div style={{
+                  background: '#0D0D0D', border: '1px dashed #222', borderRadius: '4px',
+                  padding: '0.85rem', textAlign: 'center',
+                }}>
+                  <p style={{ fontFamily: FONTS.condensed, fontSize: '0.72rem', color: '#777', margin: 0 }}>
+                    Nenhuma fatura registrada no momento. O histórico de pagamentos e cobranças aparecerá aqui automaticamente.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '220px', overflowY: 'auto' }}>
+                  {invoices
+                    .filter(inv => invoiceFilter === 'all' || inv.status === invoiceFilter)
+                    .map(inv => {
+                      const isPaid = inv.status === 'PAID';
+                      const isOverdue = inv.status === 'OVERDUE';
+                      const isPending = inv.status === 'PENDING';
+                      const color = isPaid ? '#4CAF50' : isOverdue ? '#CC0000' : isPending ? '#FF8C00' : '#888';
+                      const label = isPaid ? 'PAGA' : isOverdue ? 'VENCIDA' : isPending ? 'PENDENTE' : 'CANCELADA';
+                      const payUrl = inv.invoiceUrl || inv.bankSlipUrl;
+
+                      return (
+                        <div
+                          key={inv.id}
+                          style={{
+                            background: '#0D0D0D',
+                            border: `1px solid #1E1E1E`,
+                            borderLeft: `3px solid ${color}`,
+                            padding: '0.6rem 0.75rem',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.85rem', color: '#FFF' }}>
+                                {inv.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                              </span>
+                              <span style={{
+                                fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.58rem',
+                                padding: '0.1rem 0.35rem', borderRadius: '3px',
+                                background: color + '22', color, border: `1px solid ${color}44`,
+                              }}>
+                                {label}
+                              </span>
+                            </div>
+                            <p style={{ fontFamily: FONTS.condensed, fontSize: '0.65rem', color: '#777', margin: '0.2rem 0 0' }}>
+                              {isPaid && inv.paymentDate
+                                ? `Pago em ${new Date(inv.paymentDate + 'T00:00:00').toLocaleDateString('pt-BR')}`
+                                : `Vencimento: ${new Date(inv.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}`}
+                            </p>
+                          </div>
+
+                          {!isPaid && payUrl && (
+                            <button
+                              onClick={() => window.open(payUrl, '_blank', 'noopener,noreferrer')}
+                              style={{
+                                background: '#1A0000', border: '1px solid #CC0000',
+                                color: '#FFF', fontFamily: FONTS.condensed, fontWeight: 700,
+                                fontSize: '0.65rem', textTransform: 'uppercase',
+                                padding: '0.35rem 0.65rem', borderRadius: '4px', cursor: 'pointer',
+                              }}
+                            >
+                              PAGAR
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  {invoices.filter(inv => invoiceFilter === 'all' || inv.status === invoiceFilter).length === 0 && (
+                    <div style={{ padding: '0.75rem', textAlign: 'center', color: '#666', fontFamily: FONTS.condensed, fontSize: '0.7rem' }}>
+                      Nenhuma fatura encontrada com o filtro selecionado.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Features */}
           {sub.plan.features && sub.plan.features.length > 0 && (
             <div style={{ borderTop: '1px solid #1A1A1A', paddingTop: '1rem', marginTop: '1rem' }}>
@@ -472,7 +655,7 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem', borderTop: '1px solid #1A1A1A', paddingTop: '1rem' }}>
-            {sub.status === 'active' && (
+            {sub.status === 'active' && !isStoreSub && (
               <button
                 onClick={handleCancel}
                 disabled={cancelling}
@@ -488,6 +671,38 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
                 }}
               >
                 {cancelling ? 'Cancelando...' : 'Cancelar assinatura'}
+              </button>
+            )}
+            {sub.status === 'active' && isAppleSub && (
+              <button
+                onClick={() => window.open('https://apps.apple.com/account/subscriptions', '_blank')}
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  color: '#DDD',
+                  border: '1px solid #333',
+                  borderRadius: '6px', padding: '0.6rem',
+                  fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.75rem',
+                  letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer',
+                }}
+              >
+                Gerenciar na Apple
+              </button>
+            )}
+            {sub.status === 'active' && isGoogleSub && (
+              <button
+                onClick={() => window.open('https://play.google.com/store/account/subscriptions', '_blank')}
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  color: '#DDD',
+                  border: '1px solid #333',
+                  borderRadius: '6px', padding: '0.6rem',
+                  fontFamily: FONTS.condensed, fontWeight: 700, fontSize: '0.75rem',
+                  letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer',
+                }}
+              >
+                Gerenciar no Google Play
               </button>
             )}
             <button

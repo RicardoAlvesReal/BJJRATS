@@ -30,9 +30,22 @@ export default function SubscriptionModal({ open, onClose }: Props) {
         style={{
           background: '#111', border: '1px solid #222',
           borderRadius: '8px', maxWidth: '480px', width: '100%',
-          maxHeight: '90vh', overflowY: 'auto',
+          maxHeight: '90vh', overflowY: 'auto', position: 'relative',
         }}
       >
+        <button
+          onClick={onClose}
+          aria-label="Fechar modal"
+          style={{
+            position: 'absolute', top: '12px', right: '12px', zIndex: 10,
+            background: '#1a1a1a', border: '1px solid #333', color: '#fff',
+            width: '28px', height: '28px', borderRadius: '50%',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '14px', fontWeight: 'bold', lineHeight: 1,
+          }}
+        >
+          ✕
+        </button>
         <SubscriptionManager compact />
       </motion.div>
     </div>,

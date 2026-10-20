@@ -17,6 +17,8 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+*google-service-account*.json
+*service-account*.json
 
 # Manus platform (not needed locally)
 .manus-logs/

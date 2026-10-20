@@ -431,10 +431,16 @@ export interface AdminUser extends UserProfile {
     planPrice: number;
     currentPeriodEnd: string;
   } | null;
+  firstPayment?: {
+    date: string;
+    amount: number;
+  } | null;
   lastPayment?: {
     date: string;
     amount: number;
   } | null;
+  totalPaid?: number;
+  paymentsCount?: number;
 }
 
 export const admin = {
@@ -1049,6 +1055,10 @@ export interface Subscription {
   userUid: string;
   planId: string;
   status: string;
+  provider?: string | null;
+  appleOriginalTransactionId?: string | null;
+  appleTransactionId?: string | null;
+  appleProductId?: string | null;
   asaasId?: string | null;
   asaasCustomerId?: string | null;
   currentPeriodStart?: string | null;
@@ -1083,10 +1093,31 @@ export const subscriptions = {
   cancel: () =>
     apiFetch<{ success: boolean }>('/api/subscriptions/cancel', { method: 'POST' }),
   getBilling: () =>
-    apiFetch<{ billingType: string | null; availableMethods: string[]; pendingPayment?: { id: string; value: number; dueDate: string; status: string; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string } | null; graceDays?: number; isFree?: boolean }>('/api/subscriptions/my/billing'),
+    apiFetch<{
+      billingType: string | null;
+      availableMethods: string[];
+      pendingPayment?: { id: string; value: number; dueDate: string; status: string; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string } | null;
+      invoices?: Array<{ id: string; value: number; dueDate: string; paymentDate?: string | null; status: 'PAID' | 'PENDING' | 'OVERDUE' | 'CANCELLED'; invoiceUrl?: string; bankSlipUrl?: string; pixQrCode?: string }>;
+      graceDays?: number;
+      isFree?: boolean;
+    }>('/api/subscriptions/my/billing'),
   updateBilling: (billingType: string) =>
     apiFetch<{ billingType: string; availableMethods: string[]; message: string }>('/api/subscriptions/my/billing', {
       method: 'PUT', body: JSON.stringify({ billingType }),
+    }),
+  getGooglePlayConfig: () =>
+    apiFetch<{ configured: boolean; packageName: string; products: Record<string, string>; productMap: Record<string, { slug: string; name: string }> }>('/api/subscriptions/google-play/config'),
+  verifyGooglePlay: (data: { purchaseToken: string; productId: string; planId?: string }) =>
+    apiFetch<{ success: boolean; subscription: Subscription; verification: any }>('/api/subscriptions/google-play/verify', {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  verifyApple: (data: { receiptData: string; productId?: string; transactionId?: string; planId?: string }) =>
+    apiFetch<{ success: boolean; verified: boolean; status: string; isSandbox: boolean; subscription: any }>('/api/subscriptions/apple/verify', {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  restoreApple: (data: { receiptData: string }) =>
+    apiFetch<{ restored: boolean; subscription?: any; message?: string }>('/api/subscriptions/apple/restore', {
+      method: 'POST', body: JSON.stringify(data),
     }),
 };
 
@@ -1212,6 +1243,55 @@ export const whatsapp = {
     }),
 };
 
+export interface TrainingVideo {
+  id: string;
+  userUid: string;
+  userName?: string | null;
+  userPhoto?: string | null;
+  userBelt?: string | null;
+  academyId?: string | null;
+  academyName?: string | null;
+  title: string;
+  description?: string | null;
+  videoUrl: string;
+  thumbnailUrl?: string | null;
+  durationSeconds: number;
+  category: 'posicao' | 'rola' | 'treino' | 'drill';
+  techniques?: string[];
+  likes?: string[];
+  commentCount?: number;
+  createdAt?: string;
+}
+
+export const trainingVideos = {
+  list: (params?: { my?: boolean; category?: string; belt?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.my) q.set('my', 'true');
+    if (params?.category) q.set('category', params.category);
+    if (params?.belt) q.set('belt', params.belt);
+    const queryStr = q.toString() ? `?${q.toString()}` : '';
+    return apiFetch<TrainingVideo[]>(`/api/training-videos${queryStr}`);
+  },
+  create: (data: {
+    title: string;
+    description?: string;
+    videoUrl: string;
+    thumbnailUrl?: string;
+    durationSeconds?: number;
+    category?: string;
+    techniques?: string[];
+  }) => apiFetch<TrainingVideo>('/api/training-videos', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  delete: (id: string) => apiFetch<{ success: boolean; id: string }>(`/api/training-videos/${id}`, {
+    method: 'DELETE',
+  }),
+  toggleLike: (id: string) => apiFetch<{ success: boolean; liked: boolean; likesCount: number; likes: string[] }>(`/api/training-videos/${id}/like`, {
+    method: 'POST',
+  }),
+};
+
 const api = {
   auth,
   users,
@@ -1242,6 +1322,7 @@ const api = {
   public: publicApi,
   support: supportApi,
   whatsapp,
+  trainingVideos,
 };
 
 export default api;
