@@ -19,6 +19,8 @@ import MinhasMensalidades from './MinhasMensalidades';
 import { LocateFixed } from 'lucide-react';
 import DateInput from '@/components/DateInput';
 
+const fadeUpVariant = fadeUp as any;
+
 interface Competition {
   id: string;
   uid: string;
@@ -248,7 +250,6 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
   const profileBelt = profile?.belt || 'Branca';
   const beltColor = BELT_COLORS[profileBelt] || '#FFFFFF';
   const athleteType = ATHLETE_TYPES.find(t => t.id === profile?.athleteType) || ATHLETE_TYPES[2];
-  const fadeUpVariant = fadeUp as any;
   const containerVariant = staggerContainer as any;
 
   // ── Stats detalhadas ──────────────────────────────────────────────────────
