@@ -103,25 +103,41 @@ async function syncSubscriptionAccess(sub: SubscriptionRow, plan?: PlanRow | nul
       if (asaasSub.deleted || ASAAS_CANCELLED_STATUSES.has(asaasStatus)) {
         updates.status = 'cancelled';
         updates.cancelledAt = new Date();
-      } else if (asaasStatus === 'OVERDUE' || asaasPayments.some(isOverdueAsaasPayment)) {
-        updates.status = 'past_due';
       } else if (asaasStatus === 'ACTIVE') {
         const nextDueDate = parseDate(asaasSub.nextDueDate, true);
-        if (nextDueDate && nextDueDate.getTime() > now.getTime()) {
+
+        // Ordena pagamentos por data mais recente
+        const sortedPayments = [...asaasPayments].sort((a, b) => {
+          const da = new Date(a.paymentDate || a.dueDate).getTime();
+          const db = new Date(b.paymentDate || b.dueDate).getTime();
+          return db - da;
+        });
+
+        // O único pagamento que pode atrasar uma assinatura ACTIVE é a cobrança pendente mais recente
+        const latestPayment = sortedPayments[0];
+        const isLatestOverdue = latestPayment ? isOverdueAsaasPayment(latestPayment) : false;
+
+        if (nextDueDate && nextDueDate.getTime() > now.getTime() && !isLatestOverdue) {
           const periodStart = new Date(nextDueDate);
           periodStart.setMonth(periodStart.getMonth() - 1);
           updates.status = 'active';
           updates.currentPeriodStart = periodStart;
           updates.currentPeriodEnd = nextDueDate;
+        } else if (isLatestOverdue) {
+          updates.status = 'past_due';
         } else if (localPeriodExpired) {
           updates.status = 'past_due';
         }
+      } else if (asaasStatus === 'OVERDUE') {
+        updates.status = 'past_due';
+      } else if (sub.status === 'trial' && localPeriodExpired) {
+        updates.status = 'expired';
       } else if (localPeriodExpired) {
         updates.status = 'past_due';
       }
     } catch (err) {
       console.warn('[subscriptions] Falha ao sincronizar assinatura com Asaas; aplicando fallback local:', err);
-      if (localPeriodExpired) updates.status = 'past_due';
+      if (localPeriodExpired && sub.status !== 'active') updates.status = 'past_due';
     }
   } else if ((sub.provider === 'google_play' || sub.googlePurchaseToken) && sub.googlePurchaseToken) {
     try {

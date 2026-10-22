@@ -52,7 +52,7 @@ router.get(
     const academyUid = actorRole !== 'superadmin' ? req.userId! : null;
     const { search } = req.query as Record<string, string>;
 
-    // Subquery: pega a melhor assinatura por usuário (active > trial > past_due)
+    // Subquery: pega a assinatura mais relevante por usuário (active > trial > past_due > expired > cancelled)
     const bestSub = db
       .selectDistinctOn([subscriptions.userUid], {
         userUid: subscriptions.userUid,
@@ -60,6 +60,7 @@ router.get(
         planId: subscriptions.planId,
         asaasId: subscriptions.asaasId,
         currentPeriodEnd: subscriptions.currentPeriodEnd,
+        trialEndsAt: subscriptions.trialEndsAt,
       })
       .from(subscriptions)
       .where(
@@ -67,11 +68,14 @@ router.get(
           eq(subscriptions.status, 'active'),
           eq(subscriptions.status, 'trial'),
           eq(subscriptions.status, 'past_due'),
+          eq(subscriptions.status, 'expired'),
+          eq(subscriptions.status, 'cancelled'),
         ),
       )
       .orderBy(
         subscriptions.userUid,
-        sql`CASE ${subscriptions.status} WHEN 'active' THEN 1 WHEN 'trial' THEN 2 WHEN 'past_due' THEN 3 ELSE 4 END`,
+        sql`CASE ${subscriptions.status} WHEN 'active' THEN 1 WHEN 'trial' THEN 2 WHEN 'past_due' THEN 3 WHEN 'expired' THEN 4 WHEN 'cancelled' THEN 5 ELSE 6 END`,
+        desc(subscriptions.createdAt),
       )
       .as('best_sub');
 
@@ -93,13 +97,14 @@ router.get(
         createdAt:   users.createdAt,
         communityModerator: users.communityModerator,
         trialEndsAt: users.trialEndsAt,
-        // Assinatura ativa
+        // Assinatura
         subStatus:   bestSub.status,
         subPlanId:   bestSub.planId,
         subAsaasId:  bestSub.asaasId,
         subPlanName: plans.name,
         subPlanPrice: plans.price,
         subCurrentPeriodEnd: bestSub.currentPeriodEnd,
+        subTrialEndsAt: bestSub.trialEndsAt,
       })
       .from(users)
       .leftJoin(bestSub, eq(bestSub.userUid, users.uid))
@@ -224,10 +229,39 @@ router.get(
       }));
     }
 
+    const now = new Date();
+    const nowTime = now.getTime();
+
     const usersWithSubs = all.map(u => {
       const manual = manualPaymentMap.get(u.uid);
       const asaas = asaasPaymentMap.get(u.uid);
       const payData = asaas || manual || null;
+
+      // Determina trial date (seja da subscription ou do users)
+      const trialDateStr = u.subTrialEndsAt || u.trialEndsAt;
+      const trialDate = trialDateStr ? new Date(trialDateStr) : null;
+      const trialTime = trialDate && !isNaN(trialDate.getTime()) ? trialDate.getTime() : null;
+      const trialDaysDiff = trialTime ? Math.round((trialTime - nowTime) / (1000 * 60 * 60 * 24)) : undefined;
+
+      const currentPeriodEnd = u.subCurrentPeriodEnd ? new Date(u.subCurrentPeriodEnd) : null;
+      const periodExpired = currentPeriodEnd && !isNaN(currentPeriodEnd.getTime()) ? currentPeriodEnd.getTime() < nowTime : false;
+
+      let effectiveStatus: 'active' | 'trial' | 'trial_expired' | 'past_due' | 'suspended' | 'none' = 'none';
+
+      if (u.subStatus === 'active') {
+        effectiveStatus = periodExpired ? 'past_due' : 'active';
+      } else if (u.subStatus === 'trial') {
+        const isTrialValid = trialTime ? trialTime > nowTime : !periodExpired;
+        effectiveStatus = isTrialValid ? 'trial' : 'trial_expired';
+      } else if (u.subStatus === 'past_due') {
+        effectiveStatus = 'past_due';
+      } else if (u.subStatus === 'cancelled' || u.subStatus === 'expired') {
+        effectiveStatus = 'suspended';
+      } else if (u.trialEndsAt) {
+        effectiveStatus = (trialTime && trialTime > nowTime) ? 'trial' : 'trial_expired';
+      } else {
+        effectiveStatus = 'none';
+      }
 
       return {
         uid: u.uid,
@@ -245,6 +279,8 @@ router.get(
         createdAt: u.createdAt,
         communityModerator: u.communityModerator,
         trialEndsAt: u.trialEndsAt,
+        effectiveStatus,
+        trialDaysDiff,
         subscription: u.subStatus ? {
           status: u.subStatus,
           planId: u.subPlanId,

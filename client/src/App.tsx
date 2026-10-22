@@ -46,6 +46,14 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
           setCheckingSub(false);
           return;
         }
+
+        // Verifica trial ativo no perfil do usuário (ex: 30 dias grátis dado pelo superadmin ou cadastro)
+        if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+          setHasAccess(true);
+          setCheckingSub(false);
+          return;
+        }
+
         const { subscription } = await api.subscriptions.getMy();
         if (subscription) {
           // Pagamento pendente — redireciona pro billing
@@ -88,16 +96,25 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
             setIsPastDue(false);
           }
         } else {
-          setHasAccess(false);
+          // Se não há assinatura no banco, verifica se ainda tem trial ativo no perfil
+          if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+            setHasAccess(true);
+          } else {
+            setHasAccess(false);
+          }
         }
       } catch {
-        setHasAccess(false);
+        if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+          setHasAccess(true);
+        } else {
+          setHasAccess(false);
+        }
       } finally {
         setCheckingSub(false);
       }
     };
     check();
-  }, [userUid, userRole, subscriptionExempt, loading]);
+  }, [userUid, userRole, subscriptionExempt, user?.trialEndsAt, loading]);
 
   if (loading || checkingSub) {
     return (
@@ -144,11 +161,16 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
     if (loading) return;
     if (!userUid) { setHasAccess(false); setCheckingSub(false); return; }
     if (subscriptionExempt) { setHasAccess(true); setCheckingSub(false); return; }
+    if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) { setHasAccess(true); setCheckingSub(false); return; }
     const check = async () => {
       try {
         const { subscription } = await api.subscriptions.getMy();
         if (!subscription) {
-          setHasAccess(false);
+          if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+            setHasAccess(true);
+          } else {
+            setHasAccess(false);
+          }
           setIsPastDue(false);
           return;
         }

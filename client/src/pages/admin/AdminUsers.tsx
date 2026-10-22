@@ -16,6 +16,7 @@ const EXPORT_COLUMNS: ExportColumnDef[] = [
   { id: 'email', label: 'E-mail', category: 'contato' },
   { id: 'phone', label: 'Telefone / WhatsApp', category: 'contato' },
   { id: 'role', label: 'Perfil / Função', category: 'perfil' },
+  { id: 'effectiveStatus', label: 'Status da Conta (Real)', category: 'financeiro' },
   { id: 'belt', label: 'Faixa', category: 'perfil' },
   { id: 'stripes', label: 'Graus', category: 'perfil' },
   { id: 'academy', label: 'Academia', category: 'perfil' },
@@ -39,10 +40,91 @@ const DEFAULT_SELECTED_COLS: Record<string, boolean> = {
   email: true,
   phone: true,
   role: true,
-  subStatus: true,
+  effectiveStatus: true,
   subPlan: true,
   createdAt: true,
 };
+
+export function StatusBadge({ user }: { user: AdminUser }) {
+  const eff = user.effectiveStatus || 'none';
+  const daysDiff = user.trialDaysDiff;
+
+  if (eff === 'active') {
+    return (
+      <span style={{
+        background: '#153315', color: '#4CAF50', border: '1px solid #4CAF5044',
+        padding: '2px 8px', borderRadius: '3px', fontSize: '0.72rem', fontWeight: 800,
+        textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '5px',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4CAF50' }} />
+        Em dia
+      </span>
+    );
+  }
+
+  if (eff === 'trial') {
+    return (
+      <span style={{
+        background: '#0F253E', color: '#3B82F6', border: '1px solid #3B82F644',
+        padding: '2px 8px', borderRadius: '3px', fontSize: '0.72rem', fontWeight: 800,
+        textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '5px',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6' }} />
+        Trial {daysDiff !== undefined && daysDiff >= 0 ? `(${daysDiff}d)` : ''}
+      </span>
+    );
+  }
+
+  if (eff === 'trial_expired') {
+    return (
+      <span style={{
+        background: '#331F0A', color: '#E87722', border: '1px solid #E8772244',
+        padding: '2px 8px', borderRadius: '3px', fontSize: '0.72rem', fontWeight: 800,
+        textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '5px',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#E87722' }} />
+        Trial Vencido {daysDiff !== undefined && daysDiff < 0 ? `(há ${Math.abs(daysDiff)}d)` : ''}
+      </span>
+    );
+  }
+
+  if (eff === 'past_due') {
+    return (
+      <span style={{
+        background: '#330A0A', color: '#FF4D4D', border: '1px solid #FF4D4D44',
+        padding: '2px 8px', borderRadius: '3px', fontSize: '0.72rem', fontWeight: 800,
+        textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '5px',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#FF4D4D' }} />
+        Inadimplente
+      </span>
+    );
+  }
+
+  if (eff === 'suspended') {
+    return (
+      <span style={{
+        background: '#1F1F1F', color: '#888', border: '1px solid #444',
+        padding: '2px 8px', borderRadius: '3px', fontSize: '0.72rem', fontWeight: 800,
+        textTransform: 'uppercase', letterSpacing: '0.05em', display: 'inline-flex', alignItems: 'center', gap: '5px',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#888' }} />
+        Suspenso
+      </span>
+    );
+  }
+
+  return (
+    <span style={{
+      background: '#141414', color: '#666', border: '1px solid #222',
+      padding: '2px 8px', borderRadius: '3px', fontSize: '0.72rem', fontWeight: 600,
+      textTransform: 'uppercase', letterSpacing: '0.05em',
+    }}>
+      Sem plano
+    </span>
+  );
+}
+
 
 interface UserForm {
   name: string;
@@ -95,6 +177,9 @@ export default function AdminUsers() {
   const [exportBelt, setExportBelt]           = useState<string>('all');
   const [exportFormat, setExportFormat]       = useState<'xlsx' | 'csv'>('xlsx');
   const [selectedCols, setSelectedCols]       = useState<Record<string, boolean>>(DEFAULT_SELECTED_COLS);
+
+  // Filtro de status da lista principal
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'trial' | 'trial_expired' | 'past_due' | 'suspended' | 'none'>('all');
 
   const fetchCities = useCallback(async (uf: string) => {
     if (!uf) { setCities([]); return; }
@@ -150,13 +235,33 @@ export default function AdminUsers() {
     .map(([r]) => r);
 
   const q = search.toLowerCase();
-  const filtered = users.filter((u) =>
-    u.name.toLowerCase().includes(q) ||
-    u.email.toLowerCase().includes(q) ||
-    (u.academy || '').toLowerCase().includes(q) ||
-    (u.academyName || '').toLowerCase().includes(q) ||
-    (u.academyCity || '').toLowerCase().includes(q)
-  );
+  const filtered = users.filter((u) => {
+    const matchesSearch =
+      u.name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      (u.academy || '').toLowerCase().includes(q) ||
+      (u.academyName || '').toLowerCase().includes(q) ||
+      (u.academyCity || '').toLowerCase().includes(q);
+
+    if (!matchesSearch) return false;
+
+    if (statusFilter !== 'all') {
+      const eff = u.effectiveStatus || 'none';
+      if (eff !== statusFilter) return false;
+    }
+
+    return true;
+  });
+
+  const statusCounts = useMemo(() => {
+    const counts = { all: users.length, active: 0, trial: 0, trial_expired: 0, past_due: 0, suspended: 0, none: 0 };
+    for (const u of users) {
+      const eff = u.effectiveStatus || 'none';
+      if (eff in counts) counts[eff as keyof typeof counts]++;
+      else counts.none++;
+    }
+    return counts;
+  }, [users]);
 
   // Usuários calculados para a exportação
   const exportCandidates = useMemo(() => {
@@ -241,6 +346,13 @@ export default function AdminUsers() {
           case 'email': return u.email || '';
           case 'phone': return u.phone || '';
           case 'role': return ROLE_LABEL[u.role] || u.role || '';
+          case 'effectiveStatus':
+            if (u.effectiveStatus === 'active') return 'Em dia';
+            if (u.effectiveStatus === 'trial') return `Trial Ativo (${u.trialDaysDiff ?? 0}d restantes)`;
+            if (u.effectiveStatus === 'trial_expired') return `Trial Expirado (há ${Math.abs(u.trialDaysDiff ?? 0)}d)`;
+            if (u.effectiveStatus === 'past_due') return 'Inadimplente (Atrasado)';
+            if (u.effectiveStatus === 'suspended') return 'Suspenso / Cancelado';
+            return 'Sem plano';
           case 'belt': return u.belt || '';
           case 'stripes': return u.stripes ?? 0;
           case 'academy': return u.academyName || u.academy || '';
@@ -377,6 +489,58 @@ export default function AdminUsers() {
         </div>
       </div>
 
+      {/* Filtros Rápidos por Status Financeiro */}
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+        {[
+          { id: 'all', label: 'Todos', count: statusCounts.all, color: '#888' },
+          { id: 'active', label: '🟢 Em dia', count: statusCounts.active, color: '#4CAF50' },
+          { id: 'trial', label: '🔵 Trial Ativo', count: statusCounts.trial, color: '#3B82F6' },
+          { id: 'trial_expired', label: '🟠 Trial Expirado', count: statusCounts.trial_expired, color: '#E87722' },
+          { id: 'past_due', label: '🔴 Inadimplentes', count: statusCounts.past_due, color: '#FF4D4D' },
+          { id: 'suspended', label: '⚫ Suspensos', count: statusCounts.suspended, color: '#888' },
+          { id: 'none', label: '⚪ Sem Plano', count: statusCounts.none, color: '#666' },
+        ].map((tab) => {
+          const active = statusFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id as any)}
+              style={{
+                background: active ? '#222' : '#111',
+                border: `1px solid ${active ? tab.color : '#282828'}`,
+                color: active ? '#FFF' : '#AAA',
+                fontFamily: 'Barlow Condensed, sans-serif',
+                fontWeight: active ? 700 : 600,
+                fontSize: '0.8rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                padding: '0.35rem 0.65rem',
+                cursor: 'pointer',
+                borderRadius: '3px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span>{tab.label}</span>
+              <span
+                style={{
+                  background: active ? tab.color : '#222',
+                  color: active && (tab.id === 'active' || tab.id === 'trial_expired') ? '#000' : '#FFF',
+                  fontSize: '0.65rem',
+                  fontWeight: 800,
+                  padding: '1px 5px',
+                  borderRadius: '10px',
+                }}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Busca */}
       <input
         type="text"
@@ -396,7 +560,7 @@ export default function AdminUsers() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Barlow Condensed, sans-serif' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #CC0000' }}>
-                {['Nome', 'E-mail', 'Role', 'Plano', 'Valor', 'Vencimento', '1º Pagamento', 'Últ. Pagamento', 'Total Pago', 'Conta', 'Ações'].map((h) => (
+                {['Nome', 'E-mail', 'Role', 'Status Financeiro', 'Plano', 'Valor', 'Vencimento', '1º Pagamento', 'Últ. Pagamento', 'Total Pago', 'Conta', 'Ações'].map((h) => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -415,19 +579,11 @@ export default function AdminUsers() {
                   <td style={tdStyle}>{u.name}</td>
                   <td style={{ ...tdStyle, color: '#888', fontSize: '0.8rem' }}>{u.email}</td>
                   <td style={tdStyle}><RoleBadge role={u.role} /></td>
+                  <td style={tdStyle}><StatusBadge user={u} /></td>
                   <td style={tdStyle}>
-                    {sub ? (
-                      <span style={{
-                        color: sub.status === 'active' ? '#4CAF50' : sub.status === 'trial' ? '#3B82F6' : '#E87722',
-                        fontSize: '0.75rem', fontWeight: 700,
-                      }}>
-                        {sub.planName || sub.planId}
-                        {sub.status === 'trial' && ' (trial)'}
-                        {sub.status === 'past_due' && ' (atrasado)'}
-                      </span>
-                    ) : (
-                      <span style={{ color: '#555', fontSize: '0.75rem' }}>—</span>
-                    )}
+                    <span style={{ fontSize: '0.8rem', color: '#CCC', fontWeight: 600 }}>
+                      {sub?.planName || sub?.planId || (u.effectiveStatus === 'trial' ? 'Período Grátis' : '—')}
+                    </span>
                   </td>
                   <td style={{ ...tdStyle, color: '#AAA' }}>
                     {sub ? `R$ ${(sub.planPrice ?? 0).toFixed(2)}` : '—'}

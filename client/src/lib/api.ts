@@ -441,6 +441,8 @@ export interface AdminUser extends UserProfile {
   } | null;
   totalPaid?: number;
   paymentsCount?: number;
+  effectiveStatus?: 'active' | 'trial' | 'trial_expired' | 'past_due' | 'suspended' | 'none';
+  trialDaysDiff?: number;
 }
 
 export const admin = {
