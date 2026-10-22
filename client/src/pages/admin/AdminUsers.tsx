@@ -1,10 +1,48 @@
-// BJJRats — Admin Users Management
-
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import api, { type AdminUser } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_HIERARCHY } from '@/lib/roleHierarchy';
 import { RoleBadge } from './AdminDashboard';
+
+interface ExportColumnDef {
+  id: string;
+  label: string;
+  category: 'contato' | 'perfil' | 'financeiro' | 'sistema';
+}
+
+const EXPORT_COLUMNS: ExportColumnDef[] = [
+  { id: 'name', label: 'Nome Completo', category: 'contato' },
+  { id: 'email', label: 'E-mail', category: 'contato' },
+  { id: 'phone', label: 'Telefone / WhatsApp', category: 'contato' },
+  { id: 'role', label: 'Perfil / Função', category: 'perfil' },
+  { id: 'belt', label: 'Faixa', category: 'perfil' },
+  { id: 'stripes', label: 'Graus', category: 'perfil' },
+  { id: 'academy', label: 'Academia', category: 'perfil' },
+  { id: 'academyCity', label: 'Cidade da Academia', category: 'perfil' },
+  { id: 'academyState', label: 'Estado (UF)', category: 'perfil' },
+  { id: 'subStatus', label: 'Status da Assinatura', category: 'financeiro' },
+  { id: 'subPlan', label: 'Nome do Plano', category: 'financeiro' },
+  { id: 'subPrice', label: 'Valor do Plano (R$)', category: 'financeiro' },
+  { id: 'subPeriodEnd', label: 'Vencimento da Assinatura', category: 'financeiro' },
+  { id: 'firstPaymentDate', label: 'Data do 1º Pagamento', category: 'financeiro' },
+  { id: 'lastPaymentDate', label: 'Data do Último Pagamento', category: 'financeiro' },
+  { id: 'totalPaid', label: 'Total Pago Acumulado (R$)', category: 'financeiro' },
+  { id: 'paymentsCount', label: 'Qtd de Faturas Pagas', category: 'financeiro' },
+  { id: 'createdAt', label: 'Data de Cadastro', category: 'sistema' },
+  { id: 'accountDays', label: 'Dias de Conta', category: 'sistema' },
+  { id: 'communityModerator', label: 'Moderador da Comunidade', category: 'sistema' },
+];
+
+const DEFAULT_SELECTED_COLS: Record<string, boolean> = {
+  name: true,
+  email: true,
+  phone: true,
+  role: true,
+  subStatus: true,
+  subPlan: true,
+  createdAt: true,
+};
 
 interface UserForm {
   name: string;
@@ -48,6 +86,15 @@ export default function AdminUsers() {
   const [cepLoading, setCepLoading] = useState(false);
   const [cities, setCities] = useState<string[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
+
+  // Estados do Modal de Exportação
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportSource, setExportSource]       = useState<'all' | 'filtered'>('all');
+  const [exportRole, setExportRole]           = useState<string>('all');
+  const [exportSubStatus, setExportSubStatus] = useState<string>('all');
+  const [exportBelt, setExportBelt]           = useState<string>('all');
+  const [exportFormat, setExportFormat]       = useState<'xlsx' | 'csv'>('xlsx');
+  const [selectedCols, setSelectedCols]       = useState<Record<string, boolean>>(DEFAULT_SELECTED_COLS);
 
   const fetchCities = useCallback(async (uf: string) => {
     if (!uf) { setCities([]); return; }
@@ -110,6 +157,137 @@ export default function AdminUsers() {
     (u.academyName || '').toLowerCase().includes(q) ||
     (u.academyCity || '').toLowerCase().includes(q)
   );
+
+  // Usuários calculados para a exportação
+  const exportCandidates = useMemo(() => {
+    let list = exportSource === 'filtered' ? filtered : users;
+
+    if (exportRole !== 'all') {
+      list = list.filter((u) => {
+        if (exportRole === 'academy') return u.role === 'academy' || u.role === 'admin' || u.isAcademyAdmin;
+        return u.role === exportRole;
+      });
+    }
+
+    if (exportSubStatus !== 'all') {
+      list = list.filter((u) => {
+        const status = u.subscription?.status;
+        if (exportSubStatus === 'none') return !status;
+        return status === exportSubStatus;
+      });
+    }
+
+    if (exportBelt !== 'all') {
+      list = list.filter((u) => (u.belt || '').toLowerCase() === exportBelt.toLowerCase());
+    }
+
+    return list;
+  }, [exportSource, filtered, users, exportRole, exportSubStatus, exportBelt]);
+
+  const activeColumnsCount = useMemo(() => {
+    return EXPORT_COLUMNS.filter((c) => selectedCols[c.id]).length;
+  }, [selectedCols]);
+
+  const selectPresetCols = (type: 'default' | 'contacts' | 'financial' | 'all' | 'none') => {
+    if (type === 'all') {
+      const all: Record<string, boolean> = {};
+      EXPORT_COLUMNS.forEach((c) => { all[c.id] = true; });
+      setSelectedCols(all);
+    } else if (type === 'none') {
+      setSelectedCols({});
+    } else if (type === 'default') {
+      setSelectedCols({ ...DEFAULT_SELECTED_COLS });
+    } else if (type === 'contacts') {
+      setSelectedCols({ name: true, email: true, phone: true });
+    } else if (type === 'financial') {
+      setSelectedCols({
+        name: true,
+        email: true,
+        role: true,
+        subStatus: true,
+        subPlan: true,
+        subPrice: true,
+        subPeriodEnd: true,
+        firstPaymentDate: true,
+        lastPaymentDate: true,
+        totalPaid: true,
+        paymentsCount: true,
+      });
+    }
+  };
+
+  const handleExecuteExport = () => {
+    const list = exportCandidates;
+    if (list.length === 0) {
+      alert('Nenhum usuário corresponde aos filtros selecionados para exportação.');
+      return;
+    }
+
+    const activeCols = EXPORT_COLUMNS.filter((c) => selectedCols[c.id]);
+    if (activeCols.length === 0) {
+      alert('Por favor, selecione ao menos uma coluna para exportar.');
+      return;
+    }
+
+    const headers = activeCols.map((c) => c.label);
+    const rows = list.map((u) => {
+      const sub = u.subscription;
+      const createdAt = u.createdAt ? new Date(u.createdAt) : null;
+      const accountDays = createdAt ? Math.floor((Date.now() - createdAt.getTime()) / 86400000) : 0;
+
+      return activeCols.map((c) => {
+        switch (c.id) {
+          case 'name': return u.name || '';
+          case 'email': return u.email || '';
+          case 'phone': return u.phone || '';
+          case 'role': return ROLE_LABEL[u.role] || u.role || '';
+          case 'belt': return u.belt || '';
+          case 'stripes': return u.stripes ?? 0;
+          case 'academy': return u.academyName || u.academy || '';
+          case 'academyCity': return u.academyCity || '';
+          case 'academyState': return u.academyState || '';
+          case 'subStatus':
+            if (!sub) return 'Sem assinatura';
+            if (sub.status === 'active') return 'Ativa';
+            if (sub.status === 'trial') return 'Trial';
+            if (sub.status === 'past_due') return 'Atrasada';
+            return sub.status;
+          case 'subPlan': return sub?.planName || sub?.planId || '';
+          case 'subPrice': return sub?.planPrice !== undefined ? Number(sub.planPrice) : '';
+          case 'subPeriodEnd': return sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString('pt-BR') : '';
+          case 'firstPaymentDate': return u.firstPayment?.date ? new Date(u.firstPayment.date).toLocaleDateString('pt-BR') : '';
+          case 'lastPaymentDate': return u.lastPayment?.date ? new Date(u.lastPayment.date).toLocaleDateString('pt-BR') : '';
+          case 'totalPaid': return u.totalPaid !== undefined ? Number(u.totalPaid) : 0;
+          case 'paymentsCount': return u.paymentsCount ?? 0;
+          case 'createdAt': return createdAt ? createdAt.toLocaleDateString('pt-BR') : '';
+          case 'accountDays': return accountDays;
+          case 'communityModerator': return u.communityModerator ? 'Sim' : 'Não';
+          default: return '';
+        }
+      });
+    });
+
+    const aoa = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    ws['!cols'] = activeCols.map((c) => ({
+      wch: Math.max(c.label.length + 3, 14),
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Usuários');
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const fileName = `bjjrats-usuarios-${dateStr}.${exportFormat}`;
+
+    if (exportFormat === 'csv') {
+      XLSX.writeFile(wb, fileName, { bookType: 'csv' });
+    } else {
+      XLSX.writeFile(wb, fileName, { bookType: 'xlsx' });
+    }
+
+    setExportModalOpen(false);
+  };
 
   const openCreate = () => {
     setEditTarget(null);
@@ -181,7 +359,22 @@ export default function AdminUsers() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', gap: '1rem', flexWrap: 'wrap' }}>
         <h1 style={headingStyle}>Usuários</h1>
-        <button onClick={openCreate} style={btnPrimaryStyle}>+ Novo usuário</button>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setExportModalOpen(true)}
+            style={{
+              ...btnSecondaryStyle,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              borderColor: '#444',
+              color: '#EEE',
+            }}
+          >
+            <span>📥</span> Exportar Planilha
+          </button>
+          <button onClick={openCreate} style={btnPrimaryStyle}>+ Novo usuário</button>
+        </div>
       </div>
 
       {/* Busca */}
@@ -516,6 +709,213 @@ export default function AdminUsers() {
           </div>
         </Overlay>
       )}
+
+      {/* Modal de Exportação de Usuários */}
+      {exportModalOpen && (
+        <Overlay onClick={() => setExportModalOpen(false)}>
+          <div
+            style={{
+              ...modalStyle,
+              maxWidth: '620px',
+              border: '1px solid #444',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <h2 style={{ ...headingStyle, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>📥</span> Exportar Planilha de Usuários
+              </h2>
+              <button
+                type="button"
+                onClick={() => setExportModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#888', fontSize: '1.25rem', cursor: 'pointer', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* SEÇÃO 1: FILTROS DE USUÁRIO */}
+            <div style={{ background: '#161616', border: '1px solid #262626', borderRadius: '4px', padding: '0.85rem', marginBottom: '1rem' }}>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.8rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.65rem' }}>
+                1. Quem você quer extrair?
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.65rem' }}>
+                <div>
+                  <label style={exportLabelStyle}>Origem dos dados</label>
+                  <select
+                    style={selectStyle}
+                    value={exportSource}
+                    onChange={(e) => setExportSource(e.target.value as any)}
+                  >
+                    <option value="all">Base completa ({users.length})</option>
+                    <option value="filtered">Busca atual na tela ({filtered.length})</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={exportLabelStyle}>Perfil / Função</label>
+                  <select
+                    style={selectStyle}
+                    value={exportRole}
+                    onChange={(e) => setExportRole(e.target.value)}
+                  >
+                    <option value="all">Todos os perfis</option>
+                    <option value="student">Aluno</option>
+                    <option value="professor">Professor</option>
+                    <option value="academy">Academia</option>
+                    <option value="superadmin">Super Admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={exportLabelStyle}>Status Assinatura</label>
+                  <select
+                    style={selectStyle}
+                    value={exportSubStatus}
+                    onChange={(e) => setExportSubStatus(e.target.value)}
+                  >
+                    <option value="all">Todos os status</option>
+                    <option value="active">Ativa</option>
+                    <option value="trial">Trial</option>
+                    <option value="past_due">Atrasada / Vencida</option>
+                    <option value="none">Sem assinatura</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={exportLabelStyle}>Faixa</label>
+                  <select
+                    style={selectStyle}
+                    value={exportBelt}
+                    onChange={(e) => setExportBelt(e.target.value)}
+                  >
+                    <option value="all">Todas as faixas</option>
+                    {BELTS.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* SEÇÃO 2: COLUNAS */}
+            <div style={{ background: '#161616', border: '1px solid #262626', borderRadius: '4px', padding: '0.85rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.65rem' }}>
+                <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.8rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                  2. Quais colunas incluir?
+                </p>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => selectPresetCols('default')} style={btnPresetStyle}>Padrão</button>
+                  <button type="button" onClick={() => selectPresetCols('contacts')} style={btnPresetStyle}>Apenas Contatos</button>
+                  <button type="button" onClick={() => selectPresetCols('financial')} style={btnPresetStyle}>Financeiro</button>
+                  <button type="button" onClick={() => selectPresetCols('all')} style={btnPresetStyle}>Todas</button>
+                  <button type="button" onClick={() => selectPresetCols('none')} style={btnPresetStyle}>Limpar</button>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.45rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
+                {EXPORT_COLUMNS.map((col) => {
+                  const checked = !!selectedCols[col.id];
+                  return (
+                    <label
+                      key={col.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.4rem 0.5rem',
+                        background: checked ? '#242424' : '#121212',
+                        border: `1px solid ${checked ? '#CC000088' : '#222'}`,
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        color: checked ? '#FFF' : '#888',
+                        fontFamily: 'Barlow Condensed, sans-serif',
+                        userSelect: 'none',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setSelectedCols((prev) => ({ ...prev, [col.id]: e.target.checked }))}
+                        style={{ accentColor: '#CC0000', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontWeight: checked ? 700 : 500 }}>{col.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* SEÇÃO 3: FORMATO DO ARQUIVO */}
+            <div style={{ background: '#161616', border: '1px solid #262626', borderRadius: '4px', padding: '0.85rem', marginBottom: '1rem' }}>
+              <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 800, fontSize: '0.8rem', color: '#CC0000', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.5rem' }}>
+                3. Formato do arquivo
+              </p>
+              <div style={{ display: 'flex', gap: '1.25rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#DDD', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="exportFormat"
+                    value="xlsx"
+                    checked={exportFormat === 'xlsx'}
+                    onChange={() => setExportFormat('xlsx')}
+                    style={{ accentColor: '#CC0000' }}
+                  />
+                  <span>Excel (.xlsx) <strong style={{ color: '#4CAF50', fontSize: '0.75rem' }}>(Recomendado)</strong></span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#DDD', fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    name="exportFormat"
+                    value="csv"
+                    checked={exportFormat === 'csv'}
+                    onChange={() => setExportFormat('csv')}
+                    style={{ accentColor: '#CC0000' }}
+                  />
+                  <span>CSV (.csv)</span>
+                </label>
+              </div>
+            </div>
+
+            {/* RESUMO / PREVIEW & AÇÕES */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1.25rem', borderTop: '1px solid #222', paddingTop: '1rem' }}>
+              <div style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '0.85rem', color: '#888' }}>
+                {exportCandidates.length > 0 ? (
+                  <span>
+                    Pronto para exportar: <strong style={{ color: '#4CAF50' }}>{exportCandidates.length}</strong> usuário(s) e <strong style={{ color: '#FFF' }}>{activeColumnsCount}</strong> coluna(s).
+                  </span>
+                ) : (
+                  <span style={{ color: '#CC0000' }}>
+                    Nenhum usuário corresponde aos filtros selecionados.
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setExportModalOpen(false)}
+                  style={btnSecondaryStyle}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteExport}
+                  disabled={exportCandidates.length === 0 || activeColumnsCount === 0}
+                  style={{
+                    ...btnPrimaryStyle,
+                    opacity: exportCandidates.length === 0 || activeColumnsCount === 0 ? 0.4 : 1,
+                    cursor: exportCandidates.length === 0 || activeColumnsCount === 0 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  📥 Baixar {exportFormat === 'csv' ? 'CSV' : 'Planilha Excel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Overlay>
+      )}
     </div>
   );
 }
@@ -652,4 +1052,41 @@ const btnSmallStyle: React.CSSProperties = {
   textTransform: 'uppercase',
   padding: '3px 10px',
   cursor: 'pointer',
+};
+
+const exportLabelStyle: React.CSSProperties = {
+  display: 'block',
+  fontFamily: 'Barlow Condensed, sans-serif',
+  fontWeight: 700,
+  fontSize: '0.7rem',
+  color: '#888',
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  marginBottom: '0.25rem',
+};
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#111',
+  border: '1px solid #333',
+  color: '#FFF',
+  fontFamily: 'Barlow Condensed, sans-serif',
+  fontSize: '0.85rem',
+  padding: '0.45rem 0.5rem',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+
+const btnPresetStyle: React.CSSProperties = {
+  background: '#222',
+  color: '#AAA',
+  border: '1px solid #333',
+  fontFamily: 'Barlow Condensed, sans-serif',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  letterSpacing: '0.05em',
+  textTransform: 'uppercase',
+  padding: '2px 8px',
+  cursor: 'pointer',
+  borderRadius: '2px',
 };
