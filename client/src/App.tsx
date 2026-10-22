@@ -43,23 +43,35 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       try {
         if (userRole === 'superadmin' || subscriptionExempt) {
           setHasAccess(true);
+          setIsPastDue(false);
           setCheckingSub(false);
           return;
         }
 
         // Verifica trial ativo no perfil do usuário (ex: 30 dias grátis dado pelo superadmin ou cadastro)
-        if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+        const hasActiveProfileTrial = Boolean(user?.trialEndsAt && new Date(user.trialEndsAt) > new Date());
+        if (hasActiveProfileTrial) {
           setHasAccess(true);
+          setIsPastDue(false);
           setCheckingSub(false);
           return;
         }
 
         const { subscription } = await api.subscriptions.getMy();
         if (subscription) {
-          // Pagamento pendente — redireciona pro billing
+          const hasActiveSubTrial = Boolean(subscription.trialEndsAt && new Date(subscription.trialEndsAt) > new Date());
+
+          // Se tem trial ativo na subscription ou no perfil, acesso 100% liberado
+          if (hasActiveProfileTrial || hasActiveSubTrial || subscription.status === 'trial') {
+            setHasAccess(true);
+            setIsPastDue(false);
+            return;
+          }
+
+          // Pagamento pendente — direciona pro billing para concluir pagamento
           if (subscription.status === 'pending') {
             setHasAccess(false);
-            setIsPastDue(false);
+            setIsPastDue(true); // Redireciona para /app/subscription, não /pricing
           } else if (subscription.status === 'past_due') {
             // Verifica período de carência
             try {
@@ -88,7 +100,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
               setIsPastDue(true);
               setHasAccess(false);
             }
-          } else if (subscription.status === 'active' || subscription.status === 'trial') {
+          } else if (subscription.status === 'active') {
             setHasAccess(true);
             setIsPastDue(false);
           } else {
@@ -97,15 +109,18 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
           }
         } else {
           // Se não há assinatura no banco, verifica se ainda tem trial ativo no perfil
-          if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+          if (hasActiveProfileTrial) {
             setHasAccess(true);
+            setIsPastDue(false);
           } else {
             setHasAccess(false);
+            setIsPastDue(false);
           }
         }
       } catch {
         if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
           setHasAccess(true);
+          setIsPastDue(false);
         } else {
           setHasAccess(false);
         }
@@ -161,24 +176,36 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
     if (loading) return;
     if (!userUid) { setHasAccess(false); setCheckingSub(false); return; }
     if (subscriptionExempt) { setHasAccess(true); setCheckingSub(false); return; }
-    if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) { setHasAccess(true); setCheckingSub(false); return; }
+    const hasActiveProfileTrial = Boolean(user?.trialEndsAt && new Date(user.trialEndsAt) > new Date());
+    if (hasActiveProfileTrial) { setHasAccess(true); setIsPastDue(false); setCheckingSub(false); return; }
+
     const check = async () => {
       try {
         const { subscription } = await api.subscriptions.getMy();
         if (!subscription) {
-          if (user?.trialEndsAt && new Date(user.trialEndsAt) > new Date()) {
+          if (hasActiveProfileTrial) {
             setHasAccess(true);
+            setIsPastDue(false);
           } else {
             setHasAccess(false);
+            setIsPastDue(false);
           }
-          setIsPastDue(false);
           return;
         }
-        if (subscription.status === 'active' || subscription.status === 'trial') {
+
+        const hasActiveSubTrial = Boolean(subscription.trialEndsAt && new Date(subscription.trialEndsAt) > new Date());
+        if (hasActiveProfileTrial || hasActiveSubTrial || subscription.status === 'trial' || subscription.status === 'active') {
           setHasAccess(true);
           setIsPastDue(false);
           return;
         }
+
+        if (subscription.status === 'pending') {
+          setHasAccess(false);
+          setIsPastDue(true); // Redireciona para regularizar /app/subscription
+          return;
+        }
+
         if (subscription.status === 'past_due') {
           // Verifica período de carência
           try {
@@ -211,7 +238,7 @@ function AcademiaRoute({ component: Component }: { component: React.ComponentTyp
       }
     };
     check();
-  }, [userUid, subscriptionExempt, loading]);
+  }, [userUid, subscriptionExempt, user?.trialEndsAt, loading]);
 
   if (loading || checkingSub) return null;
   if (!user) return <Redirect to="/login" />;

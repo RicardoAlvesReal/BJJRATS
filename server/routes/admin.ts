@@ -1261,11 +1261,33 @@ router.post(
   requireRole('superadmin'),
   async (req: AuthRequest, res) => {
     const { uid } = req.params;
-    const [target] = await db.select({ uid: users.uid, trialEndsAt: users.trialEndsAt }).from(users).where(eq(users.uid, uid)).limit(1);
+    const [target] = await db.select({ uid: users.uid, trialEndsAt: users.trialEndsAt, role: users.role }).from(users).where(eq(users.uid, uid)).limit(1);
     if (!target) { res.status(404).json({ error: 'Usuário não encontrado' }); return; }
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 30);
     await db.update(users).set({ trialEndsAt }).where(eq(users.uid, uid));
+
+    // Também atualiza/reativa assinatura do usuário se existir no banco para 'trial'
+    const existingSubs = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.userUid, uid))
+      .orderBy(desc(subscriptions.createdAt));
+
+    if (existingSubs.length > 0) {
+      const latest = existingSubs[0];
+      if (latest.status !== 'active') {
+        await db
+          .update(subscriptions)
+          .set({
+            status: 'trial',
+            trialEndsAt,
+            currentPeriodEnd: trialEndsAt,
+          })
+          .where(eq(subscriptions.id, latest.id));
+      }
+    }
+
     res.json({ uid, trialEndsAt: trialEndsAt.toISOString() });
   }
 );

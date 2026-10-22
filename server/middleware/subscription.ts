@@ -1,6 +1,6 @@
 // BJJRats — Subscription / feature gating middleware
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, desc, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { academyProfessorLinks, users, plans, subscriptions } from '../db/schema.js';
 import type { AuthRequest } from './auth.js';
@@ -44,7 +44,7 @@ export async function requireSubscription(
       return next();
     }
 
-    // Busca assinatura ativa
+    // Busca assinatura ativa ou trial mais recente (evita que uma assinatura antiga cancelada bloqueie uma ativa)
     const [sub] = await db
       .select({
         status: subscriptions.status,
@@ -52,7 +52,15 @@ export async function requireSubscription(
       })
       .from(subscriptions)
       .where(eq(subscriptions.userUid, req.userId!))
-      .orderBy(subscriptions.createdAt)
+      .orderBy(
+        sql`CASE 
+          WHEN ${subscriptions.status} = 'active' THEN 1
+          WHEN ${subscriptions.status} = 'trial' THEN 2
+          WHEN ${subscriptions.status} = 'past_due' THEN 3
+          ELSE 4
+        END`,
+        desc(subscriptions.createdAt)
+      )
       .limit(1);
 
     if (!sub || (sub.status !== 'active' && sub.status !== 'trial')) {

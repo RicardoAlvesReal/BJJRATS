@@ -1,7 +1,5 @@
-// BJJRats — Subscription routes (Asaas integration)
-
 import { Router } from 'express';
-import { eq, and, or, desc } from 'drizzle-orm';
+import { eq, and, or, desc, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db/index.js';
 import { academyProfessorLinks, users, plans, subscriptions, settings } from '../db/schema.js';
@@ -53,17 +51,18 @@ function isPaidPlan(plan: PlanRow | null | undefined) {
   return Number.isFinite(price) && price > 0;
 }
 
-function isOverdueAsaasPayment(payment: Awaited<ReturnType<typeof listSubscriptionPayments>>[number]) {
+function isOverdueAsaasPayment(payment: Awaited<ReturnType<typeof listSubscriptionPayments>>[number], graceDays = 3) {
   const status = String(payment.status || '').toUpperCase();
   if (status === 'OVERDUE') return true;
   if (status !== 'PENDING') return false;
 
   const due = parseDate(payment.dueDate);
   if (!due) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-  return due < today;
+  // Considera os dias de tolerância/carência
+  const limitDate = new Date(due);
+  limitDate.setDate(limitDate.getDate() + graceDays);
+  limitDate.setHours(23, 59, 59, 999);
+  return new Date() > limitDate;
 }
 
 async function loadPlan(planId: string) {
@@ -94,9 +93,10 @@ async function syncSubscriptionAccess(sub: SubscriptionRow, plan?: PlanRow | nul
 
   if (sub.asaasId) {
     try {
-      const [asaasSub, asaasPayments] = await Promise.all([
+      const [asaasSub, asaasPayments, graceDays] = await Promise.all([
         getSubscription(sub.asaasId),
         listSubscriptionPayments(sub.asaasId),
+        getGraceDays(),
       ]);
       const asaasStatus = String(asaasSub.status || '').toUpperCase();
 
@@ -106,32 +106,73 @@ async function syncSubscriptionAccess(sub: SubscriptionRow, plan?: PlanRow | nul
       } else if (asaasStatus === 'ACTIVE') {
         const nextDueDate = parseDate(asaasSub.nextDueDate, true);
 
-        // Ordena pagamentos por data mais recente
-        const sortedPayments = [...asaasPayments].sort((a, b) => {
-          const da = new Date(a.paymentDate || a.dueDate).getTime();
-          const db = new Date(b.paymentDate || b.dueDate).getTime();
+        // Pagamentos confirmados/recebidos no Asaas
+        const confirmedStatuses = new Set(['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']);
+        const confirmedPayments = (asaasPayments || []).filter(p =>
+          confirmedStatuses.has(String(p.status || '').toUpperCase())
+        ).sort((a, b) => {
+          const da = new Date(a.paymentDate || a.clientPaymentDate || a.confirmedDate || a.dueDate).getTime();
+          const db = new Date(b.paymentDate || b.clientPaymentDate || b.confirmedDate || b.dueDate).getTime();
           return db - da;
         });
 
-        // O único pagamento que pode atrasar uma assinatura ACTIVE é a cobrança pendente mais recente
-        const latestPayment = sortedPayments[0];
-        const isLatestOverdue = latestPayment ? isOverdueAsaasPayment(latestPayment) : false;
+        const latestConfirmed = confirmedPayments[0];
+        const latestConfirmedDate = latestConfirmed
+          ? parseDate(latestConfirmed.paymentDate || latestConfirmed.clientPaymentDate || latestConfirmed.confirmedDate || latestConfirmed.dueDate)
+          : null;
 
-        if (nextDueDate && nextDueDate.getTime() > now.getTime() && !isLatestOverdue) {
+        const daysSincePaid = latestConfirmedDate
+          ? (now.getTime() - latestConfirmedDate.getTime()) / (1000 * 60 * 60 * 24)
+          : Infinity;
+
+        // Se o usuário pagou nos últimos 35 dias, está 100% adimplente / ativo
+        const hasRecentConfirmedPayment = daysSincePaid <= 35;
+
+        // Cobranças em atraso que já passaram do vencimento + carência
+        const overduePayments = (asaasPayments || []).filter(p => isOverdueAsaasPayment(p, graceDays));
+        const hasOverduePending = overduePayments.length > 0;
+
+        if (hasRecentConfirmedPayment) {
+          updates.status = 'active';
+          if (nextDueDate && nextDueDate.getTime() > now.getTime()) {
+            updates.currentPeriodEnd = nextDueDate;
+            const periodStart = new Date(nextDueDate);
+            periodStart.setMonth(periodStart.getMonth() - 1);
+            updates.currentPeriodStart = periodStart;
+          } else if (latestConfirmedDate) {
+            const nextCycle = new Date(latestConfirmedDate);
+            nextCycle.setDate(nextCycle.getDate() + 32);
+            updates.currentPeriodEnd = nextCycle > now ? nextCycle : new Date(now.getTime() + 7 * 86400000);
+          }
+        } else if (nextDueDate && nextDueDate.getTime() > now.getTime() && !hasOverduePending) {
           const periodStart = new Date(nextDueDate);
           periodStart.setMonth(periodStart.getMonth() - 1);
           updates.status = 'active';
           updates.currentPeriodStart = periodStart;
           updates.currentPeriodEnd = nextDueDate;
-        } else if (isLatestOverdue) {
-          updates.status = 'past_due';
-        } else if (localPeriodExpired) {
+        } else if (hasOverduePending || localPeriodExpired) {
           updates.status = 'past_due';
         }
       } else if (asaasStatus === 'OVERDUE') {
         updates.status = 'past_due';
-      } else if (sub.status === 'trial' && localPeriodExpired) {
-        updates.status = 'expired';
+      } else if (sub.status === 'trial') {
+        // Verifica se usuário tem trial ativo em users antes de marcar expired
+        const [u] = await db.select({ trialEndsAt: users.trialEndsAt }).from(users).where(eq(users.uid, sub.userUid)).limit(1);
+        const userTrialEnds = parseDate(u?.trialEndsAt);
+        const subTrialEnds = parseDate(sub.trialEndsAt || sub.currentPeriodEnd);
+        const activeTrialDate = (userTrialEnds && userTrialEnds.getTime() > now.getTime())
+          ? userTrialEnds
+          : (subTrialEnds && subTrialEnds.getTime() > now.getTime())
+            ? subTrialEnds
+            : null;
+
+        if (activeTrialDate) {
+          updates.status = 'trial';
+          updates.trialEndsAt = activeTrialDate;
+          updates.currentPeriodEnd = activeTrialDate;
+        } else if (localPeriodExpired) {
+          updates.status = 'expired';
+        }
       } else if (localPeriodExpired) {
         updates.status = 'past_due';
       }
@@ -184,6 +225,43 @@ router.get('/plans', async (_req, res) => {
 // ─── GET /api/subscriptions/my ────────────────────────────────────────────
 // Assinatura do usuário atual (inclui past_due para permitir regularização)
 router.get('/my', requireAuth, async (req: AuthRequest, res) => {
+  // 1. Busca dados do usuário (isenção, trial no perfil, role)
+  const [userRow] = await db
+    .select({
+      uid: users.uid,
+      trialEndsAt: users.trialEndsAt,
+      subscriptionExempt: users.subscriptionExempt,
+      role: users.role,
+    })
+    .from(users)
+    .where(eq(users.uid, req.userId!))
+    .limit(1);
+
+  const now = new Date();
+  const hasUserActiveTrial = Boolean(userRow?.trialEndsAt && new Date(userRow.trialEndsAt).getTime() > now.getTime());
+
+  // 2. Se o usuário for isento (subscriptionExempt)
+  if (userRow?.subscriptionExempt) {
+    res.json({
+      subscription: {
+        id: `exempt:${req.userId}`,
+        userUid: req.userId!,
+        planId: 'exempt',
+        status: 'active',
+        currentPeriodEnd: new Date(Date.now() + 365 * 86400000).toISOString(),
+        plan: {
+          id: 'exempt',
+          name: 'Acesso Isento',
+          price: 0,
+          roleAssigned: userRow.role || 'student',
+          features: ['all'],
+        },
+      },
+    });
+    return;
+  }
+
+  // 3. Busca assinatura do usuário ordenando por: active > trial > past_due, depois mais recente
   const sub = await db
     .select()
     .from(subscriptions)
@@ -197,9 +275,41 @@ router.get('/my', requireAuth, async (req: AuthRequest, res) => {
         ),
       ),
     )
-    .orderBy(desc(subscriptions.createdAt))
+    .orderBy(
+      sql`CASE 
+        WHEN ${subscriptions.status} = 'active' THEN 1
+        WHEN ${subscriptions.status} = 'trial' THEN 2
+        WHEN ${subscriptions.status} = 'past_due' THEN 3
+        ELSE 4
+      END`,
+      desc(subscriptions.createdAt)
+    )
     .limit(1);
+
   if (!sub.length) {
+    // 3a. Se tiver trial ativo no perfil do usuário
+    if (hasUserActiveTrial) {
+      res.json({
+        subscription: {
+          id: `trial:${req.userId}`,
+          userUid: req.userId!,
+          planId: 'trial',
+          status: 'trial',
+          trialEndsAt: userRow!.trialEndsAt,
+          currentPeriodEnd: userRow!.trialEndsAt,
+          plan: {
+            id: 'trial',
+            name: 'Período Grátis (Trial)',
+            price: 0,
+            roleAssigned: userRow?.role || 'student',
+            features: ['all'],
+          },
+        },
+      });
+      return;
+    }
+
+    // 3b. Coberto pela academia
     const [academyCoveredAccess] = await db
       .select({
         academyUid: academyProfessorLinks.academyUid,
@@ -242,12 +352,34 @@ router.get('/my', requireAuth, async (req: AuthRequest, res) => {
     res.json({ subscription: null });
     return;
   }
+
   const plan = await db
     .select()
     .from(plans)
     .where(eq(plans.id, sub[0].planId))
     .limit(1);
   const syncedSub = await syncSubscriptionAccess(sub[0], plan[0] ?? null);
+
+  // Se a assinatura acabou ficando 'past_due' ou 'expired', mas o usuário tem trial ativo concedido no perfil:
+  if ((syncedSub.status === 'past_due' || syncedSub.status === 'expired' || syncedSub.status === 'cancelled') && hasUserActiveTrial) {
+    res.json({
+      subscription: {
+        ...syncedSub,
+        status: 'trial',
+        trialEndsAt: userRow!.trialEndsAt,
+        currentPeriodEnd: userRow!.trialEndsAt,
+        plan: plan[0] ?? {
+          id: 'trial',
+          name: 'Período Grátis (Trial)',
+          price: 0,
+          roleAssigned: userRow?.role || 'student',
+          features: ['all'],
+        },
+      },
+    });
+    return;
+  }
+
   const isVisibleStatus = ['active', 'trial', 'past_due', 'pending'].includes(String(syncedSub.status || '').toLowerCase());
   res.json({ subscription: isVisibleStatus ? { ...syncedSub, plan: plan[0] ?? null } : null });
 });

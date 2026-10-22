@@ -111,6 +111,7 @@ export interface UserProfile {
   subscriptionExempt?: boolean;
   communityModerator?: boolean;
   trialRequestsEnabled?: boolean;
+  trialEndsAt?: string | null;
   createdAt?: string;
 }
 

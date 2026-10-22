@@ -76,6 +76,7 @@ export default function PricingPage() {
 
     // Verifica se já tem assinatura ativa
     if (user) {
+      const hasActiveProfileTrial = Boolean(user.trialEndsAt && new Date(user.trialEndsAt) > new Date());
       api.subscriptions.getMy()
         .then(data => {
           const sub = data?.subscription;
@@ -86,9 +87,25 @@ export default function PricingPage() {
               planId: sub.planId,
               isFree: Number(sub.plan?.price) <= 0,
             });
+          } else if (hasActiveProfileTrial) {
+            setActiveSubscription({
+              id: 'trial',
+              status: 'trial',
+              planId: 'trial',
+              isFree: true,
+            });
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (hasActiveProfileTrial) {
+            setActiveSubscription({
+              id: 'trial',
+              status: 'trial',
+              planId: 'trial',
+              isFree: true,
+            });
+          }
+        });
     }
   }, [user]);
 
@@ -265,6 +282,56 @@ export default function PricingPage() {
             BJJRATS
           </p>
         </motion.div>
+
+        {activeSubscription && (activeSubscription.status === 'active' || activeSubscription.status === 'trial') && (
+          <motion.div variants={fadeUp} className="flex justify-center mb-8">
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #0A2010 0%, #102A18 100%)',
+                border: '1px solid #22C55E66',
+                padding: '1rem 1.5rem',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '1rem',
+                width: '100%',
+                maxWidth: '650px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>🎉</span>
+                <div>
+                  <p style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.95rem', color: '#4ADE80', margin: 0, textTransform: 'uppercase' }}>
+                    {activeSubscription.status === 'trial' ? 'Você já está no período de teste ativo!' : 'Você já possui uma assinatura ativa!'}
+                  </p>
+                  <p style={{ fontFamily: FONTS.condensed, fontSize: '0.8rem', color: '#888', margin: '0.2rem 0 0' }}>
+                    Seu acesso à plataforma está liberado.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate(getPanelPath(user))}
+                style={{
+                  background: '#22C55E',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '0.5rem 1.25rem',
+                  fontFamily: FONTS.condensed,
+                  fontWeight: 800,
+                  fontSize: '0.8rem',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                }}
+              >
+                IR PARA MEU PAINEL →
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         {/* Banner do Google Play para app Android */}
         {hasPaidPlans && !isFreePlanSelected && isGooglePlayAvailable() && (
