@@ -39,6 +39,7 @@ import supportRouter       from "./routes/support.js";
 import passkeyRouter       from "./routes/passkeys.js";
 import trainingVideosRouter from "./routes/trainingVideos.js";
 import { startFinancialAutomationJobs } from "./services/financialAutomation.js";
+import { ensureDatabaseSchema } from "./db/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +85,8 @@ const corsOptions: CorsOptions = {
 };
 
 async function startServer() {
+  await ensureDatabaseSchema();
+
   const app = express();
   const server = createServer(app);
 
