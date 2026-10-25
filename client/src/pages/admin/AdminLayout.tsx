@@ -36,7 +36,15 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col font-['Barlow_Condensed']">
       {/* Top Bar */}
-      <header className="bjj-glass-strong flex items-center justify-between px-5 h-14 sticky top-0 z-100" style={{ borderBottom: '2px solid #CC0000' }}>
+      <header
+        className="bjj-glass-strong flex items-center justify-between px-5 sticky top-0 z-100"
+        style={{
+          borderBottom: '2px solid #CC0000',
+          paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))',
+          paddingBottom: '0.75rem',
+          minHeight: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+        }}
+      >
         <div className="flex items-center gap-3">
           <div className="flex flex-col leading-none">
             <span className="font-black text-[0.95rem] tracking-[0.1em] text-white uppercase">BJJRATS</span>

@@ -49,11 +49,11 @@ export default function PricingPage() {
     setRestoringApple(true);
     try {
       const res = await restorePurchasesOnApple();
-      if (res.success) {
-        alert('Assinatura restaurada com sucesso!');
+      if (res.restored) {
+        alert(res.message);
         navigate(getPanelPath(user));
       } else {
-        alert(res.error || 'Nenhuma assinatura ativa encontrada na conta Apple para restaurar.');
+        alert(res.message || 'Nenhuma assinatura ativa encontrada na conta Apple para restaurar.');
       }
     } catch (err: any) {
       alert(err?.message || 'Erro ao restaurar compras na Apple.');
