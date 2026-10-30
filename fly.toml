@@ -1,7 +1,6 @@
-# fly.toml app configuration file generated for bjjrats on 2026-06-18T01:07:03Z
+# fly.toml app configuration file generated for bjjrats
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
 
 app = 'bjjrats'
 primary_region = 'gru'
@@ -15,13 +14,17 @@ primary_region = 'gru'
   PORT = '3000'
   UPLOADS_DIR = '/app/uploads'
 
+# Configuração de Volume com Auto-Extend para suportar escala de 100k - 200k usuários
 [[mounts]]
   source = 'bjjrats_uploads'
   destination = '/app/uploads'
-  initial_size = '1gb'
+  initial_size = '10gb'
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = '5gb'
+  auto_extend_size_limit = '50gb'
 
 [http_service]
-  internal_port = 8080
+  internal_port = 3000
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
