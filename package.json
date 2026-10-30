@@ -72,6 +72,7 @@
     "helmet": "^8.2.0",
     "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",

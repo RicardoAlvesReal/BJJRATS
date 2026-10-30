@@ -1,5 +1,5 @@
 import {
-  pgTable, text, integer, boolean, timestamp, real, jsonb, uniqueIndex,
+  pgTable, text, integer, boolean, timestamp, real, jsonb, uniqueIndex, index,
 } from 'drizzle-orm/pg-core';
 
 // ─── users ──────────────────────────────────────────────────────────────────
@@ -134,7 +134,9 @@ export const trainings = pgTable('trainings', {
   extraData:      jsonb('extra_data'),
   compData:       jsonb('comp_data'),
   createdAt:      timestamp('created_at').defaultNow(),
-});
+}, (table) => [
+  index('idx_trainings_uid_date').on(table.uid, table.trainingDate),
+]);
 
 // ─── extra_trainings ─────────────────────────────────────────────────────────
 export const extraTrainings = pgTable('extra_trainings', {
@@ -182,7 +184,11 @@ export const posts = pgTable('posts', {
   likes:        jsonb('likes').default([]),           // array of uid strings
   commentCount: integer('comment_count').default(0),
   createdAt:    timestamp('created_at').defaultNow(),
-});
+}, (table) => [
+  index('idx_posts_feed').on(table.postType, table.createdAt),
+  index('idx_posts_academy').on(table.academyId, table.createdAt),
+  index('idx_posts_author').on(table.authorUid, table.createdAt),
+]);
 
 // ─── comments ────────────────────────────────────────────────────────────────
 export const comments = pgTable('comments', {
@@ -193,7 +199,9 @@ export const comments = pgTable('comments', {
   authorPhoto: text('author_photo'),
   content:     text('content').notNull(),
   createdAt:   timestamp('created_at').defaultNow(),
-});
+}, (table) => [
+  index('idx_comments_post').on(table.postId, table.createdAt),
+]);
 
 // ─── events ──────────────────────────────────────────────────────────────────
 export const events = pgTable('events', {
@@ -256,7 +264,9 @@ export const notifications = pgTable('notifications', {
   data:      jsonb('data'),
   read:      boolean('read').default(false),
   createdAt: timestamp('created_at').defaultNow(),
-});
+}, (table) => [
+  index('idx_notifications_to_unread').on(table.toUid, table.read, table.createdAt),
+]);
 
 // ─── payments ────────────────────────────────────────────────────────────────
 export const payments = pgTable('payments', {
