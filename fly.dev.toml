@@ -1,11 +1,12 @@
 # App Fly.io separado para homologacao/desenvolvimento.
-# Crie o app com: fly apps create bjjrats-dev
 # Deploy: fly deploy -c fly.dev.toml
 
 app = "bjjrats-dev"
 primary_region = "gru"
 
 [build]
+  [build.args]
+    VITE_TURNSTILE_SITE_KEY = "0x4AAAAAADm4HnOK8P1JV2Ss"
 
 [env]
   NODE_ENV = "production"
@@ -30,8 +31,12 @@ primary_region = "gru"
   memory   = "512mb"
   cpu_kind = "shared"
   cpus     = 1
+  memory_mb = 512
 
 [[mounts]]
   source      = "bjjrats_dev_uploads"
   destination = "/app/uploads"
   initial_size = "1gb"
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = "5gb"
+  auto_extend_size_limit = "20gb"

@@ -46,49 +46,51 @@ const __dirname = path.dirname(__filename);
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(__dirname, "..", "uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-const DEFAULT_CORS_ORIGINS = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:5173",
-  "capacitor://localhost",
-  "https://localhost",
-  "https://thebjjrats.com",
-  "https://www.thebjjrats.com",
-  "https://bjjrats.fly.dev",
-];
 
 function parseCorsOrigins(value: string | undefined): string[] {
-  return (value || "")
+  if (!value) return [];
+  return value
     .split(",")
-    .map(origin => origin.trim())
+    .map(o => o.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 }
 
-const configuredCorsOrigins = parseCorsOrigins(process.env.CORS_ORIGIN);
-const allowAnyCorsOrigin = configuredCorsOrigins.includes("*");
-const allowedCorsOrigins = new Set([
-  ...DEFAULT_CORS_ORIGINS,
-  ...configuredCorsOrigins.filter(origin => origin !== "*"),
-]);
+const explicitOrigins = parseCorsOrigins(process.env.CORS_ORIGIN);
+const defaultOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:3000",
+  "http://localhost:3001",
+];
+
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...explicitOrigins]));
 
 const corsOptions: CorsOptions = {
-  origin(requestOrigin, callback) {
-    if (!requestOrigin || allowAnyCorsOrigin || allowedCorsOrigins.has(requestOrigin)) {
-      callback(null, true);
-      return;
+  origin: (origin, callback) => {
+    // Permite requisições sem origin (apps mobile Capacitor, Postman, curl, same-origin)
+    if (!origin) return callback(null, true);
+    const normalized = origin.replace(/\/+$/, "");
+    if (
+      allowedOrigins.includes(normalized) ||
+      /^https:\/\/.*\.fly\.dev$/.test(normalized) ||
+      /^https:\/\/.*\.bjjrats\.com$/.test(normalized) ||
+      /^http:\/\/localhost:\d+$/.test(normalized) ||
+      normalized === "capacitor://localhost" ||
+      normalized === "ionic://localhost"
+    ) {
+      return callback(null, true);
     }
-
-    callback(null, false);
+    callback(new Error(`Origem não permitida pelo CORS: ${origin}`));
   },
   credentials: true,
 };
 
 async function startServer() {
-  await ensureDatabaseSchema();
-
   const app = express();
   const server = createServer(app);
+
+  // Healthcheck endpoint imediato (para Fly.io / load balancers)
+  app.get("/health", (_req, res) => res.status(200).send("OK"));
 
   app.use(helmet({
     // CSP desativado para não quebrar o SPA (Vite injeta scripts inline)
@@ -113,7 +115,7 @@ async function startServer() {
   app.use("/api/enrollments",      enrollmentsRouter);
   app.use("/api/academy-requests", academyReqRouter);
   app.use("/api/professor-requests", professorReqRouter);
-  app.use("/api/booked-slots", bookedSlotsRouter);
+  app.use("/api/booked-slots",     bookedSlotsRouter);
   app.use("/api/classes",          classesRouter);
   app.use("/api/promotions",       promotionsRouter);
   app.use("/api/achievements",     achievementsRouter);
@@ -139,11 +141,17 @@ async function startServer() {
     });
   }
 
-  const port = process.env.PORT || 3000;
+  const port = Number(process.env.PORT) || 3000;
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  // Garante binding explícito em 0.0.0.0 (exigência de containers Docker / Fly.io)
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
     startFinancialAutomationJobs();
+  });
+
+  // Executa migrações essenciais em background sem atrasar a abertura da porta 3000
+  ensureDatabaseSchema().catch((err) => {
+    console.error('[db] Falha na verificação do schema essencial:', err);
   });
 }
 
@@ -152,4 +160,3 @@ startServer().catch(console.error);
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
 });
-// routes updated
