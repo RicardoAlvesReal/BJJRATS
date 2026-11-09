@@ -3,7 +3,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Training, calcXP, getLevelInfo, calcStreak, BELT_COLORS, parseTrainingDate, topTecnicas } from '@/lib/bjjrats-constants';
-import { toast } from 'sonner';
+import { quickToast } from '@/lib/quickToast';
+import { shareImage } from '@/lib/native';
 
 interface Props {
   trainings: Training[];
@@ -262,25 +263,21 @@ export default function StatsShareCard({ trainings, name, belt, academy, photoUR
     a.href = imgUrl;
     a.download = `bjjrats-stats-${(name || 'atleta').toLowerCase().replace(/\s+/g, '-')}.png`;
     a.click();
-    toast.success('Card salvo! Compartilhe nas redes sociais 🥋');
+    quickToast('success', 'Card salvo! Compartilhe nas redes sociais 🥋');
   };
 
   const handleShare = async () => {
     if (!imgUrl) return;
     try {
-      const blob = await (await fetch(imgUrl)).blob();
-      const file = new File([blob], 'bjjrats-stats.png', { type: 'image/png' });
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: 'Minhas stats no BJJRats',
-          text: `${trainings.length} treinos · ${totalHrs}h · ${xp} XP — thebjjrats.com`,
-          files: [file],
-        });
-      } else {
-        handleDownload();
-      }
+      const result = await shareImage({
+        dataUrl: imgUrl,
+        fileName: `bjjrats-stats-${Date.now()}.png`,
+        title: 'Minhas stats no BJJRats',
+        text: `${trainings.length} treinos · ${totalHrs}h no tatame — @thebjjrats`,
+      });
+      if (result === 'downloaded') quickToast('success', 'Card salvo! Compartilhe nas redes sociais 🥋');
     } catch {
-      handleDownload();
+      quickToast('error', 'Não foi possível compartilhar o card');
     }
   };
 
