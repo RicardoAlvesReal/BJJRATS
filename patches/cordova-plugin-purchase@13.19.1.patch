@@ -1,0 +1,14 @@
+diff --git a/plugin.xml b/plugin.xml
+index 0000000..1111111 100644
+--- a/plugin.xml
++++ b/plugin.xml
+@@ -55,7 +55,7 @@
+         <config-file target="config.xml" parent="/*">
+             <feature name="InAppPurchase">
+                 <param name="ios-package" value="InAppPurchase" />
+-                <param name="onload" value="true" />
++                <param name="onload" value="false" />
+             </feature>
+         </config-file>
+ 
+

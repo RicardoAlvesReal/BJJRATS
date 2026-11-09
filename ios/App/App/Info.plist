@@ -26,6 +26,12 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Usamos sua localização para exibir academias e professores próximos de você e calcular a distância a partir da sua posição atual.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Usamos a câmera para você tirar fotos do seu treino, graduação e perfil.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Usamos sua galeria para você selecionar fotos para o perfil, posts e comprovantes.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Usamos o acesso à galeria para salvar comprovantes e imagens de graduação.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UILaunchStoryboardName</key>
@@ -34,7 +40,7 @@
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
