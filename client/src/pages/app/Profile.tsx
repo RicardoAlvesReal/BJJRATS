@@ -52,10 +52,11 @@ const ATHLETE_TYPES = [
 interface ProfileProps {
   onOpenProfessorPanel?: () => void;
   onOpenSubscription?: () => void;
+  onLogout?: () => void;
   onEdit?: (t: Training) => void;
 }
 
-export default function Profile({ onOpenProfessorPanel, onOpenSubscription, onEdit }: ProfileProps = {}) {
+export default function Profile({ onOpenProfessorPanel, onOpenSubscription, onLogout, onEdit }: ProfileProps = {}) {
   const { user, profile, refreshProfile, updateProfileData, logout } = useAuth();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1542,6 +1543,41 @@ export default function Profile({ onOpenProfessorPanel, onOpenSubscription, onEd
 
         {/* ── Passkeys (Biometria) ── */}
         <PasskeyManager />
+
+        {/* ── Sair da conta (no celular a sidebar com "Sair" fica oculta) ── */}
+        {onLogout && (
+          <motion.div variants={fadeUpVariant}>
+            <button
+              type="button"
+              onClick={onLogout}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: '1px solid #333',
+                color: '#CCC',
+                fontFamily: 'Barlow Condensed, sans-serif',
+                fontWeight: 900,
+                fontSize: '0.85rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0.8rem 1rem',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              Sair da conta
+            </button>
+          </motion.div>
+        )}
 
         </motion.div>
     </div>

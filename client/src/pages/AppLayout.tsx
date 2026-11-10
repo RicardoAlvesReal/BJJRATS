@@ -746,7 +746,7 @@ export default function AppLayout() {
                 {activeTab === 'professores' && <Professores />}
                 {activeTab === 'community' && <Community onClearBadge={() => setCommunityBadge(false)} onNewPosts={() => setCommunityBadge(true)} />}
                 {activeTab === 'goals' && <Goals />}
-                {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onOpenSubscription={() => setSubscriptionOpen(true)} onEdit={(t) => setEditTraining(t)} />}
+                {activeTab === 'profile' && <Profile onOpenProfessorPanel={isProfessor ? () => setShowProfessorPanel(true) : undefined} onOpenSubscription={() => setSubscriptionOpen(true)} onLogout={handleLogout} onEdit={(t) => setEditTraining(t)} />}
               </>
             )}
           </motion.div>
