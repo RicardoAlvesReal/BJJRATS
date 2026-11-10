@@ -1,10 +1,12 @@
 import UIKit
 import Capacitor
 
-@UIApplicationMain
+@main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
-    var window: UIWindow?
+    // A janela agora é criada pelo SceneDelegate (UIScene life cycle).
+    // Links/universal links com scene ativa chegam via SceneDelegate; os
+    // métodos abaixo ficam como fallback.
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
