@@ -18,7 +18,7 @@ export default function DeleteAccount() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0A0A0A] via-[#1A0505] to-[#0A0A0A] text-white">
-      <header className="border-b border-[#CC0000]/20 bg-black/40 backdrop-blur-sm sticky top-0 z-50">
+      <header style={{ top: 'env(safe-area-inset-top, 0px)' }} className="border-b border-[#CC0000]/20 bg-black/40 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <Link href="/">
             <a className="flex items-center gap-3 hover:opacity-80 transition-opacity">

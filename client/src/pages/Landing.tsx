@@ -170,7 +170,7 @@ export default function Landing() {
   return (
     <div className="bg-[#0A0A0A] text-white min-h-screen overflow-x-hidden w-full">
       {/* ===== NAVBAR ===== */}
-      <nav className="fixed top-0 left-0 right-0 z-[200] bjj-glass-strong h-14 flex items-center justify-between px-4 lg:px-8 border-b border-[rgba(204,0,0,0.12)]">
+      <nav style={{ top: 'env(safe-area-inset-top, 0px)' }} className="fixed top-0 left-0 right-0 z-[200] bjj-glass-strong h-14 flex items-center justify-between px-4 lg:px-8 border-b border-[rgba(204,0,0,0.12)]">
         <div className="flex items-center gap-2.5 cursor-pointer shrink-0" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <img src={LOGO} alt="BJJRats" className="w-[30px] h-[30px] object-contain drop-shadow-[0_0_10px_rgba(204,0,0,0.3)]" />
           <span className="text-[1.2rem] font-black tracking-[0.05em] font-['Barlow_Condensed']">

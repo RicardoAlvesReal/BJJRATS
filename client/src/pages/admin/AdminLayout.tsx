@@ -40,9 +40,10 @@ export default function AdminLayout() {
         className="bjj-glass-strong flex items-center justify-between px-5 sticky top-0 z-100"
         style={{
           borderBottom: '2px solid #CC0000',
-          paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))',
+          top: 'env(safe-area-inset-top, 0px)', // gruda logo abaixo da barra de status (o body já desconta o inset)
+          paddingTop: '0.75rem',
           paddingBottom: '0.75rem',
-          minHeight: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+          minHeight: '3.5rem',
         }}
       >
         <div className="flex items-center gap-3">

@@ -4525,7 +4525,7 @@ Ao confirmar a matrícula ou participação, o aluno declara ter lido, compreend
       </AnimatePresence>
 
       {showBillingReview && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '1rem' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflowY: 'auto', padding: '1rem', paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))' }}>
           <div style={{ background: '#0A0A0A', border: '1px solid #2A2A2A', maxWidth: '480px', width: '100%', margin: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
