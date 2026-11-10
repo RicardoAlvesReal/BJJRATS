@@ -1095,6 +1095,11 @@ export const subscriptions = {
     }),
   cancel: () =>
     apiFetch<{ success: boolean }>('/api/subscriptions/cancel', { method: 'POST' }),
+  changePlan: (planId: string) =>
+    apiFetch<{ success: boolean; planId: string; status: string }>('/api/subscriptions/change-plan', {
+      method: 'POST',
+      body: JSON.stringify({ planId }),
+    }),
   getBilling: () =>
     apiFetch<{
       billingType: string | null;

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import api, { type Subscription } from '@/lib/api';
+import api, { type Subscription, type Plan } from '@/lib/api';
 import { fadeUp, staggerContainer } from '@/lib/animations';
 import { FONTS } from '@/lib/design';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +25,14 @@ function getPanelPath(user?: { role?: string } | null) {
   if (user.role === 'superadmin') return '/admin';
   if (user.role === 'academy' || user.role === 'admin') return '/academia';
   return '/app';
+}
+
+/** Papel do usuário → papel dos planos (mesma regra da página de planos e do backend) */
+function planRoleForUser(role?: string | null) {
+  if (role === 'student') return 'student';
+  if (role === 'professor') return 'professor';
+  if (role === 'academy' || role === 'admin') return 'academy';
+  return null;
 }
 
 function isPanelAccessBlocked(sub: Subscription | null, graceDays: number) {
@@ -63,6 +71,12 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'PAID' | 'PENDING' | 'OVERDUE'>('all');
   const [graceDays, setGraceDays] = useState(3);
+  const [allPlans, setAllPlans] = useState<Plan[]>([]);
+  const [changingPlanId, setChangingPlanId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.subscriptions.listPlans().then(setAllPlans).catch(() => setAllPlans([]));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -97,10 +111,28 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
       await api.subscriptions.cancel();
       await load();
       toast.success('Assinatura cancelada');
-    } catch {
-      toast.error('Erro ao cancelar assinatura');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao cancelar assinatura');
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleChangePlan = async (target: Plan) => {
+    const targetIsFree = Number(target.price) <= 0;
+    const message = targetIsFree
+      ? `Mudar para o plano ${target.name} (grátis)?\n\nA cobrança recorrente será cancelada e os recursos pagos deixarão de estar disponíveis.`
+      : `Mudar para o plano ${target.name} (R$ ${Number(target.price).toFixed(2)}/mês)?\n\nAs próximas cobranças passam a usar o novo valor.`;
+    if (!confirm(message)) return;
+    setChangingPlanId(target.id);
+    try {
+      await api.subscriptions.changePlan(target.id);
+      toast.success(`Plano alterado para ${target.name}`);
+      // Recarrega para o app aplicar os recursos do novo plano
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao trocar de plano');
+      setChangingPlanId(null);
     }
   };
 
@@ -172,8 +204,15 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
 
   const isFreePlan = Number(sub.plan.price) <= 0;
   const isAppleSub = sub.provider === 'apple';
-  const isGoogleSub = sub.provider === 'google';
+  // O backend grava 'google_play'; 'google' mantido por compatibilidade
+  const isGoogleSub = sub.provider === 'google_play' || sub.provider === 'google';
   const isStoreSub = isAppleSub || isGoogleSub;
+  const isCurrentSub = sub.status === 'active' || sub.status === 'trial' || sub.status === 'past_due';
+  const canCancel = isCurrentSub && !isStoreSub && !isFreePlan;
+  const userPlanRole = planRoleForUser(user?.role);
+  const otherPlans = isCurrentSub && !isStoreSub
+    ? allPlans.filter(p => p.id !== sub.planId && p.isActive !== false && (!userPlanRole || p.roleAssigned === userPlanRole))
+    : [];
   const canChangeBilling = !isFreePlan && !isStoreSub
     && (sub.status === 'active' || sub.status === 'trial' || sub.status === 'past_due');
   const panelAccessBlocked = isPanelAccessBlocked(sub, graceDays);
@@ -653,9 +692,60 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
             </div>
           )}
 
+          {/* Trocar plano */}
+          {otherPlans.length > 0 && (
+            <div style={{ borderTop: '1px solid #1A1A1A', paddingTop: '1rem', marginTop: '1rem' }}>
+              <p style={{ fontFamily: FONTS.condensed, fontSize: '0.75rem', fontWeight: 800, color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.6rem' }}>
+                Trocar plano
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {otherPlans.map(p => {
+                  const pIsFree = Number(p.price) <= 0;
+                  const needsCheckout = isFreePlan && !pIsFree;
+                  const busy = changingPlanId === p.id;
+                  return (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', background: '#0D0D0D', border: '1px solid #1E1E1E', borderRadius: '6px', padding: '0.6rem 0.75rem' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.9rem', color: '#FFF', margin: 0 }}>{p.name}</p>
+                        <p style={{ fontFamily: FONTS.condensed, fontSize: '0.7rem', color: '#888', margin: '0.1rem 0 0' }}>
+                          {pIsFree ? 'Grátis' : `R$ ${Number(p.price).toFixed(2)}/mês`}
+                          {needsCheckout && Number(p.trialDays ?? 0) > 0 ? ` · ${p.trialDays} dias grátis` : ''}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => (needsCheckout ? navigate('/pricing') : handleChangePlan(p))}
+                        disabled={changingPlanId !== null}
+                        style={{
+                          flexShrink: 0,
+                          background: needsCheckout ? '#CC0000' : 'transparent',
+                          color: needsCheckout ? '#FFF' : '#DDD',
+                          border: needsCheckout ? 'none' : '1px solid #333',
+                          borderRadius: '6px', padding: '0.45rem 0.8rem',
+                          fontFamily: FONTS.condensed, fontWeight: 800, fontSize: '0.7rem',
+                          letterSpacing: '0.06em', textTransform: 'uppercase',
+                          cursor: changingPlanId !== null ? 'not-allowed' : 'pointer',
+                          opacity: changingPlanId !== null && !busy ? 0.5 : 1,
+                        }}
+                      >
+                        {busy ? 'Alterando...' : needsCheckout ? 'Assinar' : 'Mudar'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Assinatura da loja: troca de plano é feita pela própria loja */}
+          {isGoogleSub && isCurrentSub && (
+            <p style={{ fontFamily: FONTS.condensed, fontSize: '0.72rem', color: '#777', margin: '1rem 0 0', lineHeight: 1.4 }}>
+              Assinatura cobrada pelo Google Play. Para trocar de plano ou cancelar, use Google Play › Pagamentos e assinaturas.
+            </p>
+          )}
+
           {/* Actions */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem', borderTop: '1px solid #1A1A1A', paddingTop: '1rem' }}>
-            {sub.status === 'active' && !isStoreSub && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '1.5rem', borderTop: '1px solid #1A1A1A', paddingTop: '1rem' }}>
+            {canCancel && (
               <button
                 onClick={handleCancel}
                 disabled={cancelling}
@@ -673,7 +763,7 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
                 {cancelling ? 'Cancelando...' : 'Cancelar assinatura'}
               </button>
             )}
-            {sub.status === 'active' && isAppleSub && (
+            {isCurrentSub && isAppleSub && (
               <button
                 onClick={() => window.open('https://apps.apple.com/account/subscriptions', '_blank')}
                 style={{
@@ -689,7 +779,7 @@ export default function SubscriptionManager({ compact }: { compact?: boolean }) 
                 Gerenciar na Apple
               </button>
             )}
-            {sub.status === 'active' && isGoogleSub && (
+            {isCurrentSub && isGoogleSub && (
               <button
                 onClick={() => window.open('https://play.google.com/store/account/subscriptions', '_blank')}
                 style={{

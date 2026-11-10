@@ -161,13 +161,17 @@ export async function cancelSubscription(id: string, config?: AsaasRequestConfig
 
 export async function updateSubscription(id: string, data: {
   billingType?: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+  value?: number;
+  description?: string;
+  /** Aplica o novo valor também às cobranças já geradas e ainda não pagas */
+  updatePendingPayments?: boolean;
 }, config?: AsaasRequestConfig): Promise<AsaasSubscription> {
   if (isDevMode(config)) {
     return {
       id,
       customer: '',
       billingType: data.billingType || 'PIX',
-      value: 0,
+      value: data.value ?? 0,
       nextDueDate: new Date().toISOString().split('T')[0],
       status: 'ACTIVE',
       cycle: 'MONTHLY',
@@ -176,6 +180,9 @@ export async function updateSubscription(id: string, data: {
   }
   return request<AsaasSubscription>('PUT', `/subscriptions/${id}`, {
     billingType: data.billingType,
+    value: data.value,
+    description: data.description,
+    updatePendingPayments: data.updatePendingPayments,
   }, config);
 }
 

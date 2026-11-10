@@ -441,6 +441,14 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
     return;
   }
 
+  // O plano precisa ser do papel do usuário (antes a regra existia só na tela de planos)
+  const [requester] = await db.select({ role: users.role }).from(users).where(eq(users.uid, req.userId!)).limit(1);
+  const allowedPlanRole = planRoleForUser(requester?.role);
+  if (allowedPlanRole && plan.roleAssigned !== allowedPlanRole) {
+    res.status(403).json({ error: 'Este plano não está disponível para o seu perfil', code: 'plan_not_allowed' });
+    return;
+  }
+
   const planPrice = Number(plan.price);
   const isFree = Number.isFinite(planPrice) && planPrice <= 0;
   const now = new Date();
@@ -623,20 +631,48 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
 // ─── POST /api/subscriptions/cancel ────────────────────────────────────────
 // Cancela assinatura
-router.post('/cancel', requireAuth, async (req: AuthRequest, res) => {
+const CURRENT_SUB_STATUSES = ['active', 'trial', 'past_due'] as const;
+const STORE_PROVIDERS = new Set(['apple', 'google_play', 'google']);
+
+async function findCurrentSubscription(userUid: string) {
   const [sub] = await db
     .select()
     .from(subscriptions)
     .where(
       and(
-        eq(subscriptions.userUid, req.userId!),
-        eq(subscriptions.status, 'active'),
+        eq(subscriptions.userUid, userUid),
+        or(...CURRENT_SUB_STATUSES.map(s => eq(subscriptions.status, s))),
       ),
     )
+    .orderBy(desc(subscriptions.currentPeriodStart))
     .limit(1);
+  return sub;
+}
+
+/** Papel do usuário → papel atribuído aos planos (mesma regra da página de planos) */
+function planRoleForUser(role: string | null | undefined): string | null {
+  if (role === 'student') return 'student';
+  if (role === 'professor') return 'professor';
+  if (role === 'academy' || role === 'admin') return 'academy';
+  return null; // superadmin e outros: sem restrição
+}
+
+router.post('/cancel', requireAuth, async (req: AuthRequest, res) => {
+  // Permite cancelar também durante o teste grátis e com pagamento pendente
+  const sub = await findCurrentSubscription(req.userId!);
 
   if (!sub) {
     res.status(404).json({ error: 'Nenhuma assinatura ativa' });
+    return;
+  }
+
+  // Assinaturas da Apple/Google só podem ser canceladas na loja; marcar como
+  // cancelada aqui cortaria o acesso enquanto a loja continuaria cobrando.
+  if (STORE_PROVIDERS.has(String(sub.provider))) {
+    res.status(409).json({
+      error: 'Esta assinatura é gerenciada pela loja de aplicativos. Cancele pela App Store ou Google Play.',
+      code: 'store_managed',
+    });
     return;
   }
 
@@ -650,6 +686,98 @@ router.post('/cancel', requireAuth, async (req: AuthRequest, res) => {
     .where(eq(subscriptions.id, sub.id));
 
   res.json({ success: true });
+});
+
+// ─── POST /api/subscriptions/change-plan ───────────────────────────────────
+// Troca o plano de uma assinatura existente.
+//  - pago (Asaas) → grátis: cancela a cobrança no Asaas e ativa o plano grátis
+//  - pago (Asaas) → pago: atualiza valor/descrição da assinatura no Asaas
+//  - grátis → pago: exige forma de pagamento → use POST /api/subscriptions
+//  - Apple/Google: a troca deve ser feita na loja
+router.post('/change-plan', requireAuth, async (req: AuthRequest, res) => {
+  const { planId } = req.body as { planId?: string };
+  if (!planId) {
+    res.status(400).json({ error: 'Informe o plano desejado' });
+    return;
+  }
+
+  const sub = await findCurrentSubscription(req.userId!);
+  if (!sub) {
+    res.status(404).json({ error: 'Nenhuma assinatura ativa', code: 'no_subscription' });
+    return;
+  }
+  if (sub.planId === planId) {
+    res.status(409).json({ error: 'Este já é o seu plano atual', code: 'same_plan' });
+    return;
+  }
+  if (STORE_PROVIDERS.has(String(sub.provider))) {
+    res.status(409).json({
+      error: 'Esta assinatura é gerenciada pela loja de aplicativos. Troque o plano pela App Store ou Google Play.',
+      code: 'store_managed',
+    });
+    return;
+  }
+
+  const [[targetPlan], [currentPlan], [user]] = await Promise.all([
+    db.select().from(plans).where(eq(plans.id, planId)).limit(1),
+    db.select().from(plans).where(eq(plans.id, sub.planId)).limit(1),
+    db.select({ role: users.role }).from(users).where(eq(users.uid, req.userId!)).limit(1),
+  ]);
+
+  if (!targetPlan || targetPlan.isActive === false) {
+    res.status(404).json({ error: 'Plano não encontrado' });
+    return;
+  }
+  const allowedRole = planRoleForUser(user?.role);
+  if (allowedRole && targetPlan.roleAssigned !== allowedRole) {
+    res.status(403).json({ error: 'Este plano não está disponível para o seu perfil', code: 'plan_not_allowed' });
+    return;
+  }
+
+  const targetPrice = Number(targetPlan.price);
+  const targetIsFree = Number.isFinite(targetPrice) && targetPrice <= 0;
+  const currentIsFree = Number(currentPlan?.price ?? 0) <= 0;
+
+  if (currentIsFree && !targetIsFree) {
+    res.status(409).json({
+      error: 'Para assinar um plano pago, escolha a forma de pagamento na página de planos.',
+      code: 'requires_checkout',
+    });
+    return;
+  }
+
+  if (targetIsFree) {
+    // Pago → grátis: encerra a cobrança recorrente e mantém o usuário ativo no plano grátis
+    if (sub.asaasId) await asaasCancelSub(sub.asaasId);
+    await db
+      .update(subscriptions)
+      .set({
+        planId,
+        status: 'active',
+        asaasId: null,
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: null,
+        trialEndsAt: null,
+        cancelledAt: null,
+      })
+      .where(eq(subscriptions.id, sub.id));
+    res.json({ success: true, planId, status: 'active' });
+    return;
+  }
+
+  // Pago → pago: as próximas cobranças (e as pendentes) passam a usar o novo valor
+  if (sub.asaasId) {
+    await updateSubscription(sub.asaasId, {
+      value: targetPrice,
+      description: `BJJRats - ${targetPlan.name}`,
+      updatePendingPayments: true,
+    });
+  }
+  await db
+    .update(subscriptions)
+    .set({ planId })
+    .where(eq(subscriptions.id, sub.id));
+  res.json({ success: true, planId, status: sub.status });
 });
 
 // ─── GET /api/subscriptions/my/billing ────────────────────────────────────

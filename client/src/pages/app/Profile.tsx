@@ -51,10 +51,11 @@ const ATHLETE_TYPES = [
 
 interface ProfileProps {
   onOpenProfessorPanel?: () => void;
+  onOpenSubscription?: () => void;
   onEdit?: (t: Training) => void;
 }
 
-export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps = {}) {
+export default function Profile({ onOpenProfessorPanel, onOpenSubscription, onEdit }: ProfileProps = {}) {
   const { user, profile, refreshProfile, updateProfileData, logout } = useAuth();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
@@ -694,6 +695,9 @@ export default function Profile({ onOpenProfessorPanel, onEdit }: ProfileProps =
           )}
           {onOpenProfessorPanel && (
             <button onClick={onOpenProfessorPanel} className="text-[0.65rem] font-bold uppercase tracking-[0.05em] px-2.5 py-1.5 rounded border border-[#1A6ECC] bg-[#001A33] text-[#1A6ECC] cursor-pointer flex items-center gap-1 font-['Barlow_Condensed']">🏫 PAINEL</button>
+          )}
+          {onOpenSubscription && (
+            <button onClick={onOpenSubscription} className="text-[0.65rem] font-bold uppercase tracking-[0.05em] px-2.5 py-1.5 rounded border border-[#333] bg-transparent text-[#AAA] cursor-pointer flex items-center gap-1 font-['Barlow_Condensed']">💳 PLANO</button>
           )}
           <button onClick={handleEditOpen} className="bjj-btn-ghost !text-[0.65rem] !px-2.5 !py-1.5 !border !border-[#333]">EDITAR</button>
         </div>

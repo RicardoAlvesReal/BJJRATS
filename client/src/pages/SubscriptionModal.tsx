@@ -18,7 +18,7 @@ export default function SubscriptionModal({ open, onClose }: Props) {
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         zIndex: 10000, background: 'rgba(0,0,0,0.85)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '1rem',
+        padding: 'max(1rem, env(safe-area-inset-top, 0px)) 1rem max(1rem, env(safe-area-inset-bottom, 0px))',
       }}
       onClick={onClose}
     >
@@ -30,7 +30,7 @@ export default function SubscriptionModal({ open, onClose }: Props) {
         style={{
           background: '#111', border: '1px solid #222',
           borderRadius: '8px', maxWidth: '480px', width: '100%',
-          maxHeight: '90vh', overflowY: 'auto', position: 'relative',
+          maxHeight: 'calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))', overflowY: 'auto', position: 'relative',
         }}
       >
         <button
